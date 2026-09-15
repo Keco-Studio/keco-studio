@@ -66,6 +66,7 @@ describe('desktop release workflow', () => {
     expect(workflow.match(/rm -rf release/g) ?? []).toHaveLength(2);
     expect(retryCleanupBlocks).toHaveLength(2);
     expect(retryCleanupBlocks.every((block) => block.includes('hdiutil detach -quiet -force "$mount_point"'))).toBe(true);
+    expect(retryCleanupBlocks.every((block) => block.includes('hdiutil detach -quiet -force "$mount_point" || true'))).toBe(true);
     expect(workflow.match(/if \[ "\$attempt" -eq 3 \]; then\n\s+exit 1/g) ?? []).toHaveLength(2);
   });
 

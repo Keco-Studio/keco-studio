@@ -73,7 +73,7 @@ jobs:
           for attempt in 1 2 3; do
             if [ "$attempt" -gt 1 ]; then
               while IFS= read -r mount_point; do
-                hdiutil detach -quiet -force "$mount_point"
+                hdiutil detach -quiet -force "$mount_point" || true
               done < <(find release -type d -path '*.native-work-*/mount' -prune -print)
             fi
             rm -rf release
@@ -122,7 +122,7 @@ jobs:
           for attempt in 1 2 3; do
             if [ "$attempt" -gt 1 ]; then
               while IFS= read -r mount_point; do
-                hdiutil detach -quiet -force "$mount_point"
+                hdiutil detach -quiet -force "$mount_point" || true
               done < <(find release -type d -path '*.native-work-*/mount' -prune -print)
             fi
             rm -rf release
