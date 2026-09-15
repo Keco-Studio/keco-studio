@@ -8,7 +8,7 @@ import { useSupabase } from "@/lib/SupabaseContext";
 import styles from "./AuthForm.module.css";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
-import { isDesktopModeSearch, isDesktopModeSession } from "@/lib/desktopMode";
+import { DESKTOP_MODE_STORAGE_KEY, isDesktopModeSearch, isDesktopModeSession } from "@/lib/desktopMode";
 
 type Mode = "login" | "register";
 
@@ -44,13 +44,15 @@ function AuthFormContent() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [isDesktopMode, setIsDesktopMode] = useState(false);
+  const [isDesktopMode, setIsDesktopMode] = useState<boolean | null>(null);
 
   useEffect(() => {
     // Desktop WebView sessions are marked with the keco-desktop-mode key.
-    setIsDesktopMode(
-      isDesktopModeSearch(window.location.search) || isDesktopModeSession(window.sessionStorage)
-    );
+    const desktopFromSearch = isDesktopModeSearch(window.location.search);
+    if (desktopFromSearch) {
+      window.sessionStorage.setItem(DESKTOP_MODE_STORAGE_KEY, '1');
+    }
+    setIsDesktopMode(desktopFromSearch || isDesktopModeSession(window.sessionStorage));
   }, []);
 
   const switchMode = (next: Mode) => {
@@ -281,7 +283,7 @@ function AuthFormContent() {
               </form>
             ) : (
               <>
-                {!isDesktopMode ? (
+                    {isDesktopMode === false ? (
                   <>
                     <div className={styles.oauthSection}>
                       <button
@@ -316,9 +318,9 @@ function AuthFormContent() {
                       <span className={styles.dividerText}>or</span>
                     </div>
                   </>
-                ) : (
-                  <div>Google login is unavailable in desktop mode.</div>
-                )}
+                    ) : isDesktopMode ? (
+                      <div>Google login is unavailable in desktop mode.</div>
+                    ) : null}
 
                 <form className={styles.form} onSubmit={handleLogin} autoComplete="off">
                   {/* Hidden dummy fields to confuse browser autofill */}
