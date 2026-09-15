@@ -44,6 +44,13 @@ describe('desktop release workflow', () => {
     expect(workflow).toContain('zig build -Dtarget=x86_64-windows-gnu -Dplatform=windows -Doptimize=ReleaseFast');
   });
 
+  it('embeds the Native SDK DPI manifest in both Windows executable paths', () => {
+    const build = read('desktop/build.zig');
+    const assignments = build.match(/\.win32_manifest = nativeSdkPath\(b, native_sdk_path, "assets\/native-sdk\.manifest"\);/g) ?? [];
+
+    expect(assignments).toHaveLength(2);
+  });
+
   it('builds each macOS release for its portable CPU baseline', () => {
     const workflow = read('.github/workflows/release-desktop.yml');
 
