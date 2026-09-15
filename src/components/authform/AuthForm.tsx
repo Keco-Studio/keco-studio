@@ -8,7 +8,7 @@ import { useSupabase } from "@/lib/SupabaseContext";
 import styles from "./AuthForm.module.css";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
-import { isDesktopModeSession } from "@/lib/desktopMode";
+import { isDesktopModeSearch, isDesktopModeSession } from "@/lib/desktopMode";
 
 type Mode = "login" | "register";
 
@@ -48,7 +48,9 @@ function AuthFormContent() {
 
   useEffect(() => {
     // Desktop WebView sessions are marked with the keco-desktop-mode key.
-    setIsDesktopMode(isDesktopModeSession(window.sessionStorage));
+    setIsDesktopMode(
+      isDesktopModeSearch(window.location.search) || isDesktopModeSession(window.sessionStorage)
+    );
   }, []);
 
   const switchMode = (next: Mode) => {

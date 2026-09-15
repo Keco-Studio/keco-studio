@@ -18,4 +18,10 @@ describe('desktop mode', () => {
     expect(read('src/components/authform/AuthForm.tsx')).toContain(DESKTOP_MODE_STORAGE_KEY);
     expect(read('src/components/authform/AuthForm.tsx')).toMatch(/!isDesktopMode[\s\S]*Log in using Google/);
   });
+
+  it('derives the auth guard from the current URL before relying on the persisted marker', () => {
+    expect(read('src/components/authform/AuthForm.tsx')).toMatch(
+      /isDesktopModeSearch\(window\.location\.search\)[\s\S]{0,160}isDesktopModeSession\(window\.sessionStorage\)/
+    );
+  });
 });
