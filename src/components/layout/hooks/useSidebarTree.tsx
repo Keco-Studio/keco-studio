@@ -28,6 +28,7 @@ export type SidebarCurrentIds = {
   isLibraryPage: boolean;
   isPredefinePage: boolean;
   isGameAssetsPage?: boolean;
+  assetsWorkspaceEnabled?: boolean;
   gameAssetsCategory?: GameAssetNavCategory | null;
 };
 
@@ -288,7 +289,7 @@ export function useSidebarTree(
       _titleStr: item.label,
     })) as DataNode[];
 
-    // Fixed project Assets library — always first, ahead of Resources Folder.
+    // Fixed project Assets library — first when its workspace has been enabled.
     const assetsRoot: DataNode = {
       title: (
         <div
@@ -309,7 +310,9 @@ export function useSidebarTree(
       _titleStr: 'Assets',
     } as DataNode;
 
-    const result: DataNode[] = [assetsRoot];
+    const result: DataNode[] = currentIds.assetsWorkspaceEnabled || currentIds.isGameAssetsPage
+      ? [assetsRoot]
+      : [];
     const rootFolders = foldersByParent.get('') || [];
     rootFolders.forEach((folder) => {
       result.push(buildFolderNode(folder));
@@ -327,6 +330,8 @@ export function useSidebarTree(
 
   }, [
     currentIds.projectId,
+    currentIds.assetsWorkspaceEnabled,
+    currentIds.isGameAssetsPage,
     folders,
     libraries,
     documents,

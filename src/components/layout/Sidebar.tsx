@@ -843,7 +843,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   }, [openContextMenu]);
 
   const { treeData, selectedKeys } = useSidebarTree(
-    currentIds,
+    {
+      ...currentIds,
+      assetsWorkspaceEnabled: projects.find((project) => project.id === currentIds.projectId)?.assets_workspace_enabled,
+    },
     folders,
     libraries,
     documents,
