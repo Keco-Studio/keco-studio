@@ -26,7 +26,7 @@ jobs:
       - run: node scripts/create-release-manifest.mjs "$env:VERSION" app.json
         shell: pwsh
         working-directory: desktop
-      - run: zig build -Dtarget=x86_64-windows-msvc -Dplatform=windows -Doptimize=ReleaseFast
+      - run: zig build -Dtarget=x86_64-windows-gnu -Dplatform=windows -Doptimize=ReleaseFast
         working-directory: desktop
       - shell: pwsh
         working-directory: desktop
