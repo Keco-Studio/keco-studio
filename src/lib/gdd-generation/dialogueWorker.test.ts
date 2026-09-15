@@ -23,7 +23,12 @@ import {
   processClaimedDialogueJob,
   processNextDialogueJob,
   describeDialogueGenerationError,
+  type DialogueWorkerDependencies,
 } from './dialogueWorker';
+
+// @ts-expect-error The async worker must receive both durable parent identity fields.
+const invalidResolveOwner: DialogueWorkerDependencies['resolveOwner'] = async () => 'user-1';
+void invalidResolveOwner;
 
 const job = {
   id: 'job-1', project_id: 'project-1', gdd_generation_job_id: 'gdd-1',
@@ -46,7 +51,7 @@ describe('dialogue generation worker', () => {
     const complete = jest.fn(async () => true);
     const updateReference = jest.fn(async () => undefined);
     const updateSnapshot = jest.fn(async () => undefined);
-    const resolveOwner = jest.fn(async () => 'user-1');
+    const resolveOwner = jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' }));
     const findExistingScript = jest.fn(async () => null);
     const result = await processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat, complete, updateReference, updateSnapshot, resolveOwner, findExistingScript, fail: jest.fn(async () => true), retry: jest.fn(async () => 'queued' as const),
@@ -75,7 +80,7 @@ describe('dialogue generation worker', () => {
     const retry = jest.fn(async () => 'queued' as const);
     await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined), complete: jest.fn(async () => true),
-      resolveOwner: jest.fn(async () => 'user-1'), findExistingScript: jest.fn(async () => null), fail: jest.fn(async () => true), retry,
+      resolveOwner: jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' })), findExistingScript: jest.fn(async () => null), fail: jest.fn(async () => true), retry,
     } as any)).resolves.toBe('queued');
     expect(retry as jest.Mock).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', 'provider unavailable', expect.any(Number));
   });
@@ -88,7 +93,7 @@ describe('dialogue generation worker', () => {
     await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined),
       findExistingScript: jest.fn(async () => 'library-existing'),
-      resolveOwner: jest.fn(async () => 'user-1'),
+      resolveOwner: jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' })),
       complete,
       updateReference,
       updateSnapshot,
@@ -108,7 +113,7 @@ describe('dialogue generation worker', () => {
       heartbeat: jest.fn(async () => undefined),
       resolve: jest.fn(async () => ({ document: { nodes: [] }, plotPlan: { nodes: [] } } as any)),
       importStory: jest.fn(async () => ({ libraryId: 'library-new', rowCount: 1, fieldCount: 1 })),
-      resolveOwner: jest.fn(async () => 'user-1'),
+      resolveOwner: jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' })),
       findExistingScript: jest.fn(async () => null),
       updateReference: jest.fn(async () => undefined),
       updateSnapshot,
@@ -147,7 +152,7 @@ describe('dialogue generation worker', () => {
       read: jest.fn(async () => ({ markdown: 'Edited dialogue' } as any)),
       resolve: jest.fn(async () => ({ document: { nodes: [] }, plotPlan: { nodes: [] } } as any)),
       importStory,
-      resolveOwner: jest.fn(async () => 'user-1'),
+      resolveOwner: jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' })),
       updateReference: jest.fn(async () => undefined),
       fail: jest.fn(async () => true),
       retry: jest.fn(async () => 'queued' as const),
@@ -174,7 +179,7 @@ describe('dialogue generation worker', () => {
       heartbeat,
       complete: jest.fn(async () => true),
       updateReference: jest.fn(async () => undefined),
-      resolveOwner: jest.fn(async () => 'user-1'),
+      resolveOwner: jest.fn(async () => ({ ownerId: 'user-1', projectId: 'project-1' })),
       findExistingScript: jest.fn(async () => null),
       fail: jest.fn(async () => true),
       retry: jest.fn(async () => 'queued' as const),

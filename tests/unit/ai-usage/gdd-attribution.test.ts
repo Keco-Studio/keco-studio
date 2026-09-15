@@ -221,13 +221,13 @@ describe('GDD usage attribution', () => {
       document_id: 'document-1', status: 'running', attempt_count: 1, max_attempts: 2,
     } as never }, {
       heartbeat: jest.fn(async () => undefined), read: jest.fn(async () => ({ markdown: 'Dialogue' })), resolve,
-      resolveOwner: jest.fn(async () => 'owner-1'), findExistingScript: jest.fn(async () => null),
+      resolveOwner: jest.fn(async () => ({ ownerId: 'owner-1', projectId: 'parent-project-1' })), findExistingScript: jest.fn(async () => null),
       importStory: jest.fn(async () => ({ libraryId: 'library-1' })), updateReference: jest.fn(), updateSnapshot: jest.fn(),
       complete: jest.fn(), fail: jest.fn(), retry: jest.fn(),
     } as never);
     expect(resolve).toHaveBeenCalledWith('Dialogue', expect.objectContaining({
       usageBinding: expect.objectContaining({ context: expect.objectContaining({
-        actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', artifactId: 'dialogue-1', correlationId: 'gdd-job-1',
+        actorUserId: 'owner-1', projectId: 'parent-project-1', jobId: 'gdd-job-1', artifactId: 'dialogue-1', correlationId: 'gdd-job-1',
       }) }),
     }));
   });

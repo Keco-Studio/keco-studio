@@ -49,7 +49,7 @@ export type DialogueWorkerDependencies = {
   read: typeof documentStateGateway.read;
   resolve: typeof resolveStoryForImport;
   importStory: typeof importStoryDocument;
-  resolveOwner: (serviceClient: SupabaseClient, job: DialogueGenerationJob) => Promise<string | { ownerId: string; projectId: string }>;
+  resolveOwner: (serviceClient: SupabaseClient, job: DialogueGenerationJob) => Promise<{ ownerId: string; projectId: string }>;
   findExistingScript: (serviceClient: SupabaseClient, job: DialogueGenerationJob, sourceState: { epoch: number; revision: number; updateIds: string[] }) => Promise<string | null>;
   updateReference: (serviceClient: SupabaseClient, job: DialogueGenerationJob, scriptLibraryId: string) => Promise<void>;
   updateSnapshot: (serviceClient: SupabaseClient, job: DialogueGenerationJob, resolved: Pick<ResolvedStory, 'document' | 'plotPlan'>, scriptLibraryId: string) => Promise<void>;
@@ -200,14 +200,12 @@ export function shouldWakeDialogueGenerationJob(
 function dialogueUsageBinding(
   serviceClient: SupabaseClient,
   job: DialogueGenerationJob,
-  parent: string | { ownerId: string; projectId: string },
+  parent: { ownerId: string; projectId: string },
 ): AiUsageBinding {
-  const ownerId = typeof parent === 'string' ? parent : parent.ownerId;
-  const projectId = typeof parent === 'string' ? job.project_id : parent.projectId;
   return {
     context: {
-      actorUserId: ownerId,
-      projectId,
+      actorUserId: parent.ownerId,
+      projectId: parent.projectId,
       feature: 'gdd_dialogue',
       operation: 'convert_script',
       correlationId: job.gdd_generation_job_id,
@@ -257,7 +255,7 @@ export async function processClaimedDialogueJob(
       updateIds: (source.updateTail ?? []).map((update) => update.id).sort(),
     };
     const parentIdentity = await dependencies.resolveOwner(serviceClient, job);
-    const ownerId = typeof parentIdentity === 'string' ? parentIdentity : parentIdentity.ownerId;
+    const ownerId = parentIdentity.ownerId;
     const usageBinding = dialogueUsageBinding(serviceClient, job, parentIdentity);
     const existingScriptId = await dependencies.findExistingScript(serviceClient, job, sourceState);
     if (existingScriptId) {
