@@ -166,6 +166,7 @@ function derivedProjectContext(
     projectId,
     role,
     clientId: context.clientId,
+    sessionId: context.sessionId,
   };
   Object.defineProperties(derived, {
     bearerToken: {

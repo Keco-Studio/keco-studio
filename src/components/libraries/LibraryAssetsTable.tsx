@@ -61,6 +61,7 @@ import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 import { getColumnWidthClassKey } from './utils/tableStructure';
 import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
 import { resolveLibraryViewMode } from './libraryViewMode';
+import { DEFAULT_ASSET_GRID_SIZE_INDEX } from './utils/assetGridPresentation';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -132,7 +133,7 @@ export function LibraryAssetsTable({
 
   const [isSaving, setIsSaving] = useState(false);
   const [assetViewMode, setAssetViewMode] = useState<'grid' | 'table'>('grid');
-  const [assetGridSizeIndex, setAssetGridSizeIndex] = useState(2);
+  const [assetGridSizeIndex, setAssetGridSizeIndex] = useState(DEFAULT_ASSET_GRID_SIZE_INDEX);
 
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);

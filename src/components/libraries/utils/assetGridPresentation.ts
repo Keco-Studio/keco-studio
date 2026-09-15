@@ -2,14 +2,29 @@ import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 
 export const ASSET_GRID_SIZES = [
-  { tileWidth: 112, metadataLimit: 0, label: '60%' },
-  { tileWidth: 144, metadataLimit: 0, label: '75%' },
-  { tileWidth: 184, metadataLimit: 1, label: '100%' },
-  { tileWidth: 232, metadataLimit: 2, label: '125%' },
-  { tileWidth: 288, metadataLimit: 3, label: '150%' },
+  { tileWidth: 56, metadataLimit: 0, label: '10%', layout: 'list' },
+  { tileWidth: 72, metadataLimit: 0, label: '25%', layout: 'grid' },
+  { tileWidth: 88, metadataLimit: 0, label: '40%', layout: 'grid' },
+  { tileWidth: 112, metadataLimit: 0, label: '60%', layout: 'grid' },
+  { tileWidth: 144, metadataLimit: 0, label: '75%', layout: 'grid' },
+  { tileWidth: 184, metadataLimit: 1, label: '100%', layout: 'grid' },
+  { tileWidth: 232, metadataLimit: 2, label: '125%', layout: 'grid' },
+  { tileWidth: 288, metadataLimit: 3, label: '150%', layout: 'grid' },
 ] as const;
 
 export type AssetGridSizeIndex = number;
+export const DEFAULT_ASSET_GRID_SIZE_INDEX = 5;
+
+export function isAssetGridListMode(sizeIndex: AssetGridSizeIndex): boolean {
+  const boundedIndex = Math.min(ASSET_GRID_SIZES.length - 1, Math.max(0, sizeIndex));
+  return ASSET_GRID_SIZES[boundedIndex]?.layout === 'list';
+}
+
+export function getAdminAssetTargetRowHeight(sizeIndex: AssetGridSizeIndex): number {
+  const boundedIndex = Math.min(ASSET_GRID_SIZES.length - 1, Math.max(0, sizeIndex));
+  if (isAssetGridListMode(boundedIndex)) return 64;
+  return [72, 96, 120, 144, 168, 192, 216][boundedIndex - 1] ?? 168;
+}
 
 type VirtualAssetRow = {
   index: number;
