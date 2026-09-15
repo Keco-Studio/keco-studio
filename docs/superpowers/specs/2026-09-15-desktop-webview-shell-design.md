@@ -17,14 +17,16 @@ The initial release publishes these artifacts through GitHub Releases:
 | Platform | Architecture | Artifact | Notes |
 | --- | --- | --- | --- |
 | Windows | x64 | `.exe` installer | Native SDK Windows directory layout wrapped by Inno Setup. |
-| macOS | Apple Silicon (arm64) | `.dmg` | Unsigned initial release. |
-| macOS | Intel (x64) | `.dmg` | Unsigned initial release. |
+| macOS | Apple Silicon (arm64) | `.dmg` | Ad hoc signed, not notarized. |
+| macOS | Intel (x64) | `.dmg` | Ad hoc signed, not notarized. |
 
 There are no code-signing credentials in the initial release. Windows may show
-a SmartScreen warning, and macOS users must approve the application via the
-Finder context-menu Open flow. The release notes must state those limitations
-plainly. Adding certificates and macOS notarization later must be a packaging
-configuration change, not an application architecture change.
+a SmartScreen warning. The macOS packages use ad hoc signing, but are not
+notarized; users may need to approve them from Finder's context-menu Open flow
+or macOS Privacy & Security settings. The release notes must state those
+limitations plainly. Adding a Developer ID certificate and notarization later
+must be a packaging configuration change, not an application architecture
+change.
 
 ## Architecture
 
@@ -33,10 +35,11 @@ application manifest, window lifecycle, navigation security policy, icons,
 packaging metadata, and platform-specific build integration. The root Next.js
 project remains the web product and has no desktop-only runtime dependency.
 
-At launch, the shell opens one main window with the production URL. It uses the
-system web engine on each operating system: WebView2 on Windows and WKWebView
-on macOS. It does not bundle a second browser engine, a Next.js server, frontend
-assets, Supabase configuration, or application APIs.
+At launch, the shell opens one main window with the production URL and the
+`desktop=1` query marker. It uses the system web engine on each operating
+system: WebView2 on Windows and WKWebView on macOS. It does not bundle a second
+browser engine, a Next.js server, frontend assets, Supabase configuration, or
+application APIs.
 
 The window should use the Keco Studio application name and persist its size and
 position. The initial release has no native bridge commands, filesystem access,
@@ -45,25 +48,60 @@ keeps the wrapper intentionally narrow.
 
 ## Navigation and Security
 
-The production Keco origin is the only in-window navigation origin. Redirects
-to external origins must not silently replace the application content. The
-shell will use an explicit allowlist for `https://keco-studio-main.vercel.app`
-and an external-link policy that hands allowed outside links to the operating
-system rather than the WebView.
+The production Keco origin is the only in-window navigation origin:
+`https://keco-studio-main.vercel.app`. The initial desktop release supports
+email/password authentication only. Google OAuth is deliberately unavailable
+in the desktop WebView: Google may reject embedded user agents, and sending the
+login to the system browser would not return the WebView's PKCE session without
+a dedicated native callback design. Google login remains available in the
+ordinary web application and is deferred for desktop until that callback flow
+is designed and tested. The existing Next.js login page records the
+`desktop=1` marker in session storage and hides the Google login control with a
+short desktop-specific explanation. This is the sole required web-product
+change; it does not duplicate the UI or alter any server route, API, or auth
+provider configuration.
+
+All other top-level navigation is denied. The first release also denies
+`target=\"_blank\"`, `window.open`, and custom-protocol navigation rather than
+silently navigating the main WebView or relying on platform-specific popup
+behavior. The existing web app is not changed to create a desktop link bridge.
+This constraint is intentional until external-link handling has a tested,
+cross-platform implementation.
 
 No Native SDK permission or bridge capability is enabled unless a later feature
 has a specific need. Authentication remains website authentication; cookies and
 sessions are scoped to the system WebView profile rather than copied from the
-user's browser.
+user's browser. Release acceptance includes email/password login, logout,
+application restart, and session restoration checks.
 
 ## Delivery Pipeline
 
 A manually dispatchable GitHub Actions release workflow is added. It accepts a
 release version and builds each target on its matching host runner. Each job
-validates the desktop manifest, produces the platform artifact, and uploads it
-as a release asset. The Windows job packages the Native SDK distributable
-directory with Inno Setup into an x64 installer. The macOS jobs produce
-separately named arm64 and x64 DMGs.
+validates the desktop manifest, produces and checks its platform artifact, then
+uploads it only as a private Actions artifact. A final publish job requires all
+three jobs to succeed, verifies their versions and architecture names, then
+creates a draft GitHub Release and uploads all three release assets. It verifies
+the uploaded asset count and names before publishing the draft. A failure leaves
+only a non-public draft for maintainers to repair or delete, never an incomplete
+public release.
+
+The Windows job packages the Native SDK distributable directory with Inno Setup
+into an x64 per-user installer. It installs below the current user's writable
+`LocalAppData\\Programs` location rather than Program Files, so the SDK's
+default WebView2 profile location next to the executable is writable without
+administrator rights. It detects the Evergreen WebView2 Runtime and runs a
+pinned Microsoft bootstrapper when the runtime is missing. Installation and
+first launch are tested as an ordinary user.
+
+The macOS jobs produce separately named arm64 and x64 ad-hoc-signed DMGs.
+
+Because Native SDK 0.10.1 does not expose a cross-platform manifest-only hook
+for WebView `NewWindowRequested`, the shell owns a small, pinned host patch (or
+uses a later SDK release with the equivalent hook) that cancels popup creation
+before any new window is made. The patch is checked into `desktop/patches/`,
+applied reproducibly in CI, and covered by the same navigation tests on Windows
+and macOS. No wildcard navigation policy is acceptable.
 
 The workflow must not require production secrets: the desktop shell only embeds
 the public production URL. It should use pinned, reproducible tool versions
@@ -82,16 +120,24 @@ with the relevant command output.
 
 - Validate the Native SDK manifest and build the desktop shell for each target.
 - Confirm the WebView loads the production URL in development mode.
-- Verify navigation policy: production navigation stays in-app and an external
-  URL is not rendered inside the app window.
-- Inspect Windows installer contents and install/uninstall metadata.
-- Inspect both macOS DMGs for distinct architecture labels and application
-  bundle structure.
-- Confirm the release workflow exposes exactly three correctly named artifacts.
+- Verify email/password login, logout, and a restored authenticated session
+  after restart. Confirm Google OAuth is blocked in the desktop app with a
+  clear website-provided error or disabled control.
+- Verify navigation policy for same-origin links, redirects, a normal external
+  URL, `target=\"_blank\"`, `window.open`, and a custom protocol. No external
+  origin may leave the Keco origin inside the main WebView; all other cases must
+  be denied predictably, with popup tests asserting that no new window is made.
+- Install, start, and uninstall the Windows x64 installer as a non-admin user;
+  verify WebView2 Runtime detection and the writable WebView profile.
+- Install and start both macOS DMGs on their matching architecture; inspect the
+  actual binary architecture as well as the bundle structure.
+- Confirm the three target jobs publish only Actions artifacts and the final
+  release job publishes exactly three correctly named release assets after all
+  target checks pass.
 
 ## Out of Scope
 
 - Rewriting any Next.js view in Native markup.
 - Running the Next.js server, database, or Supabase locally in the desktop app.
-- Offline mode, automatic updates, signing, notarization, telemetry, native
+- Offline mode, automatic updates, Developer ID signing, notarization, telemetry, native
   menus, filesystem integration, and native bridge APIs.
