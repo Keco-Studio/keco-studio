@@ -313,7 +313,9 @@ export async function persistGeneratedGddV2Document(
   const asyncResources = job.resource_mode === 'async' || (input as { resourceMode?: string }).resourceMode === 'async';
   const persistedTableResources = asyncResources ? [] : tableResources;
   const persistedDialogueResources = asyncResources ? [] : dialogueResources;
-  const withTableRefs = applyInlineTableResourceReferences(markdown, persistedTableResources);
+  // Async table writes reuse deterministic IDs, so references can occupy their
+  // authored body positions before the background worker creates the rows.
+  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
   const withDialogue = persistedDialogueResources.length > 0
     ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
     : withTableRefs;

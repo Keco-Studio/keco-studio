@@ -45,4 +45,39 @@ describe('TableReferenceProjection', () => {
     expect(screen.getByText('\u6797\u821f').closest('a')).toBeNull();
     expect(screen.getByText('\u8239\u957f').closest('a')).toBeNull();
   });
+
+  it('uses compact bounded widths across short, medium, and long columns', () => {
+    const fields = [
+      { id: 'id', label: 'id' },
+      { id: 'summary', label: 'summary' },
+      { id: 'fragments', label: 'fragments' },
+    ];
+    const row = {
+      assetId: 'row-1',
+      name: 'MP_01',
+      values: {
+        id: 'MP_01',
+        summary: '12345678901234567890',
+        fragments: Array.from({ length: 12 }, (_, index) => `FR_01_${index + 1}`).join(', '),
+      },
+    };
+    render(
+      <TableReferenceProjection
+        schema={{
+          libraryId: 'library-1', name: 'MapPuzzles', href: '/project-1/library-1', fields, row,
+        }}
+        references={[{
+          key: 'table-row:library-1:row-1:id',
+          status: 'available',
+          label: 'MP_01',
+          href: '/project-1/library-1?asset=row-1',
+          table: {
+            libraryId: 'library-1', name: 'MapPuzzles', href: '/project-1/library-1', fields, row,
+          },
+        }]}
+      />,
+    );
+
+    expect(screen.getByRole('table').style.gridTemplateColumns).toBe('96px 168px 320px');
+  });
 });

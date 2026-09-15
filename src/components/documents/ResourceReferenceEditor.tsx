@@ -44,6 +44,27 @@ function accessibleReferenceLabel(
   return contextLabel ? `${contextLabel}: ${label}` : label;
 }
 
+function displayWidthUnits(value: string): number {
+  return Array.from(value).reduce((total, character) => (
+    total + ((character.codePointAt(0) ?? 0) > 255 ? 2 : 1)
+  ), 0);
+}
+
+function tableColumnWidth(
+  field: { id: string; label: string },
+  references: Array<ResolvedResourceReference | undefined>,
+): number {
+  const values = [
+    field.label,
+    ...references.flatMap((reference) => {
+      const row = reference?.status === 'available' ? reference.table?.row : undefined;
+      return row ? [cellDisplayString(row.values[field.id])] : [];
+    }),
+  ];
+  const contentUnits = Math.max(...values.map(displayWidthUnits));
+  return Math.min(320, Math.max(96, 28 + contentUnits * 7));
+}
+
 function ReferenceKindIcon({ kind }: { kind: string }) {
   if (kind === 'table-row') return <TableOutlined />;
   return (
@@ -62,6 +83,9 @@ export function TableReferenceProjection({
   schema: NonNullable<ResolvedResourceReference['table']>;
 }) {
   const columnCount = Math.max(schema.fields.length, 1);
+  const gridTemplateColumns = schema.fields.length > 0
+    ? schema.fields.map((field) => `${tableColumnWidth(field, references)}px`).join(' ')
+    : '96px';
   return (
     <span className={styles.resourceReferenceTableProjection}>
       <Link
@@ -76,7 +100,7 @@ export function TableReferenceProjection({
           role="table"
           aria-label={schema.name}
           style={{
-            gridTemplateColumns: `repeat(${columnCount}, minmax(140px, 1fr))`,
+            gridTemplateColumns,
           }}
         >
           <span className={styles.resourceReferenceTableRow} role="row">

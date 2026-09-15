@@ -273,6 +273,49 @@ describe('GDD table resources', () => {
     expect(markdown).not.toContain('KECO_TABLE_REF');
   });
 
+  it('does not append a table whose inline row references already exist', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]));
+    const inline = applyInlineTableResourceReferences(
+      '# GDD\n\n## Skills\n<!-- KECO_TABLE_REF Skills -->\n\nBody.',
+      resources,
+    );
+
+    const reapplied = applyInlineTableResourceReferences(inline, resources);
+
+    expect(reapplied).toBe(inline);
+    expect(reapplied).not.toContain('## Keco Tables');
+  });
+
+  it('does not treat one matching-library row as a complete inline table', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [
+        { name: 'Basic', values: { name: 'Basic' } },
+        { name: 'Advanced', values: { name: 'Advanced' } },
+      ],
+    }]));
+    const resource = resources[0]!;
+    const markdown = [
+      '# GDD',
+      '',
+      `<ResourceReference kind="table-row" libraryId="${resource.id}" assetId="${resource.rows[0]!.id}" displayFieldId="${resource.fieldIds[0]}" fallbackLabel="Basic" />`,
+      '',
+      '## Skills',
+      '<!-- KECO_TABLE_REF Skills -->',
+      '',
+      'Body.',
+    ].join('\n');
+
+    const rendered = applyInlineTableResourceReferences(markdown, resources);
+
+    expect(rendered).toContain(`assetId="${resource.rows[1]!.id}"`);
+    expect(rendered.indexOf(`assetId="${resource.rows[1]!.id}"`)).toBeLessThan(rendered.indexOf('Body.'));
+    expect(rendered).not.toContain('## Keco Tables');
+  });
+
   it('strips orphan KECO_TABLE_REF markers when no table resources were generated', () => {
     const markdown = applyInlineTableResourceReferences(
       '# GDD\n\nProducts:\n<!-- KECO_TABLE_REF Products -->\n\nBody.',
