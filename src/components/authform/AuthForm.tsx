@@ -355,7 +355,7 @@ function AuthFormContent() {
                       window.location.href = '/forgot-password';
                     }}
                   >
-                    Forget you password?
+                    Forgot your password?
                   </button>
                   <button type="submit" className={`${styles.submit} ${styles.submitLogin}`} disabled={loading}>
                     {loading ? "Logging in..." : "Login"}
@@ -418,4 +418,3 @@ export default function AuthForm() {
     </Suspense>
   );
 }
-

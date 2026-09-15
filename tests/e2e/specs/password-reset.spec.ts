@@ -25,7 +25,7 @@ test.describe('Password reset', () => {
 
   test('validates reset-request email and confirms a valid request', async ({ page }) => {
     await page.goto('/forgot-password');
-    const email = page.getByLabel('Email or username');
+    const email = page.getByLabel('Email', { exact: true });
     const submit = page.getByRole('button', { name: 'Send reset link' });
 
     await submit.click();
@@ -37,7 +37,9 @@ test.describe('Password reset', () => {
 
     await email.fill(user.email);
     await submit.click();
-    await expect(page.getByText(/Password reset email sent!/)).toBeVisible({ timeout: 30000 });
+    await expect(
+      page.getByText('If an account exists for this email, you will receive a password reset link.')
+    ).toBeVisible({ timeout: 30000 });
   });
 
   test('rejects a reset page without a recovery session', async ({ page }) => {
@@ -54,6 +56,11 @@ test.describe('Password reset', () => {
     const confirmation = page.getByLabel('Confirm password');
     const submit = page.getByRole('button', { name: 'Confirm' });
     await expect(password).toBeVisible({ timeout: 15000 });
+
+    await password.fill('Short123!');
+    await confirmation.fill('Short123!');
+    await submit.click();
+    await expect(page.getByText('Password must be at least 12 characters')).toBeVisible();
 
     await password.fill('NewPassword123!');
     await confirmation.fill('DifferentPassword123!');

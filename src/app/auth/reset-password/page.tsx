@@ -13,6 +13,10 @@ import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginQuestionIcon from "@/assets/images/loginQuestionIcon.svg";
 import loginServiceIcon from "@/assets/images/loginServiceIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
+import {
+  getNewPasswordValidationError,
+  MINIMUM_PASSWORD_LENGTH,
+} from '@/lib/auth/passwordPolicy';
 
 export default function ResetPasswordPage() {
   const supabase = useSupabase();
@@ -81,13 +85,9 @@ export default function ResetPasswordPage() {
     setError(null);
     setMessage(null);
 
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+    const validationError = getNewPasswordValidationError(newPassword, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -105,8 +105,8 @@ export default function ResetPasswordPage() {
       setTimeout(() => {
         router.push('/?message=Password reset successfully');
       }, 1500);
-    } catch (error: any) {
-      setError(error?.message || 'Failed to reset password');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Failed to reset password');
     } finally {
       setLoading(false);
     }
@@ -252,7 +252,7 @@ export default function ResetPasswordPage() {
             </div>
 
             {/* Change Password Form */}
-            <form className={styles.form} onSubmit={handleResetPassword}>
+            <form className={styles.form} onSubmit={handleResetPassword} noValidate>
               <label className={styles.label}>
                 New password
                 <input
@@ -262,7 +262,7 @@ export default function ResetPasswordPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={MINIMUM_PASSWORD_LENGTH}
                 />
               </label>
               
@@ -275,7 +275,7 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={MINIMUM_PASSWORD_LENGTH}
                 />
               </label>
 
