@@ -1,4 +1,5 @@
 import { completeLlmNonStreaming } from '@/lib/agent/llm-client';
+import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding } from '@/lib/ai-usage/types';
 import type { OpenAITool } from '@/lib/agent/types';
 import { SIM_FIELDS } from '@/lib/simulation/data';
 import type {
@@ -19,6 +20,14 @@ type CachedMapping = {
 
 const mappingCache = new Map<string, CachedMapping>();
 const pendingMappings = new Map<string, Promise<FieldMapping>>();
+
+function simulationProvider(): AiProvider {
+  const provider = process.env.LLM_PROVIDER || 'deepseek';
+  return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
+    || provider === 'pixellab' || provider === 'unknown'
+    ? provider
+    : 'unknown';
+}
 
 const FIELD_MAPPING_TOOL: OpenAITool = {
   type: 'function',
@@ -130,6 +139,7 @@ function cacheMapping(key: string, mappings: FieldMapping): void {
 async function requestSimulationFieldMappings(
   role: LibraryRole,
   columns: readonly StudioColumnDefinition[],
+  usageBinding?: AiUsageBinding,
 ): Promise<FieldMapping> {
   const fields = SIM_FIELDS[role];
   const messages = [
@@ -159,6 +169,13 @@ async function requestSimulationFieldMappings(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const raw = await completeLlmNonStreaming(messages, {
+        provider: simulationProvider(),
+        ...(usageBinding ? {
+          usageBinding: deriveAiUsageBinding(usageBinding, {
+            operation: attempt === 0 ? 'field_mapping' : 'field_mapping_repair',
+            ...(attempt > 0 ? { metadata: { repairAttempt: attempt } } : {}),
+          }),
+        } : {}),
         temperature: 0,
         maxTokens: 2_000,
         thinking: 'disabled',
@@ -181,6 +198,7 @@ async function requestSimulationFieldMappings(
 export async function suggestSimulationFieldMappings(
   role: LibraryRole,
   columns: readonly StudioColumnDefinition[],
+  usageBinding?: AiUsageBinding,
 ): Promise<FieldMapping> {
   const cacheKey = mappingCacheKey(role, columns);
   const cached = readCachedMapping(cacheKey);
@@ -189,7 +207,7 @@ export async function suggestSimulationFieldMappings(
   const pending = pendingMappings.get(cacheKey);
   if (pending) return pending;
 
-  const request = requestSimulationFieldMappings(role, columns);
+  const request = requestSimulationFieldMappings(role, columns, usageBinding);
   pendingMappings.set(cacheKey, request);
   try {
     const mappings = await request;

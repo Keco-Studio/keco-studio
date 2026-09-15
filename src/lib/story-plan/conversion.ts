@@ -1,4 +1,5 @@
 import { completeLlm } from '@/lib/agent/llm-client';
+import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding } from '@/lib/ai-usage/types';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
 import { buildStoryAuditView, type StoryAuditView } from './auditView';
@@ -130,7 +131,8 @@ export type StoryPlanLlmStage =
   | 'Graph Planner'
   | 'Plot Planner'
   | 'Auditor'
-  | 'Adjudicator';
+  | 'Adjudicator'
+  | 'Title Summarizer';
 type LlmStage = StoryPlanLlmStage;
 
 export interface StoryPlanLlmTelemetryEvent {
@@ -171,6 +173,7 @@ export interface ResolveStoryPlanOptions {
   enableHeuristicBranchParsing?: boolean;
   onProgress?: (event: StoryPlanProgressEvent) => void;
   onLlmTelemetry?: (event: StoryPlanLlmTelemetryEvent) => void;
+  usageBinding?: AiUsageBinding;
 }
 
 export interface ResolvedAuditedStory {
@@ -934,13 +937,13 @@ async function resolvePlotPlan(
     return await retitleStoryPlotPlanWithAi(document, buildStoryPlotPlanFromGrouping(document, parseModelJson(raw)), (
       messages,
       tool,
-    ) => completeStoryPlanLlm(messages, tool, 'Plot Planner', 1, options, budget, 0));
+    ) => completeStoryPlanLlm(messages, tool, 'Title Summarizer', 1, options, budget, 0), options.usageBinding);
   } catch (error) {
     if (options.signal?.aborted) throw error;
     return await retitleStoryPlotPlanWithAi(document, fallback(), (
       messages,
       tool,
-    ) => completeStoryPlanLlm(messages, tool, 'Plot Planner', 1, options, budget, 0));
+    ) => completeStoryPlanLlm(messages, tool, 'Title Summarizer', 1, options, budget, 0), options.usageBinding);
   }
 }
 
@@ -992,6 +995,13 @@ async function completeStoryPlanLlm(
 
     try {
       const result = await completeLlm(messages, {
+        provider: storyProvider(),
+        ...(options.usageBinding ? {
+          usageBinding: deriveAiUsageBinding(options.usageBinding, {
+            operation: storyOperation(stage),
+            ...(attempt > 1 ? { metadata: { repairAttempt: attempt - 1 } } : {}),
+          }),
+        } : {}),
         temperature: 0,
         maxCompletionTokens: stage === 'Extractor'
           ? 24_000
@@ -1032,6 +1042,26 @@ async function completeStoryPlanLlm(
   }
   report('error');
   throw new Error('Story import LLM call budget exhausted.');
+}
+
+function storyProvider(): AiProvider {
+  const provider = process.env.LLM_PROVIDER || 'deepseek';
+  return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
+    || provider === 'pixellab' || provider === 'unknown'
+    ? provider
+    : 'unknown';
+}
+
+function storyOperation(stage: StoryPlanLlmStage): string {
+  switch (stage) {
+    case 'Extractor': return 'extractor';
+    case 'Graph Planner': return 'graph';
+    case 'Branch Planner': return 'branch';
+    case 'Plot Planner': return 'plot';
+    case 'Title Summarizer': return 'title';
+    case 'Auditor':
+    case 'Adjudicator': return 'auditor';
+  }
 }
 
 function parseModelJson(raw: string | null | undefined): unknown {

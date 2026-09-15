@@ -160,6 +160,15 @@ describe('POST /api/create-map/collision-grid', () => {
       width: 512,
       height: 512,
       pngBytes: expect.any(Uint8Array),
+    }), expect.objectContaining({
+      context: expect.objectContaining({
+        actorUserId: 'user-1',
+        projectId: PROJECT_ID,
+        feature: 'map_collision',
+        operation: 'classify_region',
+        artifactId: REVISION_ID,
+        correlationId: expect.stringMatching(/^map_collision:/),
+      }),
     }));
   });
 

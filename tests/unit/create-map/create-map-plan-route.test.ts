@@ -77,7 +77,12 @@ describe('POST /api/create-map/plan', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     await expect(response.json()).resolves.toEqual({ plan: makeValidMapPlanV3(), sourceToken: null });
     expect(readCreateMapDocumentSource).not.toHaveBeenCalled();
-    expect(createMapPlanV3).toHaveBeenCalledWith(description, undefined, { references: [], styleReference: null });
+    expect(createMapPlanV3).toHaveBeenCalledWith(description, undefined, { references: [], styleReference: null }, expect.objectContaining({
+      context: expect.objectContaining({
+        actorUserId: 'user-1', feature: 'create_map', operation: 'plan_v3',
+        correlationId: expect.stringMatching(/^create_map:/),
+      }),
+    }));
   });
 
   it.each([
@@ -111,7 +116,9 @@ describe('POST /api/create-map/plan', () => {
 
     expect(response.status).toBe(200);
     expect(readCreateMapDocumentSource).toHaveBeenCalledWith(supabase, 'user-1', projectId, documentId);
-    expect(createMapPlanV3).toHaveBeenCalledWith(description, source, { references: [], styleReference: null });
+    expect(createMapPlanV3).toHaveBeenCalledWith(description, source, { references: [], styleReference: null }, expect.objectContaining({
+      context: expect.objectContaining({ actorUserId: 'user-1', projectId, feature: 'create_map', operation: 'plan_v3' }),
+    }));
     expect(payload.sourceToken).toEqual({
       documentId,
       documentUpdatedAt: source.documentUpdatedAt,
@@ -125,7 +132,9 @@ describe('POST /api/create-map/plan', () => {
     const response = await post({ schemaVersion: 3, description: '   ', projectId, documentId });
 
     expect(response.status).toBe(200);
-    expect(createMapPlanV3).toHaveBeenCalledWith('', source, { references: [], styleReference: null });
+    expect(createMapPlanV3).toHaveBeenCalledWith('', source, { references: [], styleReference: null }, expect.objectContaining({
+      context: expect.objectContaining({ actorUserId: 'user-1', projectId, feature: 'create_map', operation: 'plan_v3' }),
+    }));
   });
 
   it('rejects viewers and cross-project Documents before planning', async () => {
@@ -183,7 +192,9 @@ describe('POST /api/create-map/plan', () => {
         sha256: 'b'.repeat(64),
         copy: ['color_palette', 'outline'],
       },
-    });
+    }, expect.objectContaining({
+      context: expect.objectContaining({ actorUserId: 'user-1', projectId, feature: 'create_map', operation: 'plan_v3' }),
+    }));
     expect(referenceSelect).toHaveBeenCalledWith('id, project_id, sha256');
     expect(referenceEq).toHaveBeenCalledWith('project_id', projectId);
     expect(referenceIn).toHaveBeenCalledWith('id', [referenceId, styleReferenceId]);

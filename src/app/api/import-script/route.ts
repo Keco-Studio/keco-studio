@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
@@ -109,6 +110,16 @@ export const POST = withAuth(async function POST(
 
   const encoder = new TextEncoder();
   const conversionController = new AbortController();
+  const usageBinding = {
+    context: {
+      actorUserId: user.id,
+      projectId,
+      feature: 'script_import',
+      operation: 'extractor',
+      correlationId: `script_import:${crypto.randomUUID()}`,
+    },
+    recorder: createAuthenticatedAiUsageRecorder(supabase),
+  };
   let streamClosed = false;
   const abortFromRequest = () => conversionController.abort(request.signal.reason);
   if (request.signal.aborted) {
@@ -142,6 +153,7 @@ export const POST = withAuth(async function POST(
               signal: conversionController.signal,
               skipSemanticAuditAfterValidation,
               enableAiPlotPlanning: false,
+              usageBinding,
               onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
               onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
             }),

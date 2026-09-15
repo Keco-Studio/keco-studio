@@ -2,6 +2,7 @@ import 'server-only';
 
 import sharp from 'sharp';
 import { completeLlmNonStreaming } from '@/lib/agent/llm-client';
+import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding } from '@/lib/ai-usage/types';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import {
   DIRECT_MAP_COLLISION_CELL_SIZE,
@@ -96,6 +97,14 @@ function resolveVisionConfig(): { baseUrl: string; apiKey: string; model: string
   return { baseUrl, apiKey, model };
 }
 
+function createMapVisionProvider(): AiProvider {
+  const provider = process.env.CREATE_MAP_VISION_PROVIDER || 'minimax';
+  return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
+    || provider === 'pixellab' || provider === 'unknown'
+    ? provider
+    : 'unknown';
+}
+
 type CollisionRegion = {
   column: number;
   row: number;
@@ -156,6 +165,7 @@ function parseRows(
 
 export async function analyzeCreateMapCollisionGrid(
   input: AnalyzerInput,
+  usageBinding?: AiUsageBinding,
 ): Promise<DirectMapCollisionGrid> {
   const config = resolveVisionConfig();
   if (!SHA256_PATTERN.test(input.imageSha256)) {
@@ -214,6 +224,19 @@ export async function analyzeCreateMapCollisionGrid(
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         model: config.model,
+        provider: createMapVisionProvider(),
+        ...(usageBinding ? {
+          usageBinding: deriveAiUsageBinding(usageBinding, {
+            operation: attempt === 0 ? 'classify_region' : 'repair_region',
+            metadata: {
+              regionColumn: region.column,
+              regionRow: region.row,
+              regionColumns: region.columns,
+              regionRows: region.rows,
+              ...(attempt > 0 ? { repairAttempt: attempt } : {}),
+            },
+          }),
+        } : {}),
         temperature: 0,
         thinking: 'disabled',
         maxCompletionTokens: 8_000,

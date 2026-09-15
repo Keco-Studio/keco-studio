@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { completeLlm } from '@/lib/agent/llm-client';
+import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding } from '@/lib/ai-usage/types';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import {
@@ -31,9 +32,12 @@ const PlotTitlesSchema = z.object({
 export type PlotTitleComplete = (
   messages: ChatMessage[],
   tool: OpenAITool,
+  usageBinding?: AiUsageBinding,
 ) => Promise<string>;
 
-const defaultComplete: PlotTitleComplete = (messages, tool) => completeLlm(messages, {
+const defaultComplete: PlotTitleComplete = (messages, tool, usageBinding) => completeLlm(messages, {
+  provider: titleProvider(),
+  ...(usageBinding ? { usageBinding: deriveAiUsageBinding(usageBinding, { operation: 'title' }) } : {}),
   temperature: 0,
   maxCompletionTokens: 2_000,
   thinking: 'disabled',
@@ -94,6 +98,7 @@ function parseAvailablePlotTitles(
 export async function summarizePlotTitlesWithAi(
   chapters: PlotTitleChapter[],
   complete: PlotTitleComplete = defaultComplete,
+  usageBinding?: AiUsageBinding,
 ): Promise<Map<string, string>> {
   if (chapters.length === 0) return new Map();
   const accepted = new Map<string, string>();
@@ -109,7 +114,7 @@ export async function summarizePlotTitlesWithAi(
     if (pending.length === 0) break;
     let raw = '';
     try {
-      raw = await complete(buildStoryPlotTitleMessages(pending, rejected), STORY_PLOT_TITLE_TOOL);
+      raw = await complete(buildStoryPlotTitleMessages(pending, rejected), STORY_PLOT_TITLE_TOOL, usageBinding);
     } catch {
       continue;
     }
@@ -179,14 +184,23 @@ export async function retitleStoryPlotPlanWithAi(
   document: StoryDocument,
   plan: StoryPlotPlan,
   complete: PlotTitleComplete = defaultComplete,
+  usageBinding?: AiUsageBinding,
 ): Promise<StoryPlotPlan> {
   const chapters = chaptersFromStoryPlotPlan(document, plan);
   if (!plotChaptersNeedAiTitles(chapters)) return plan;
   try {
-    const titles = await summarizePlotTitlesWithAi(chapters, complete);
+    const titles = await summarizePlotTitlesWithAi(chapters, complete, usageBinding);
     if (titles.size === 0) return plan;
     return { ...plan, nodes: applyPlotTitles(plan.nodes, titles) };
   } catch {
     return plan;
   }
+}
+
+function titleProvider(): AiProvider {
+  const provider = process.env.LLM_PROVIDER || 'deepseek';
+  return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
+    || provider === 'pixellab' || provider === 'unknown'
+    ? provider
+    : 'unknown';
 }
