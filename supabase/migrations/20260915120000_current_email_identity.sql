@@ -24,10 +24,6 @@ from auth.users as auth_user
 where profile.id = auth_user.id
   and profile.email is distinct from lower(btrim(auth_user.email));
 
-create unique index if not exists users_current_email_normalized_key
-  on auth.users (lower(btrim(email)))
-  where email is not null;
-
 create unique index if not exists profiles_current_email_normalized_key
   on public.profiles (lower(btrim(email)))
   where email is not null;
@@ -77,9 +73,6 @@ create trigger on_auth_user_email_changed
 revoke update on table public.profiles from anon, authenticated;
 grant update (username, avatar_url, full_name, avatar_color)
   on table public.profiles to authenticated;
-
-comment on index users_current_email_normalized_key is
-  'Prevents two live Auth accounts from binding the same normalized current email.';
 
 comment on index profiles_current_email_normalized_key is
   'Keeps the synchronized profile email copy unambiguous.';
