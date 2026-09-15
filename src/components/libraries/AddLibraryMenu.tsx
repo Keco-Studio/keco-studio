@@ -15,6 +15,7 @@ type AddLibraryMenuProps = {
   onCreateFolder?: () => void;
   onCreateTable?: () => void;
   onCreateDocument?: () => void;
+  onCreateAsset?: () => void;
   onImportDocument?: () => void;
   onImportTable?: () => void;
   onDelete?: () => void;
@@ -55,6 +56,7 @@ export function AddLibraryMenu({
   onCreateFolder,
   onCreateTable,
   onCreateDocument,
+  onCreateAsset,
   onImportDocument,
   onImportTable,
   onDelete,
@@ -133,6 +135,11 @@ export function AddLibraryMenu({
         <button type="button" className={styles.menuItem} onClick={onCreateDocument} role="menuitem">
           <Image src={paperIcon} alt="" width={16} height={16} className={styles.menuIcon} />
           <span>Create new document</span>
+        </button>
+      )}
+      {onCreateAsset && (
+        <button type="button" className={styles.menuItem} onClick={onCreateAsset} role="menuitem">
+          <span>Create Asset</span>
         </button>
       )}
       {onImportTable && (

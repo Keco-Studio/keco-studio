@@ -1406,6 +1406,26 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setShowImportDocumentModal(true);
   };
 
+  const handleToolbarCreateAsset = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/game-assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate-workspace' }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error ?? 'Unable to activate Assets workspace');
+      }
+      if (userId) {
+        await queryClient.invalidateQueries({ queryKey: ['projects', userId] });
+      }
+      await navigateWithFlush(`/${projectId}/admin/assets`);
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : 'Unable to activate Assets workspace');
+    }
+  }, [navigateWithFlush, queryClient, userId]);
+
   // TopBar Create menu reuses the same create/import flows as Libraries "+"
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1451,11 +1471,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setShowImportDocumentModal(true);
     };
 
+    const handleCreateAsset = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string }>;
+      if (!matchesProject(custom.detail)) return;
+      if (userRole !== 'admin' && userRole !== 'editor') return;
+      void handleToolbarCreateAsset(custom.detail.projectId!);
+    };
+
     window.addEventListener('library-toolbar-create-folder', handleToolbarCreateFolder);
     window.addEventListener('library-toolbar-create-library', handleToolbarCreateLibrary);
     window.addEventListener('library-toolbar-create-document', handleToolbarCreateDocument);
     window.addEventListener('library-toolbar-import-table', handleToolbarImportTable);
     window.addEventListener('library-toolbar-import-document', handleToolbarImportDocument);
+    window.addEventListener('library-toolbar-create-asset', handleCreateAsset);
 
     return () => {
       window.removeEventListener('library-toolbar-create-folder', handleToolbarCreateFolder);
@@ -1463,6 +1491,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('library-toolbar-create-document', handleToolbarCreateDocument);
       window.removeEventListener('library-toolbar-import-table', handleToolbarImportTable);
       window.removeEventListener('library-toolbar-import-document', handleToolbarImportDocument);
+      window.removeEventListener('library-toolbar-create-asset', handleCreateAsset);
     };
   }, [
     currentIds.projectId,
@@ -1471,6 +1500,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openNewLibrary,
     openNewDocument,
     openImportLibrary,
+    handleToolbarCreateAsset,
   ]);
 
   return (
