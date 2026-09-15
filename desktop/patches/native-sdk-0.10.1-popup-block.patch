@@ -1,0 +1,24 @@
+diff --git a/src/platform/windows/webview2_host.cpp b/src/platform/windows/webview2_host.cpp
+--- a/src/platform/windows/webview2_host.cpp
++++ b/src/platform/windows/webview2_host.cpp
+@@ -4965,2 +4965,3 @@
+ static const GUID kNativeSdkIID_WebResourceRequestedHandler = {0xab00b74c, 0x15f1, 0x4646, {0x80, 0xe8, 0xe7, 0x63, 0x41, 0xd2, 0x5d, 0x71}};
+ static const GUID kNativeSdkIID_NavigationStartingHandler = {0x9adbe429, 0xf36d, 0x432b, {0x9d, 0xdc, 0xf8, 0x88, 0x1f, 0xbd, 0x76, 0xe3}};
++static const GUID kNativeSdkIID_NewWindowRequestedHandler = {0xd4c185fe, 0xc81c, 0x4989, {0x97, 0xaf, 0x2d, 0x3f, 0xa7, 0xab, 0x56, 0x51}};
+@@ -4987,3 +4988,6 @@
+ template <> struct WebView2HandlerIid<ICoreWebView2NavigationStartingEventHandler> {
+     static const GUID &value() { return kNativeSdkIID_NavigationStartingHandler; }
+ };
++template <> struct WebView2HandlerIid<ICoreWebView2NewWindowRequestedEventHandler> {
++    static const GUID &value() { return kNativeSdkIID_NewWindowRequestedHandler; }
++};
+@@ -5442,3 +5445,9 @@
+                                 return S_OK;
+                             }).Get(), &token);
++                        EventRegistrationToken new_window_token = {};
++                        found->second.webview->add_NewWindowRequested(Callback<ICoreWebView2NewWindowRequestedEventHandler>(
++                            [](ICoreWebView2 *, ICoreWebView2NewWindowRequestedEventArgs *args) -> HRESULT {
++                                if (args) args->put_Handled(TRUE);
++                                return S_OK;
++                            }).Get(), &new_window_token);
+                         loadWebViewSource(found->second);
