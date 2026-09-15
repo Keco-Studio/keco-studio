@@ -116,6 +116,50 @@ describe('streamLlm request options', () => {
     expect(recorder).toHaveBeenCalledTimes(1);
   });
 
+  it('records a streamed provider abort as aborted while preserving reported usage', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"abort"}],"usage":{"prompt_tokens":5,"completion_tokens":7,"total_tokens":12}}\n\ndata: [DONE]\n\n',
+      { status: 200 },
+    )) as typeof fetch;
+    const recorder = jest.fn(async () => undefined);
+    const { streamLlm } = await import('../../../src/lib/agent/llm-client');
+
+    await drain(streamLlm([{ role: 'user', content: 'hello' }], {
+      provider: 'deepseek', usageBinding: binding(recorder),
+    }));
+
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'aborted',
+      usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 },
+    }));
+  });
+
+  it('retains the streamed provider-abort outcome when completeLlm closes the generator', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"abort"}],"usage":{"prompt_tokens":5,"completion_tokens":7,"total_tokens":12}}\n\ndata: [DONE]\n\n',
+      { status: 200 },
+    )) as typeof fetch;
+    const recorder = jest.fn(async () => undefined);
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+
+    await expect(completeLlm([{ role: 'user', content: 'hello' }], {
+      provider: 'deepseek', usageBinding: binding(recorder),
+    })).rejects.toThrow(/aborted/i);
+
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'aborted',
+      usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 },
+    }));
+  });
+
   it('captures non-streaming reported usage and preserves its finish callback', async () => {
     jest.resetModules();
     process.env.LLM_API_KEY = 'test-key';

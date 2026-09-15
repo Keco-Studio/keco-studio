@@ -269,7 +269,7 @@ export async function* streamLlm(
 
         const payload = rawLine.slice('data:'.length).trim();
         if (payload === '[DONE]') {
-          streamOutcome = 'succeeded';
+          if (streamOutcome !== 'aborted') streamOutcome = 'succeeded';
           return;
         }
 
@@ -313,6 +313,7 @@ export async function* streamLlm(
         }
 
         if (choice.finish_reason) {
+          if (choice.finish_reason === 'abort') streamOutcome = 'aborted';
           options.onFinish?.(choice.finish_reason, parsed.usage);
           yield {
             type: 'finish',
@@ -324,9 +325,11 @@ export async function* streamLlm(
     }
     streamOutcome = 'succeeded';
   } catch (error) {
-    streamOutcome = error instanceof DOMException && error.name === 'AbortError'
-      ? 'aborted'
-      : 'transport_error';
+    if (streamOutcome !== 'aborted') {
+      streamOutcome = error instanceof DOMException && error.name === 'AbortError'
+        ? 'aborted'
+        : 'transport_error';
+    }
     throw error;
   } finally {
     reader.releaseLock();
