@@ -26,7 +26,7 @@ jobs:
       - run: node scripts/create-release-manifest.mjs "$env:VERSION" app.json
         shell: pwsh
         working-directory: desktop
-      - run: zig build -Dplatform=windows -Doptimize=ReleaseFast
+      - run: zig build -Dtarget=x86_64-windows-msvc -Dplatform=windows -Doptimize=ReleaseFast
         working-directory: desktop
       - shell: pwsh
         working-directory: desktop
@@ -67,7 +67,7 @@ jobs:
       - run: node desktop/scripts/apply-native-sdk-patches.mjs
       - run: node scripts/create-release-manifest.mjs "$VERSION" app.json
         working-directory: desktop
-      - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
+      - run: zig build -Dtarget=x86_64-macos -Dplatform=macos -Doptimize=ReleaseFast
         working-directory: desktop
       - run: |
           for attempt in 1 2 3; do
@@ -116,7 +116,7 @@ jobs:
       - run: node desktop/scripts/apply-native-sdk-patches.mjs
       - run: node scripts/create-release-manifest.mjs "$VERSION" app.json
         working-directory: desktop
-      - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
+      - run: zig build -Dtarget=aarch64-macos -Dplatform=macos -Doptimize=ReleaseFast
         working-directory: desktop
       - run: |
           for attempt in 1 2 3; do
