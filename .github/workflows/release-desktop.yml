@@ -70,9 +70,24 @@ jobs:
       - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
         working-directory: desktop
       - run: |
-          mkdir -p release
-          node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output "release/Keco Studio.app" --archive --signing adhoc --optimize ReleaseFast
-          mv release/*.dmg "Keco-Studio-${VERSION}-macos-x64.dmg"
+          for attempt in 1 2 3; do
+            if [ "$attempt" -gt 1 ]; then
+              while IFS= read -r mount_point; do
+                hdiutil detach -quiet -force "$mount_point"
+              done < <(find release -type d -path '*.native-work-*/mount' -prune -print)
+            fi
+            rm -rf release
+            mkdir -p release
+            if node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output "release/Keco Studio.app" --archive --signing adhoc --optimize ReleaseFast; then
+              mv release/*.dmg "Keco-Studio-${VERSION}-macos-x64.dmg"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "macOS package attempt ${attempt}/3 failed; retrying after a clean output reset." >&2
+            sleep 5
+          done
         working-directory: desktop
       - run: |
           mount_point="$(mktemp -d)"
@@ -104,9 +119,24 @@ jobs:
       - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
         working-directory: desktop
       - run: |
-          mkdir -p release
-          node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output "release/Keco Studio.app" --archive --signing adhoc --optimize ReleaseFast
-          mv release/*.dmg "Keco-Studio-${VERSION}-macos-arm64.dmg"
+          for attempt in 1 2 3; do
+            if [ "$attempt" -gt 1 ]; then
+              while IFS= read -r mount_point; do
+                hdiutil detach -quiet -force "$mount_point"
+              done < <(find release -type d -path '*.native-work-*/mount' -prune -print)
+            fi
+            rm -rf release
+            mkdir -p release
+            if node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output "release/Keco Studio.app" --archive --signing adhoc --optimize ReleaseFast; then
+              mv release/*.dmg "Keco-Studio-${VERSION}-macos-arm64.dmg"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "macOS package attempt ${attempt}/3 failed; retrying after a clean output reset." >&2
+            sleep 5
+          done
         working-directory: desktop
       - run: |
           mount_point="$(mktemp -d)"
