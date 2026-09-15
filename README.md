@@ -4,6 +4,7 @@ This document describes how to locally deploy and run the `keco-studio` project 
 
 > **📚 Additional Documentation:**
 > - [GitHub Actions Workflows](.github/workflows/README.md) - Current CI, deployment, and Playwright workflow overview
+> - [Desktop App Releases](docs/desktop.md) - Windows and macOS download, install, and first-run guidance
 > - [Seed Scripts](scripts/README.md) - Local/manual test-user seeding notes
 
 ---
