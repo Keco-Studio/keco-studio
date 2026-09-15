@@ -20,7 +20,7 @@
 ### Task 1: Persist workspace activation
 
 **Files:**
-- Create: `supabase/migrations/20260915120000_add_project_assets_workspace.sql`
+- Create: `supabase/migrations/20260915140000_add_project_assets_workspace.sql`
 - Modify: `src/lib/services/projectService.ts`
 - Modify: `src/app/api/projects/[projectId]/game-assets/route.ts`
 - Test: `tests/unit/database/project-assets-workspace-migration.test.ts`
@@ -32,7 +32,7 @@
 - [ ] Run `npx jest --runInBand tests/unit/database/project-assets-workspace-migration.test.ts tests/unit/project-game-assets-route.test.ts` and verify they fail before implementation.
 - [ ] Add the migration; extend `Project`; parse the new action after the existing role check; set `assets_workspace_enabled` to true only for the target project.
 - [ ] Re-run the focused tests and verify they pass.
-- [ ] Commit: `git add supabase/migrations/20260915120000_add_project_assets_workspace.sql src/lib/services/projectService.ts src/app/api/projects/[projectId]/game-assets/route.ts tests/unit/database/project-assets-workspace-migration.test.ts tests/unit/project-game-assets-route.test.ts && git commit -m "feat: persist project assets workspace activation"`.
+- [ ] Commit: `git add supabase/migrations/20260915140000_add_project_assets_workspace.sql src/lib/services/projectService.ts src/app/api/projects/[projectId]/game-assets/route.ts tests/unit/database/project-assets-workspace-migration.test.ts tests/unit/project-game-assets-route.test.ts && git commit -m "feat: persist project assets workspace activation"`.
 
 ### Task 2: Add Create Asset to the project create menu
 

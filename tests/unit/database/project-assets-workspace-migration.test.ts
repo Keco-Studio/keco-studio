@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 const migrationPath = join(
   process.cwd(),
-  'supabase/migrations/20260915120000_add_project_assets_workspace.sql',
+  'supabase/migrations/20260915140000_add_project_assets_workspace.sql',
 );
 
 describe('project Assets workspace migration', () => {
