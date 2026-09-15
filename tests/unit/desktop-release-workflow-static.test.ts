@@ -38,6 +38,12 @@ describe('desktop release workflow', () => {
     expect(workflow).toContain('arm64');
   });
 
+  it('builds the Windows release for a portable x64 CPU baseline', () => {
+    const workflow = read('.github/workflows/release-desktop.yml');
+
+    expect(workflow).toContain('zig build -Dtarget=x86_64-windows-msvc -Dplatform=windows -Doptimize=ReleaseFast');
+  });
+
   it('retries transient macOS DMG packaging failures with a clean output directory', () => {
     const workflow = read('.github/workflows/release-desktop.yml');
     const retryCleanupBlocks = workflow.match(/if \[ "\$attempt" -gt 1 \]; then[\s\S]*?rm -rf release/g) ?? [];
