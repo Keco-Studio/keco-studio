@@ -52,7 +52,7 @@ jobs:
           path: "desktop/Keco-Studio-Setup-${{ inputs.version }}-windows-x64.exe"
 
   build-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     env:
       VERSION: "${{ inputs.version }}"
     steps:
