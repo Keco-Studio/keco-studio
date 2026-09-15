@@ -1,0 +1,76 @@
+name: Release Desktop Apps
+on:
+  workflow_dispatch:
+    inputs:
+      version: { description: Release version without a leading v, required: true, type: string }
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: mlugg/setup-zig@v2
+        with: { version: '0.16.0' }
+      - run: npm --prefix desktop ci
+      - run: node desktop/scripts/apply-native-sdk-patches.mjs
+      - run: zig build -Dplatform=windows -Doptimize=ReleaseFast
+        working-directory: desktop
+      - run: choco install innosetup --no-progress --yes
+      - shell: pwsh
+        run: |
+          Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile desktop/zig-out/bin/WebView2Bootstrapper.exe
+          $env:KECO_DESKTOP_VERSION = '${{ inputs.version }}'
+          $env:KECO_DESKTOP_SOURCE_DIR = (Resolve-Path desktop/zig-out/bin).Path
+          iscc desktop/installer/KecoStudio.iss
+          Move-Item "desktop/installer/Output/Keco-Studio-Setup-${{ inputs.version }}-windows-x64.exe" desktop/
+      - uses: actions/upload-artifact@v4
+        with: { name: desktop-windows-x64, path: desktop/Keco-Studio-Setup-${{ inputs.version }}-windows-x64.exe }
+  build-macos-x64:
+    runs-on: macos-13
+    steps: &macos-steps
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: mlugg/setup-zig@v2
+        with: { version: '0.16.0' }
+      - run: npm --prefix desktop ci
+      - run: node desktop/scripts/apply-native-sdk-patches.mjs
+      - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
+        working-directory: desktop
+      - run: node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output Keco-Studio-${{ inputs.version }}-macos-x64.dmg --archive --signing adhoc
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with: { name: desktop-macos-x64, path: desktop/Keco-Studio-${{ inputs.version }}-macos-x64.dmg }
+  build-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: mlugg/setup-zig@v2
+        with: { version: '0.16.0' }
+      - run: npm --prefix desktop ci
+      - run: node desktop/scripts/apply-native-sdk-patches.mjs
+      - run: zig build -Dplatform=macos -Doptimize=ReleaseFast
+        working-directory: desktop
+      - run: node node_modules/@native-sdk/cli/bin/native.js package --target macos --manifest app.json --binary zig-out/bin/KecoStudio --output Keco-Studio-${{ inputs.version }}-macos-arm64.dmg --archive --signing adhoc
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with: { name: desktop-macos-arm64, path: desktop/Keco-Studio-${{ inputs.version }}-macos-arm64.dmg }
+  publish:
+    needs: [build-windows, build-macos-x64, build-macos-arm64]
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: actions/download-artifact@v4
+        with: { path: release-assets, merge-multiple: true }
+      - run: node desktop/scripts/assert-release-assets.mjs "${{ inputs.version }}" release-assets
+      - env: { GH_TOKEN: '${{ github.token }}', VERSION: '${{ inputs.version }}' }
+        run: |
+          gh release create "v${VERSION}" --draft --title "Keco Studio ${VERSION}" --generate-notes
+          gh release upload "v${VERSION}" release-assets/*
+          gh release edit "v${VERSION}" --draft=false
