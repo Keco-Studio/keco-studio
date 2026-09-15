@@ -77,7 +77,7 @@ test.describe('Keco Admin workspace', () => {
       page
         .getByRole('region', { name: 'Resource overview' })
         .getByText('Not connected', { exact: true }),
-    ).toHaveCount(3);
+    ).toHaveCount(2);
     await expect(
       page.getByRole('table', { name: 'User resource details' }),
     ).toBeVisible();

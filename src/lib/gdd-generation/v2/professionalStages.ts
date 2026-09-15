@@ -292,7 +292,7 @@ function stageMessages(
       stage === 'generating_systems'
         ? `Include concrete system rules, formulas, limits, failure cases, and required Keco table references. The pinned table guidance is: ${JSON.stringify(input.rules.tableGuidance)}. Do not render Markdown tables. Emit valid HTML comments in these exact forms when tabular data is needed: <!-- KECO_TABLE_PLAN ${tablePlanShapeExample} --> and <!-- KECO_TABLE_REF TableName -->. Every plan field must match every row value key, and every plan must have at least one concrete row.`
         : stage === 'generating_content'
-          ? `Include concrete content examples, presentation direction, accessibility, testing, and any required dialogue markers. The pinned table guidance is: ${JSON.stringify(input.rules.tableGuidance)}. Do not render Markdown tables; use the KECO_TABLE_PLAN and KECO_TABLE_REF markers with the exact table contract.`
+          ? `Include concrete content examples, presentation direction, accessibility, testing, and any required dialogue markers. When the pinned Game Design System or creative brief requires maps, write one explicit map section per required map. Give each map its own exact heading and define its spatial layout, regions, routes, landmarks, and gameplay requirements so the map worker can extract it without inference. The pinned table guidance is: ${JSON.stringify(input.rules.tableGuidance)}. Do not render Markdown tables; use the KECO_TABLE_PLAN and KECO_TABLE_REF markers with the exact table contract.`
           : 'Define the playable core loop, player actions, goals, and state transitions.',
     ].join('\n'),
   }, {

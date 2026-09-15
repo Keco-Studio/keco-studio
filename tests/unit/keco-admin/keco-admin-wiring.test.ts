@@ -26,7 +26,7 @@ describe('Keco Admin page wiring', () => {
       'src/components/keco-admin/KecoAdminDashboard.module.css',
     );
 
-    expect(css).toMatch(/\.metricsGrid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/);
+    expect(css).toMatch(/\.metricsGrid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,/);
     expect(css).toMatch(/@media \(max-width:\s*980px\)[\s\S]*repeat\(2,/);
     expect(css).toMatch(/@media \(max-width:\s*680px\)[\s\S]*grid-template-columns:\s*1fr/);
     expect(css).toMatch(/\.tableScroller\s*\{[\s\S]*overflow-x:\s*auto/);

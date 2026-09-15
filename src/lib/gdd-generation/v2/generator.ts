@@ -58,7 +58,7 @@ export async function reviewGddMarkdownV2(
   input: GddGenerationRequestV2,
   markdown: string,
   dependencyInput: Completion | GddV2GeneratorDependencies = {},
-  runtime: { signal?: AbortSignal; dialoguePlans?: DialoguePlan[] } = {},
+  runtime: { signal?: AbortSignal; dialoguePlans?: DialoguePlan[]; recoverDialogue?: boolean } = {},
 ): Promise<GeneratedGddV2> {
   const dependencies = resolveDependencies(dependencyInput);
   let normalized = normalizeGeneratedMarkdown(markdown, input.projectName, input.rules.tableGuidance);
@@ -115,7 +115,7 @@ export async function reviewGddMarkdownV2(
   let dialoguePlanWarning: string | null = null;
   const explicitSceneEvents = extractDialogueSceneEvents(normalized.markdown);
   if (explicitSceneEvents.length > 0) {
-    if (dialoguePlans.length === 0) {
+    if (runtime.recoverDialogue !== false && dialoguePlans.length === 0) {
       dialoguePlans = await planDialogueSceneEvents(
         explicitSceneEvents,
         normalized.markdown,
@@ -127,7 +127,7 @@ export async function reviewGddMarkdownV2(
       ...normalized,
       markdown: stripDialogueSceneMarkers(normalized.markdown),
     };
-  } else if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+  } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
     repairRound = Math.max(repairRound, 1);
     const recovered = await recoverMissingDialoguePlans(
       normalized.markdown,
@@ -589,8 +589,20 @@ function hasPositiveNarrativeSignal(value: string): boolean {
     .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
 }
 
+function hasNarrativeTableGuidance(input: GddGenerationRequestV2): boolean {
+  return input.rules.tableGuidance.some((guidance) => {
+    const table = guidance.table.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+    const fields = new Set(guidance.fields.map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
+    if (/^(?:events?|eventchoices?|dialogues?|conversations?|scripts?|storynodes?)$/.test(table)) return true;
+    const hasParticipants = fields.has('participants') || fields.has('speakers') || fields.has('characterids');
+    const hasBranching = fields.has('choiceids') || fields.has('choices') || fields.has('followupeventids') || fields.has('branches');
+    const hasSpokenContent = fields.has('introtext') || fields.has('dialogue') || fields.has('text');
+    return hasParticipants && (hasBranching || hasSpokenContent);
+  });
+}
+
 function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
-  return hasPositiveNarrativeSignal([
+  return hasNarrativeTableGuidance(input) || hasPositiveNarrativeSignal([
     ...input.rules.genres,
     ...input.rules.philosophies,
     input.rules.suitableFor,

@@ -80,7 +80,10 @@ describe('Keco Admin dashboard', () => {
     expect((await screen.findByTestId('keco-admin-total-users')).textContent).toContain('9');
     expect(screen.getByRole('heading', { name: 'Keco Admin' })).toBeTruthy();
     expect(screen.getByText('Admin only')).toBeTruthy();
-    expect(screen.getAllByText('Not connected')).toHaveLength(3);
+    expect(screen.getAllByText('Not connected')).toHaveLength(2);
+    expect(screen.queryByText('Stay duration')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Stay' })).toBeNull();
+    expect(screen.getByText('Credit, Storage and account status')).toBeTruthy();
     expect(
       screen.getByRole('table', { name: 'User resource details' }),
     ).toBeTruthy();

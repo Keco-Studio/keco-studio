@@ -382,24 +382,72 @@ export async function retryGddResourceJob(
 
 export async function materializeGddResourcePayload(
   serviceClient: SupabaseClient,
-  input: { jobId: string; documentId: string; workerId: string; metadata: Record<string, unknown>; tableResources: unknown[]; dialogueResources: unknown[] },
+  input: {
+    jobId: string;
+    documentId: string;
+    workerId: string;
+    expectedMarkdown: string;
+    metadata: Record<string, unknown>;
+    tableResources: unknown[];
+    dialogueResources: unknown[];
+    markdown: string;
+    yjsState: string;
+  },
 ): Promise<void> {
-  const { data: document, error: documentError } = await serviceClient.from('documents')
-    .select('content,yjs_state')
-    .eq('id', input.documentId)
-    .maybeSingle();
-  if (documentError) throw documentError;
-  if (!document || typeof document.content !== 'string' || typeof document.yjs_state !== 'string') {
-    throw new Error('GDD output document is missing its persisted snapshot.');
-  }
   const { error } = await serviceClient.rpc('materialize_gdd_resource_payload', {
     p_job_id: input.jobId,
+    p_document_id: input.documentId,
     p_worker_id: input.workerId,
-    p_markdown: document.content,
-    p_yjs_state: document.yjs_state,
+    p_expected_markdown: input.expectedMarkdown,
+    p_markdown: input.markdown,
+    p_yjs_state: input.yjsState,
     p_metadata: input.metadata,
     p_table_resources: input.tableResources,
     p_dialogue_resources: input.dialogueResources,
+  });
+  if (error) throw error;
+}
+
+export async function readGddResourceDocument(
+  serviceClient: SupabaseClient,
+  documentId: string,
+): Promise<{ markdown: string; yjsState: string }> {
+  const { data, error } = await serviceClient.from('documents')
+    .select('content,yjs_state')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || typeof data.content !== 'string' || typeof data.yjs_state !== 'string') {
+    throw new Error('GDD output document is missing its persisted snapshot.');
+  }
+  return { markdown: data.content, yjsState: data.yjs_state };
+}
+
+export async function materializeGddMapArtifacts(
+  serviceClient: SupabaseClient,
+  input: {
+    jobId: string;
+    documentId: string;
+    expectedMarkdown: string;
+    markdown: string;
+    yjsState: string;
+    mapArtifacts: Array<{
+      id: string;
+      mapBriefId: string;
+      title: string;
+      mapBrief: unknown;
+      styleContract: unknown;
+      inputHash: string;
+    }>;
+  },
+): Promise<void> {
+  const { error } = await serviceClient.rpc('materialize_gdd_map_artifacts', {
+    p_job_id: input.jobId,
+    p_document_id: input.documentId,
+    p_expected_markdown: input.expectedMarkdown,
+    p_markdown: input.markdown,
+    p_yjs_state: input.yjsState,
+    p_map_artifacts: input.mapArtifacts,
   });
   if (error) throw error;
 }

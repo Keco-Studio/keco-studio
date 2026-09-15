@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ClockCircleOutlined,
   DatabaseOutlined,
   FilterOutlined,
   LeftOutlined,
@@ -110,10 +109,6 @@ const unavailableMetrics = [
   {
     label: 'Storage used',
     icon: <DatabaseOutlined aria-hidden />,
-  },
-  {
-    label: 'Stay duration',
-    icon: <ClockCircleOutlined aria-hidden />,
   },
 ] as const;
 
@@ -244,7 +239,7 @@ export function KecoAdminDashboard() {
               <div className={styles.sectionHeader}>
                 <div>
                   <h2 id="user-resource-heading">User resource details</h2>
-                  <p>Credit, Stay, Storage and account status</p>
+                  <p>Credit, Storage and account status</p>
                 </div>
                 <div className={styles.searchField}>
                   <SearchOutlined aria-hidden />
@@ -295,7 +290,6 @@ export function KecoAdminDashboard() {
                       <th>User</th>
                       <th>Plan</th>
                       <th>Credit</th>
-                      <th>Stay</th>
                       <th>Storage</th>
                       <th>Status</th>
                       <th>Actions</th>
@@ -304,7 +298,7 @@ export function KecoAdminDashboard() {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={6}>
                           <div className={styles.tableEmpty}>
                             <strong>Loading users…</strong>
                           </div>
@@ -312,7 +306,7 @@ export function KecoAdminDashboard() {
                       </tr>
                     ) : !hasUsers ? (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={6}>
                           <div className={styles.tableEmpty}>
                             <DatabaseOutlined aria-hidden />
                             <strong>No users found</strong>
@@ -322,7 +316,7 @@ export function KecoAdminDashboard() {
                       </tr>
                     ) : filteredUsers.length === 0 ? (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={6}>
                           <div className={styles.tableEmpty}>
                             <SearchOutlined aria-hidden />
                             <strong>No matching users</strong>
@@ -348,9 +342,6 @@ export function KecoAdminDashboard() {
                                 </span>
                               </div>
                             </div>
-                          </td>
-                          <td>
-                            <span className={styles.unavailableCell}>&mdash;</span>
                           </td>
                           <td>
                             <span className={styles.unavailableCell}>&mdash;</span>

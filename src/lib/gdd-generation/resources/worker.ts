@@ -1,12 +1,16 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { documentContentCodec } from '@/lib/documents/documentContentCodec';
+import { coerceGeneratedSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import { compileGddMapBriefs } from '../maps/compiler';
 import {
   claimGddResourceJob,
-  enqueueGddMapArtifacts,
   finishGddResourceJob,
+  materializeGddMapArtifacts,
   materializeGddResourcePayload,
+  readGddResourceDocument,
   retryGddResourceJob,
   type GddResourceJob,
 } from '@/lib/services/gddGenerationService';
@@ -16,8 +20,8 @@ import { randomUUID } from 'node:crypto';
 import { reviewGddMarkdownV2 } from '../v2/generator';
 import type { GddGenerationRequestV2 } from '../v2/contracts';
 import { loadSeriesTableLibraryIds } from '../seriesTableIds';
-import { materializeTableResources, sanitizeTableResourcesForPersistence } from '../tableResources';
-import { materializeDialogueResources } from '../dialogueResources';
+import { applyInlineTableResourceReferences, materializeTableResources, sanitizeTableResourcesForPersistence } from '../tableResources';
+import { applyDialogueResourceReferences, materializeDialogueResources, normalizeDialoguePlans } from '../dialogueResources';
 
 function resolveArtStyle(value: unknown): GameArtStyleSnapshot | null {
   if (value == null) return null;
@@ -31,10 +35,21 @@ type Dependencies = {
   retry: typeof retryGddResourceJob;
   compile: typeof compileGddMapBriefs;
   materialize: typeof materializeGddResourcePayload;
+  materializeMaps?: typeof materializeGddMapArtifacts;
+  readDocument?: typeof readGddResourceDocument;
   review: typeof reviewGddMarkdownV2;
 };
 
-const defaults: Dependencies = { claim: claimGddResourceJob, finish: finishGddResourceJob, retry: retryGddResourceJob, compile: compileGddMapBriefs, materialize: materializeGddResourcePayload, review: reviewGddMarkdownV2 };
+const defaults: Dependencies = {
+  claim: claimGddResourceJob,
+  finish: finishGddResourceJob,
+  retry: retryGddResourceJob,
+  compile: compileGddMapBriefs,
+  materialize: materializeGddResourcePayload,
+  materializeMaps: materializeGddMapArtifacts,
+  readDocument: readGddResourceDocument,
+  review: reviewGddMarkdownV2,
+};
 
 function message(error: unknown): string {
   return (error instanceof Error ? error.message : 'GDD resource generation failed.').slice(0, 1000);
@@ -45,6 +60,8 @@ export async function processClaimedGddResourceJob(
   dependencies: Dependencies = defaults,
 ): Promise<'completed' | 'queued' | 'failed'> {
   const { serviceClient, workerId, job } = input;
+  const readDocument = dependencies.readDocument ?? defaults.readDocument!;
+  const materializeMaps = dependencies.materializeMaps ?? defaults.materializeMaps!;
   try {
     if (job.kind === 'maps') {
       const payload = job.payload as { markdown?: unknown; artStyle?: unknown };
@@ -61,14 +78,39 @@ export async function processClaimedGddResourceJob(
         styleContract: brief.styleContract,
         inputHash: hashGddGenerationInput({ brief, styleContract: brief.styleContract }),
       }));
-      if (artifacts.length > 0) await enqueueGddMapArtifacts(serviceClient, job.gdd_generation_job_id, artifacts);
+      if (artifacts.length > 0) {
+        const document = await readDocument(serviceClient, job.document_id);
+        const markdown = coerceGeneratedSanctionedMdx(decorateGddWithMapReferences(
+          document.markdown,
+          briefs.map((brief, index) => ({
+            artifactId: artifacts[index]!.id,
+            sourceHeading: brief.sourceHeading,
+            fallbackTitle: brief.title,
+          })),
+        ));
+        validateSanctionedMdx(markdown);
+        const yjsState = await documentContentCodec.markdownToYjsState(markdown);
+        await materializeMaps(serviceClient, {
+          jobId: job.gdd_generation_job_id,
+          documentId: job.document_id,
+          expectedMarkdown: document.markdown,
+          markdown,
+          yjsState,
+          mapArtifacts: artifacts,
+        });
+      }
     } else if (job.kind === 'tables') {
-      const payload = job.payload as { markdown?: unknown; input?: unknown; dialogueResources?: unknown[] };
+      const payload = job.payload as { markdown?: unknown; input?: unknown };
       if (typeof payload.markdown !== 'string' || !payload.input || typeof payload.input !== 'object') {
         throw new Error('Resource payload is missing its GDD context.');
       }
       const gddInput = payload.input as GddGenerationRequestV2;
-      const reviewed = await dependencies.review({ ...gddInput, resourceMode: 'inline' }, payload.markdown);
+      const reviewed = await dependencies.review(
+        { ...gddInput, resourceMode: 'inline' },
+        payload.markdown,
+        {},
+        { recoverDialogue: false },
+      );
       const expectedTables = gddInput.rules.tableGuidance.map((guidance) => guidance.table.toLocaleLowerCase());
       const generatedTables = new Set(reviewed.tablePlans.map((plan) => plan.table.toLocaleLowerCase()));
       const missing = expectedTables.filter((table) => !generatedTables.has(table));
@@ -77,14 +119,44 @@ export async function processClaimedGddResourceJob(
       const tableResources = sanitizeTableResourcesForPersistence(
         materializeTableResources(`${job.project_id}:${gddInput.designSystemId}`, reviewed.tablePlans, existingIds),
       );
-      const dialogueResources = payload.dialogueResources ?? materializeDialogueResources(job.gdd_generation_job_id, reviewed.dialoguePlans);
+      const document = await readDocument(serviceClient, job.document_id);
+      const markdown = coerceGeneratedSanctionedMdx(
+        applyInlineTableResourceReferences(document.markdown, tableResources),
+      );
+      validateSanctionedMdx(markdown);
+      const yjsState = await documentContentCodec.markdownToYjsState(markdown);
       await dependencies.materialize(serviceClient, {
         jobId: job.gdd_generation_job_id,
         documentId: job.document_id,
         workerId,
+        expectedMarkdown: document.markdown,
         metadata: { source: 'gdd_async_resource_worker', resourceJobId: job.id },
         tableResources,
+        dialogueResources: [],
+        markdown,
+        yjsState,
+      });
+    } else if (job.kind === 'dialogue') {
+      const payload = job.payload as { dialoguePlans?: unknown };
+      const dialoguePlans = normalizeDialoguePlans(payload.dialoguePlans);
+      if (dialoguePlans.length === 0) throw new Error('Dialogue resource payload has no story plans.');
+      const dialogueResources = materializeDialogueResources(job.gdd_generation_job_id, dialoguePlans);
+      const document = await readDocument(serviceClient, job.document_id);
+      const markdown = coerceGeneratedSanctionedMdx(
+        applyDialogueResourceReferences(document.markdown, job.project_id, dialogueResources),
+      );
+      validateSanctionedMdx(markdown);
+      const yjsState = await documentContentCodec.markdownToYjsState(markdown);
+      await dependencies.materialize(serviceClient, {
+        jobId: job.gdd_generation_job_id,
+        documentId: job.document_id,
+        workerId,
+        expectedMarkdown: document.markdown,
+        metadata: { source: 'gdd_async_resource_worker', resourceJobId: job.id },
+        tableResources: [],
         dialogueResources,
+        markdown,
+        yjsState,
       });
     }
     const result = await dependencies.finish(serviceClient, { jobId: job.id, workerId, status: 'completed' });
