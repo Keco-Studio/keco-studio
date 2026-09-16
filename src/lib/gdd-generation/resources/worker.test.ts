@@ -79,6 +79,42 @@ describe('GDD resource worker', () => {
     }));
   });
 
+  it('persists useful details when a map RPC rejects with a structured Supabase error', async () => {
+    const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    const structuredError = Object.assign(new Error('GDD document changed during map materialization'), {
+      details: 'Expected revision 4 but found revision 5',
+      hint: 'retry_with_latest_snapshot',
+      code: 'PT409',
+    });
+
+    const result = await processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim: jest.fn(async () => resourceJob('maps', {
+        markdown: '# GDD\n\n## Palace Map\nRoutes and landmarks.', artStyle: null,
+      })),
+      finish: jest.fn(async () => 'completed' as const),
+      retry,
+      compile: jest.fn(async () => [{
+        id: '11111111-1111-4111-8111-111111111111', title: 'Palace Map', mapType: 'region',
+        sourceHeading: 'Palace Map', purpose: 'Navigation', spatialLayout: 'A central court with four wings.',
+        regions: ['Court'], routes: ['Main route'], landmarks: ['Gate'], gameplayRequirements: ['Readable paths'],
+        visualDescription: 'Top-down palace.', outputSize: '512x512', priority: 1,
+        createMapDescription: 'Top-down palace map with clear routes.', styleContract: null,
+      }]) as never,
+      materialize: jest.fn(async () => undefined),
+      materializeMaps: jest.fn(async () => Promise.reject(structuredError)),
+      readDocument: jest.fn(async () => ({
+        markdown: '# GDD\n\n## Palace Map\nRoutes and landmarks.', yjsState: 'old-yjs',
+      })),
+      review: jest.fn() as never,
+    });
+
+    expect(result).toEqual({ claimed: true, jobId: 'resource-1', status: 'queued' });
+    expect(retry).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      jobId: 'resource-1',
+      error: 'GDD document changed during map materialization: Expected revision 4 but found revision 5: retry_with_latest_snapshot [PT409]',
+    }));
+  });
+
   it('strictly reviews and materializes repaired guided tables in the background', async () => {
     const gddInput = {
       resourceMode: 'async',

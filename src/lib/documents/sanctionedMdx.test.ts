@@ -272,6 +272,18 @@ describe('sanctioned MDX validation', () => {
     )).not.toThrow();
   });
 
+  it('accepts a bounded GDD table placeholder and rejects unsafe shapes', () => {
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="Skills" />',
+    )).not.toThrow();
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="" />',
+    )).toThrow();
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="Skills" extra="x" />',
+    )).toThrow();
+  });
+
   it('rejects GddScriptBranchSnapshot cards with invalid tree payloads', () => {
     expect(() => validateSanctionedMdx(
       '<GddScriptBranchSnapshot dialogueJobId="job-1" chapterKey="opening" title="Opening dialogue" projectId="project-1" dialogueDocumentId="doc-1" scriptLibraryId="lib-1" tree="[]" />'

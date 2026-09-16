@@ -26,6 +26,7 @@ const startGdd = jest.fn();
 const fetchGddJob = jest.fn();
 const fetchLatestGddJob = jest.fn();
 const cancelGdd = jest.fn();
+const retryGddResource = jest.fn();
 const push = jest.fn();
 const system: GameDesignSystem = {
   id: 'system-1', owner_id: 'user-1', source: 'user', title: 'Tactical Rules', summary: 'Old summary',
@@ -121,6 +122,7 @@ jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   fetchProjectGddGenerationJob: (...args: unknown[]) => fetchGddJob(...args),
   fetchLatestProjectGddGenerationJob: (...args: unknown[]) => fetchLatestGddJob(...args),
   cancelProjectGddGeneration: (...args: unknown[]) => cancelGdd(...args),
+  retryGddResourceJob: (...args: unknown[]) => retryGddResource(...args),
 }));
 
 describe('GameDesignSystemsPage', () => {
@@ -142,6 +144,10 @@ describe('GameDesignSystemsPage', () => {
     cancelGdd.mockResolvedValue({
       id: 'gdd-job-1', project_id: 'project-1', status: 'failed', phase: 'failed',
       output_document_id: null, error: 'Generation cancelled by user.',
+    });
+    retryGddResource.mockResolvedValue({
+      id: 'resource-1', kind: 'maps', status: 'queued', attempt_count: 0, max_attempts: 3,
+      available_at: '', error: null, completed_at: null,
     });
     fetchSystems.mockResolvedValue([system]);
     fetchDetail.mockResolvedValue({ ...system, current_version: version, versions: [version] });
@@ -618,6 +624,30 @@ describe('GameDesignSystemsPage', () => {
     await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
     expect(fetchGddJob).toHaveBeenCalledTimes(callsAfterCompletion);
     jest.useRealTimers();
+  });
+
+  it('shows a failed map resource and retries it without regenerating the GDD', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    fetchLatestGddJob.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+      resource_mode: 'async', output_document_id: 'document-1', output_document_name: 'GDD',
+      resources: [{
+        id: 'resource-1', kind: 'maps', status: 'failed', attempt_count: 3, max_attempts: 3,
+        available_at: '', error: 'GDD document changed during map materialization [PT409]', completed_at: '',
+      }],
+      maps: [],
+    });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    expect(await screen.findByText('GDD document changed during map materialization [PT409]')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Retry maps' }));
+    await waitFor(() => expect(retryGddResource).toHaveBeenCalledWith('project-1', 'gdd-job-1', 'resource-1'));
+    expect(startGdd).not.toHaveBeenCalled();
   });
 
   it('stops polling and exposes retry after a failed job', async () => {

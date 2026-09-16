@@ -70,13 +70,27 @@ describe('GDD dialogue resources', () => {
     });
   });
 
-  it('returns a bounded warning and no plans for duplicate dialogue chapter keys', () => {
+  it('keeps every dialogue plan by deterministically disambiguating duplicate chapter keys', () => {
     const result = extractDialoguePlanMarker(
       `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([validPlan, { ...validPlan, title: 'Again' }])} -->`,
     );
-    expect(result.plans).toEqual([]);
-    expect(result.warning).toMatch(/duplicate dialogue chapter key/i);
-    expect(result.warning?.length).toBeLessThanOrEqual(300);
+    expect(result.plans).toEqual([
+      validPlan,
+      { ...validPlan, chapterKey: 'chapter-1-2', title: 'Again' },
+    ]);
+    expect(result.warning).toBeNull();
+  });
+
+  it('does not overwrite an explicit chapter key while disambiguating an earlier duplicate', () => {
+    expect(normalizeDialoguePlans([
+      validPlan,
+      { ...validPlan, title: 'Duplicate' },
+      { ...validPlan, chapterKey: 'chapter-1-2', title: 'Explicit suffix' },
+    ])).toEqual([
+      validPlan,
+      { ...validPlan, chapterKey: 'chapter-1-3', title: 'Duplicate' },
+      { ...validPlan, chapterKey: 'chapter-1-2', title: 'Explicit suffix' },
+    ]);
   });
 
   it('returns a bounded warning and no plans for schema-invalid dialogue entries', () => {

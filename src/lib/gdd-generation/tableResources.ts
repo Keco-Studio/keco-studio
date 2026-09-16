@@ -210,6 +210,7 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
 }
 
 const TABLE_REF_MARKER = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/gi;
+const GDD_TABLE_PLACEHOLDER_TAG = /<GddTablePlaceholder\s+tableName="([^"]+)"\s*\/>/gi;
 const RESOURCE_REFERENCE_TAG = /<ResourceReference\b[^>]*\/>/gi;
 const RESOURCE_REFERENCE_ATTRIBUTE = /\b(kind|libraryId|assetId|displayFieldId)="([^"]*)"/gi;
 
@@ -443,6 +444,25 @@ export class GddTableReferenceError extends Error {
   }
 }
 
+/** Show stable table names while async workers have not created their rows yet. */
+export function renderPendingTableResourceReferences(
+  markdown: string,
+  resources: GeneratedTableResource[],
+): string {
+  const prepared = stripRedundantTableTitlesBeforeMarkers(markdown, resources);
+  const visibleByName = new Map(
+    resources
+      .filter((resource) => !isInternalDialogueTable(resource))
+      .map((resource) => [normalizeTableRefName(resource.table), resource.table] as const),
+  );
+  return prepared.replace(TABLE_REF_MARKER, (marker, rawName: string) => {
+    const normalizedName = normalizeTableRefName(rawName);
+    const tableName = visibleByName.get(normalizedName);
+    if (!tableName) return marker;
+    return `<GddTablePlaceholder tableName="${escapeAttribute(tableName)}" />`;
+  });
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -504,7 +524,7 @@ function replaceInlineTableResourceReferences(
       })
       .map((resource) => normalizeTableRefName(resource.table)),
   );
-  let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
+  const replaceReference = (rawName: string) => {
     const key = normalizeTableRefName(rawName);
     if (!key) return '';
     const resource = byName.get(key);
@@ -512,7 +532,15 @@ function replaceInlineTableResourceReferences(
     if (seen.has(key)) return '';
     seen.add(key);
     return renderTableResourceReferences([resource]);
-  });
+  };
+  let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => replaceReference(rawName));
+  replaced = replaced.replace(GDD_TABLE_PLACEHOLDER_TAG, (_match, rawName: string) => (
+    replaceReference(rawName
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&'))
+  ));
 
   const missing = visibleResources.filter((resource) => !seen.has(normalizeTableRefName(resource.table)));
   if (missing.length > 0) {

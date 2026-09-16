@@ -6,6 +6,7 @@ import {
   materializeTableResources,
   normalizeTablePlans,
   parseTablePlanMarkerJson,
+  renderPendingTableResourceReferences,
   renderTableResourceReferences,
   type GeneratedTablePlan,
 } from './tableResources';
@@ -271,6 +272,25 @@ describe('GDD table resources', () => {
     expect(markdown).toContain(`libraryId="${resources[0]!.id}"`);
     expect(markdown).toContain('fallbackLabel="Basic"');
     expect(markdown).not.toContain('KECO_TABLE_REF');
+  });
+
+  it('upgrades a durable async table-name placeholder at its original position', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]));
+    const pending = renderPendingTableResourceReferences(
+      '# GDD\n\n## Systems\n<!-- KECO_TABLE_REF Skills -->\n\n## Content\nBody.',
+      resources,
+    );
+
+    expect(pending).toContain('<GddTablePlaceholder tableName="Skills" />');
+    expect(pending).not.toContain('<ResourceReference');
+
+    const completed = applyInlineTableResourceReferences(pending, resources);
+    expect(completed).toMatch(/## Systems[\s\S]*<ResourceReference[\s\S]*## Content/);
+    expect(completed).not.toContain('GddTablePlaceholder');
+    expect(completed).not.toContain('## Keco Tables');
   });
 
   it('does not append a table whose inline row references already exist', () => {

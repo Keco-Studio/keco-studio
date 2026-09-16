@@ -22,6 +22,7 @@ describe('MDXEditor route-level lazy loading', () => {
     expect(packageImports).toEqual([
       'src/components/documents/GddMapReferenceEditor.tsx',
       'src/components/documents/GddScriptBranchSnapshotEditor.tsx',
+      'src/components/documents/GddTablePlaceholderEditor.tsx',
       'src/components/documents/MdxDocumentEditor.tsx',
       'src/components/documents/ResourceReferenceEditor.tsx',
       'src/components/documents/ResourceReferenceInsertButton.tsx',

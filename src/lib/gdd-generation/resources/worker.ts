@@ -52,7 +52,24 @@ const defaults: Dependencies = {
 };
 
 function message(error: unknown): string {
-  return (error instanceof Error ? error.message : 'GDD resource generation failed.').slice(0, 1000);
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [value.message, value.details, value.hint]
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+    if (parts.length > 0) {
+      const code = typeof value.code === 'string' && value.code.trim() ? ` [${value.code.trim()}]` : '';
+      return `${parts.join(': ')}${code}`.slice(0, 1_000);
+    }
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') return serialized.slice(0, 1_000);
+    } catch {
+      // Fall through to the stable resource error below.
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error.trim().slice(0, 1_000);
+  return 'GDD resource generation failed.';
 }
 
 export async function processClaimedGddResourceJob(

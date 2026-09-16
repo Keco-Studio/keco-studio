@@ -302,6 +302,19 @@ Open *this*.
     });
   });
 
+  it('exports pending GDD table placeholders as ordinary table-name text', () => {
+    const model = buildDocumentExportModel(
+      '<GddTablePlaceholder tableName="Court &amp; Offices" />'
+    );
+
+    expect(model.blocks).toEqual([
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Court & Offices' }],
+      },
+    ]);
+  });
+
   it('preserves combined emphasis from the validated AST', () => {
     const model = buildDocumentExportModel('Both ***bold and italic***.');
 

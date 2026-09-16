@@ -217,3 +217,14 @@ export async function retryGddDialogueJob(
   });
   return (await readJson<{ job: PublicDialogueGenerationJob }>(response)).job;
 }
+
+export async function retryGddResourceJob(
+  projectId: string,
+  gddJobId: string,
+  resourceJobId: string,
+): Promise<PublicGddGenerationJob['resources'][number]> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${encodeURIComponent(gddJobId)}/resources/${encodeURIComponent(resourceJobId)}/retry`, {
+    method: 'POST',
+  });
+  return (await readJson<{ resource: PublicGddGenerationJob['resources'][number] }>(response)).resource;
+}

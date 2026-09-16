@@ -74,6 +74,11 @@ export const SANCTIONED_MDX_REGISTRY = {
       { name: 'fallbackLabel', required: true },
     ],
   },
+  GddTablePlaceholder: {
+    kind: 'flow',
+    hasChildren: false,
+    props: [{ name: 'tableName', required: true }],
+  },
   GddScriptBranchSnapshot: {
     kind: 'flow',
     hasChildren: false,
@@ -578,6 +583,7 @@ export function validateSanctionedMdxPropertyEdit(
     return null;
   }
   if (componentName === 'GddMapReference' && !parseGddMapReferenceAttributes(validated)) return null;
+  if (componentName === 'GddTablePlaceholder' && validated.tableName.length > 120) return null;
   if (componentName === 'BlockAnchor' && !isUuid(validated.id)) return null;
   return validated;
 }
@@ -628,6 +634,9 @@ function validateJsxNode(node: AstNode): void {
   }
   if (name === 'GddMapReference' && !parseGddMapReferenceAttributes(attributes)) {
     invalid('GddMapReference properties are invalid');
+  }
+  if (name === 'GddTablePlaceholder' && attributes.tableName.length > 120) {
+    invalid('GddTablePlaceholder tableName is too long');
   }
   if (rule.hasChildren && childrenOf(node).length === 0) {
     invalid(`${name} must contain Markdown children`);

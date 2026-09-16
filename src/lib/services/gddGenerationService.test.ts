@@ -6,6 +6,7 @@ import {
   heartbeatGddMapArtifact,
   reconcileGddMapArtifact,
   createGddGenerationJob,
+  getGddResourceJob,
   getPublicGddGenerationJob,
   getLatestPublicGddGenerationJob,
   GddActiveJobConflictError,
@@ -14,6 +15,7 @@ import {
   materializeGddResourcePayload,
   persistCompletedGddGenerationJob,
   readGddResourceDocument,
+  retryFailedGddResourceJob,
   toPublicGddGenerationJob,
 } from './gddGenerationService';
 
@@ -126,6 +128,33 @@ describe('gddGenerationService', () => {
     await expect(readGddResourceDocument({ from: () => ({ select }) } as never, 'document-1'))
       .resolves.toEqual({ markdown: '# GDD', yjsState: 'encoded' });
     expect(eq).toHaveBeenCalledWith('id', 'document-1');
+  });
+
+  it('reads one async resource only inside its project and parent GDD scope', async () => {
+    const resource = {
+      id: 'resource-1', project_id: 'project-1', gdd_generation_job_id: 'job-1',
+      kind: 'maps', status: 'failed',
+    };
+    const maybeSingle = jest.fn(async () => ({ data: resource, error: null }));
+    const byResource = jest.fn((_column: string, _value: string) => ({ maybeSingle }));
+    const byJob = jest.fn((_column: string, _value: string) => ({ eq: byResource }));
+    const byProject = jest.fn((_column: string, _value: string) => ({ eq: byJob }));
+    const select = jest.fn(() => ({ eq: byProject }));
+
+    await expect(getGddResourceJob({ from: () => ({ select }) } as never, {
+      projectId: 'project-1', jobId: 'job-1', resourceJobId: 'resource-1',
+    })).resolves.toEqual(resource);
+    expect(byProject).toHaveBeenCalledWith('project_id', 'project-1');
+    expect(byJob).toHaveBeenCalledWith('gdd_generation_job_id', 'job-1');
+    expect(byResource).toHaveBeenCalledWith('id', 'resource-1');
+  });
+
+  it('requeues one exhausted resource through the service-role recovery RPC', async () => {
+    const resource = { id: 'resource-1', kind: 'maps', status: 'queued', attempt_count: 0 };
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [resource], error: null }));
+
+    await expect(retryFailedGddResourceJob({ rpc } as never, 'resource-1')).resolves.toEqual(resource);
+    expect(rpc).toHaveBeenCalledWith('retry_failed_gdd_resource_job', { p_job_id: 'resource-1' });
   });
 
   it('atomically materializes map artifacts and their GDD snapshot references', async () => {

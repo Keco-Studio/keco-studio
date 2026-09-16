@@ -328,7 +328,7 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
-  it('persists deterministic table references at their body markers before async materialization', async () => {
+  it('persists neutral table-name placeholders before async materialization', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
       data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
       error: null,
@@ -357,11 +357,10 @@ describe('GDD generation worker', () => {
 
     const args = rpc.mock.calls[0]![1] as Record<string, unknown>;
     const persistedMarkdown = String(args.p_markdown);
-    expect(persistedMarkdown).toMatch(/## Gameplay Systems[\s\S]*<ResourceReference[\s\S]*## Content/);
+    expect(persistedMarkdown).toMatch(/## Gameplay Systems[\s\S]*<GddTablePlaceholder tableName="Skills" \/>[\s\S]*## Content/);
+    expect(persistedMarkdown).not.toContain('<ResourceReference');
     expect(persistedMarkdown).not.toContain('## Keco Tables');
     expect(args.p_table_resources).toEqual([]);
-    const persistedIds = /libraryId="([^"]+)" assetId="([^"]+)" displayFieldId="([^"]+)"/.exec(persistedMarkdown);
-    expect(persistedIds).not.toBeNull();
     const queuedRows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: { resources?: Array<{
       id: string;
       fieldIds: string[];
@@ -369,9 +368,9 @@ describe('GDD generation worker', () => {
     }> } }>;
     const queuedTable = queuedRows.find((row) => row.kind === 'tables')?.payload.resources?.[0];
     expect(queuedTable).toEqual(expect.objectContaining({
-      id: persistedIds![1],
-      fieldIds: expect.arrayContaining([persistedIds![3]]),
-      rows: [expect.objectContaining({ id: persistedIds![2] })],
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      fieldIds: [expect.stringMatching(/^[0-9a-f-]{36}$/)],
+      rows: [expect.objectContaining({ id: expect.stringMatching(/^[0-9a-f-]{36}$/) })],
     }));
   });
 
@@ -406,6 +405,12 @@ describe('GDD generation worker', () => {
       dialoguePlans,
     );
 
+    const args = rpc.mock.calls[0]![1] as Record<string, unknown>;
+    const persistedMarkdown = String(args.p_markdown);
+    expect(persistedMarkdown).toContain('Arrival dialogue');
+    expect(persistedMarkdown).toContain('Script: Generating');
+    expect(persistedMarkdown).not.toContain('[Arrival dialogue](');
+    expect(persistedMarkdown).not.toContain('GddScriptBranchSnapshot');
     const rows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: Record<string, unknown> }>;
     expect(rows.map((row) => row.kind)).toEqual(['dialogue', 'maps']);
     expect(rows[0]!.payload).toEqual({ dialoguePlans });

@@ -120,13 +120,26 @@ function deterministicUuid(seed: string): string {
 export function normalizeDialoguePlans(value: unknown): DialoguePlan[] {
   if (!Array.isArray(value)) throw new Error('Generated dialogue plan must be an array.');
   const plans = value.map((item) => dialoguePlanSchema.parse(item));
-  const keys = new Set<string>();
-  for (const plan of plans) {
+  const reservedKeys = new Set(plans.map((plan) => plan.chapterKey.toLocaleLowerCase()));
+  const usedKeys = new Set<string>();
+  return plans.map((plan) => {
     const key = plan.chapterKey.toLocaleLowerCase();
-    if (keys.has(key)) throw new Error(`Duplicate dialogue chapter key: ${plan.chapterKey}`);
-    keys.add(key);
-  }
-  return plans;
+    if (!usedKeys.has(key)) {
+      usedKeys.add(key);
+      return plan;
+    }
+
+    let suffix = 2;
+    let candidate = '';
+    do {
+      const suffixText = `-${suffix}`;
+      candidate = `${plan.chapterKey.slice(0, 120 - suffixText.length).trimEnd()}${suffixText}`;
+      suffix += 1;
+    } while (usedKeys.has(candidate.toLocaleLowerCase()) || reservedKeys.has(candidate.toLocaleLowerCase()));
+
+    usedKeys.add(candidate.toLocaleLowerCase());
+    return { ...plan, chapterKey: candidate };
+  });
 }
 
 export function extractDialoguePlanMarker(raw: string): {
@@ -204,6 +217,14 @@ export function renderDialogueReferences(
     }
     return lines.join('\n');
   }).join('\n');
+}
+
+export function renderPendingDialogueReferences(resources: DialogueResource[]): string {
+  if (resources.length === 0) return '- No dialogue resources were generated.';
+  return resources.map((resource) => [
+    `- ${resource.documentName}`,
+    '  - Script: Generating',
+  ].join('\n')).join('\n');
 }
 
 export function applyDialogueResourceReferences(
