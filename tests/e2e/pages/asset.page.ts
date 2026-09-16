@@ -1,6 +1,5 @@
 import { expect, type Page, type Locator } from '@playwright/test';
 import type { AssetData, AssetFieldValue } from '../fixures/assets';
-import { ensureLibraryTableView } from '../utils/library-view';
 
 /**
  * AssetPage - Page Object Model for Asset management
@@ -100,7 +99,6 @@ export class AssetPage {
    */
   async createAsset(_templateName: string, asset: AssetData): Promise<void> {
     await this.page.waitForLoadState('domcontentloaded');
-    await ensureLibraryTableView(this.page);
 
     // The caller is expected to already be on the library table.
     await expect(this.page.locator('table').first()).toBeVisible({ timeout: 30000 });
