@@ -6,6 +6,7 @@ import Image from 'next/image';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import tableIcon from '@/assets/images/table.svg';
 import paperIcon from '@/assets/images/paper.svg';
+import assetsIcon from '@/assets/images/nav-icons/image.svg';
 import styles from './AddLibraryMenu.module.css';
 
 type AddLibraryMenuProps = {
@@ -139,6 +140,7 @@ export function AddLibraryMenu({
       )}
       {onCreateAsset && (
         <button type="button" className={styles.menuItem} onClick={onCreateAsset} role="menuitem">
+          <Image src={assetsIcon} alt="" width={16} height={16} className={styles.menuIcon} />
           <span>Create Asset</span>
         </button>
       )}

@@ -1820,6 +1820,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreateDocument={
           userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
         }
+        onCreateAsset={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!currentIds.projectId) return;
+                setShowAddMenu(false);
+                void handleToolbarCreateAsset(currentIds.projectId);
+              }
+            : undefined
+        }
         onImportDocument={
           userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
         }
@@ -1856,6 +1865,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 if (!folderAddMenu) return;
                 openNewDocumentInFolder(folderAddMenu.folderId);
                 setFolderAddMenu(null);
+              }
+            : undefined
+        }
+        onCreateAsset={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!currentIds.projectId) return;
+                setFolderAddMenu(null);
+                void handleToolbarCreateAsset(currentIds.projectId);
               }
             : undefined
         }
