@@ -30,6 +30,9 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/for update/i);
     expect(sql).toMatch(/used_bytes\s*\+\s*reserved_bytes\s*\+\s*p_expected_bytes\s*>\s*quota_bytes/i);
     expect(sql).toMatch(/STORAGE_QUOTA_EXCEEDED/i);
+    expect(sql).toMatch(/function public\.service_import_project_storage_file\(/i);
+    expect(sql).toMatch(/function public\.service_rebuild_account_storage_quota_totals\(\)/i);
+    expect(sql).toMatch(/grant execute on function public\.service_import_project_storage_file[\s\S]*to service_role/i);
   });
 
   it('gates accounted bucket writes and verifies storage metadata before settlement', () => {

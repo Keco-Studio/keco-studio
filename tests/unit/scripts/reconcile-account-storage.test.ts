@@ -1,0 +1,69 @@
+import { reconcileAccountStorage, parseReconciliationArguments } from '../../../scripts/reconcile-account-storage';
+
+function clientFixture() {
+  const calls = { expire: 0, rebuild: 0 };
+  return {
+    calls,
+    async listPhysicalStorageObjects() {
+      return [
+        { bucketId: 'project-assets', objectPath: 'present.png', sizeBytes: 100 },
+        { bucketId: 'project-assets', objectPath: 'size-mismatch.png', sizeBytes: 30 },
+        { bucketId: 'map-assets', objectPath: 'unexpected.png', sizeBytes: 40 },
+      ];
+    },
+    async listRegisteredStorageFiles() {
+      return [
+        { id: 'one', bucketId: 'project-assets', objectPath: 'present.png', ownerId: 'owner-a', sizeBytes: 100, lifecycleStatus: 'active' as const },
+        { id: 'two', bucketId: 'project-assets', objectPath: 'missing.png', ownerId: 'owner-a', sizeBytes: 10, lifecycleStatus: 'pending_cleanup' as const },
+        { id: 'three', bucketId: 'project-assets', objectPath: 'size-mismatch.png', ownerId: 'owner-a', sizeBytes: 20, lifecycleStatus: 'active' as const },
+      ];
+    },
+    async listStorageReservations() {
+      return [
+        { id: 'expired', ownerId: 'owner-a', expectedBytes: 30, status: 'pending', expiresAt: '2020-01-01T00:00:00.000Z' },
+        { id: 'current', ownerId: 'owner-b', expectedBytes: 10, status: 'pending', expiresAt: '2999-01-01T00:00:00.000Z' },
+      ];
+    },
+    async listStorageQuotas() {
+      return [
+        { ownerId: 'owner-a', usedBytes: 0, reservedBytes: 30 },
+        { ownerId: 'owner-b', usedBytes: 0, reservedBytes: 10 },
+      ];
+    },
+    async listAmbiguousStorageObjects() { return [{ bucketId: 'project-assets', objectPath: 'ambiguous.png' }]; },
+    async expireReservations() { calls.expire += 1; return 1; },
+    async rebuildStorageQuotaTotals() { calls.rebuild += 1; return 1; },
+  };
+}
+
+describe('account storage reconciliation', () => {
+  it('reports physical registry drift and never repairs in report mode', async () => {
+    const client = clientFixture();
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: false })).resolves.toEqual({
+      registeredObjects: 3,
+      physicalObjects: 3,
+      missingObjects: 1,
+      unexpectedObjects: 1,
+      sizeMismatches: 1,
+      ambiguousObjects: 1,
+      expiredReservations: 1,
+      quotaMismatches: 1,
+      repairedReservations: 0,
+      repairedQuotas: 0,
+    });
+    expect(client.calls).toEqual({ expire: 0, rebuild: 0 });
+  });
+
+  it('only expires reservations and rebuilds cached totals when apply is explicit', async () => {
+    const client = clientFixture();
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: true })).resolves.toMatchObject({ repairedReservations: 1, repairedQuotas: 1 });
+    expect(client.calls).toEqual({ expire: 1, rebuild: 1 });
+  });
+
+  it('parses help, report, and apply modes without allowing extra flags', () => {
+    expect(parseReconciliationArguments([])).toEqual({ help: false, applySafeRepairs: false });
+    expect(parseReconciliationArguments(['--apply'])).toEqual({ help: false, applySafeRepairs: true });
+    expect(parseReconciliationArguments(['--help'])).toEqual({ help: true, applySafeRepairs: false });
+    expect(() => parseReconciliationArguments(['--apply', '--else'])).toThrow('Usage:');
+  });
+});

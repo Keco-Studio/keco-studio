@@ -1006,3 +1006,125 @@ revoke all on function public.service_settle_project_storage_file_deletion(text,
 grant execute on function public.delete_project_and_enqueue_storage_cleanup(uuid) to service_role;
 grant execute on function public.settle_project_storage_file_deletion(text, text) to authenticated;
 grant execute on function public.service_settle_project_storage_file_deletion(text, text) to service_role;
+
+-- Operational backfill imports the storage provider's authoritative size and
+-- is idempotent on (bucket_id, object_path). It never guesses a project owner.
+create function public.service_import_project_storage_file(
+  p_bucket_id text,
+  p_object_path text,
+  p_project_id uuid,
+  p_owner_id uuid,
+  p_display_name text,
+  p_mime_type text,
+  p_size_bytes bigint,
+  p_source_kind text,
+  p_source_entity_id uuid default null,
+  p_object_created_at timestamptz default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_file_id uuid;
+  v_inserted boolean := false;
+begin
+  if p_owner_id is null or p_size_bytes is null or p_size_bytes <= 0 then
+    raise exception 'Invalid storage import' using errcode = '22023';
+  end if;
+  if p_project_id is not null and not exists (
+    select 1 from public.projects project
+    where project.id = p_project_id and project.owner_id = p_owner_id
+  ) then
+    raise exception 'Storage import owner mismatch'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+  if (p_source_kind = 'legacy_unassigned') <> (p_project_id is null) then
+    raise exception 'Storage import source mismatch'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  insert into public.project_storage_files (
+    project_id, owner_id, bucket_id, object_path, display_name, mime_type,
+    size_bytes, source_kind, source_entity_id, object_created_at
+  ) values (
+    p_project_id, p_owner_id, p_bucket_id, p_object_path, p_display_name,
+    p_mime_type, p_size_bytes, p_source_kind, p_source_entity_id,
+    p_object_created_at
+  )
+  on conflict (bucket_id, object_path) do nothing
+  returning id into v_file_id;
+  v_inserted := v_file_id is not null;
+
+  if not v_inserted then
+    select file.id into v_file_id
+    from public.project_storage_files file
+    where file.bucket_id = p_bucket_id and file.object_path = p_object_path
+      and file.owner_id = p_owner_id
+      and file.project_id is not distinct from p_project_id
+      and file.size_bytes = p_size_bytes
+      and file.source_kind = p_source_kind
+      and file.source_entity_id is not distinct from p_source_entity_id;
+    if v_file_id is null then
+      raise exception 'Storage import conflict'
+        using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+    end if;
+  elsif p_project_id is not null then
+    insert into public.project_storage_file_locations (
+      file_id, project_id, owner_id, source_kind, source_entity_id
+    ) values (
+      v_file_id, p_project_id, p_owner_id, p_source_kind, p_source_entity_id
+    ) on conflict do nothing;
+  end if;
+
+  return jsonb_build_object('fileId', v_file_id, 'inserted', v_inserted);
+end;
+$$;
+
+-- Safe reconciliation repair: rebuild cached counters from the registry and
+-- live pending reservations while retaining each account's configured quota.
+create function public.service_rebuild_account_storage_quota_totals()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_accounts integer;
+begin
+  insert into public.account_storage_quotas (owner_id, used_bytes, reserved_bytes)
+  select owner_id, 0, 0 from (
+    select file.owner_id from public.project_storage_files file
+    union
+    select reservation.owner_id from public.storage_upload_reservations reservation
+  ) owners
+  on conflict (owner_id) do nothing;
+
+  update public.account_storage_quotas quota
+  set used_bytes = coalesce((
+        select sum(file.size_bytes) from public.project_storage_files file
+        where file.owner_id = quota.owner_id
+          and file.lifecycle_status in ('active', 'pending_cleanup')
+      ), 0),
+      reserved_bytes = coalesce((
+        select sum(reservation.expected_bytes)
+        from public.storage_upload_reservations reservation
+        where reservation.owner_id = quota.owner_id
+          and reservation.status = 'pending'
+          and reservation.expires_at > clock_timestamp()
+      ), 0),
+      updated_at = clock_timestamp();
+  get diagnostics v_accounts = row_count;
+  return jsonb_build_object('rebuiltAccounts', v_accounts);
+end;
+$$;
+
+revoke all on function public.service_import_project_storage_file(text, text, uuid, uuid, text, text, bigint, text, uuid, timestamptz)
+  from public, anon, authenticated, service_role;
+revoke all on function public.service_rebuild_account_storage_quota_totals()
+  from public, anon, authenticated, service_role;
+grant execute on function public.service_import_project_storage_file(text, text, uuid, uuid, text, text, bigint, text, uuid, timestamptz)
+  to service_role;
+grant execute on function public.service_rebuild_account_storage_quota_totals()
+  to service_role;
