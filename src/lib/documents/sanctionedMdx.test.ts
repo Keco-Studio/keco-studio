@@ -146,6 +146,15 @@ describe('sanctioned MDX validation', () => {
     expect(() => validateSanctionedMdx('<string>')).toThrow(DocumentContentValidationError);
   });
 
+  it('neutralizes Chinese angle-bracket placeholders with slashes', () => {
+    const markdown = '建议句式：“<材质/颜色>的碎片应从<方位>延伸至<地形>”。';
+
+    const coerced = coerceGeneratedSanctionedMdx(markdown);
+
+    expect(coerced).toBe('建议句式：“&lt;材质/颜色&gt;的碎片应从&lt;方位&gt;延伸至&lt;地形&gt;”。');
+    expect(() => validateSanctionedMdx(coerced)).not.toThrow();
+  });
+
   it('derives editor property metadata and validation from the sanctioned registry', () => {
     const Editor = () => null;
     const descriptors = createSanctionedMdxDescriptors(Editor) as Array<{

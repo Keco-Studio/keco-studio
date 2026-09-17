@@ -316,6 +316,7 @@ export function coerceSanctionedMdxExpressions(markdown: string): string {
 }
 
 const GENERATED_MDX_AUTOLINK_PATTERN = /^<(https?:\/\/[^<>\s]+)>/i;
+const GENERATED_MDX_ANGLE_TOKEN_PATTERN = /^<[^<>\n]+>/;
 const GENERATED_MDX_ALLOWED_TAG_NAMES = new Set<string>([
   ...SANCTIONED_COMPONENT_NAMES,
   'img',
@@ -377,6 +378,15 @@ function escapeUnsupportedGeneratedMdxTags(line: string): string {
         ? tag.source
         : tag.source.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       index += tag.source.length;
+      continue;
+    }
+
+    const angleToken = inlineTicks === 0
+      ? GENERATED_MDX_ANGLE_TOKEN_PATTERN.exec(line.slice(index))
+      : null;
+    if (angleToken) {
+      output += angleToken[0].replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      index += angleToken[0].length;
       continue;
     }
 
