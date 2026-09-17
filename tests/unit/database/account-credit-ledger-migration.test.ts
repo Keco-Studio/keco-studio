@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const migrationPath = path.join(
   process.cwd(),
-  'supabase/migrations/20260917100000_account_credit_ledger.sql',
+  'supabase/migrations/20260917200000_account_credit_ledger.sql',
 );
 const sql = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
 

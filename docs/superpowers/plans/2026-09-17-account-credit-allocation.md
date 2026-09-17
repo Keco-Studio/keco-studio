@@ -28,7 +28,7 @@
 ### Task 1: Credit Ledger and Summary RPCs
 
 **Files:**
-- Create: `supabase/migrations/20260917100000_account_credit_ledger.sql`
+- Create: `supabase/migrations/20260917200000_account_credit_ledger.sql`
 - Create: `tests/unit/database/account-credit-ledger-migration.test.ts`
 - Create: `tests/unit/database/account-credit-ledger.behavior.test.ts`
 
@@ -116,7 +116,7 @@ Expected: all contract and real Postgres tests pass.
 - [ ] **Step 6: Commit the database contract**
 
 ```bash
-git add supabase/migrations/20260917100000_account_credit_ledger.sql \
+git add supabase/migrations/20260917200000_account_credit_ledger.sql \
   tests/unit/database/account-credit-ledger-migration.test.ts \
   tests/unit/database/account-credit-ledger.behavior.test.ts
 git commit -m "feat: add account credit allocation ledger"
