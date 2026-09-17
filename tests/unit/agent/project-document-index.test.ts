@@ -71,7 +71,7 @@ describe('design document message indexing', () => {
       messageCreatedAt: '2026-07-21T00:00:00.000Z',
     });
 
-    expect(embedTexts).toHaveBeenCalledWith([body]);
+    expect(embedTexts.mock.calls[0]?.[0]).toEqual([body]);
     expect(indexQuery.upsert).toHaveBeenCalledWith(
       [expect.objectContaining({ source_type: 'design_document', content: body })],
       { onConflict: 'source_type,source_id,chunk_index,content_hash' }
@@ -94,7 +94,7 @@ describe('design document message indexing', () => {
       messageCreatedAt: '2026-07-21T00:00:00.000Z',
     });
 
-    expect(embedTexts).toHaveBeenCalledWith([body]);
+    expect(embedTexts.mock.calls[0]?.[0]).toEqual([body]);
   });
 });
 
@@ -145,7 +145,7 @@ describe('project document embedding index service', () => {
       p_user_id: ACTOR_ID,
     });
     expect(read).toHaveBeenCalledWith(expect.anything(), DOCUMENT_ID);
-    expect(embedTexts).toHaveBeenCalledWith(['# Latest\nCurrent logical state.']);
+    expect(embedTexts.mock.calls[0]?.[0]).toEqual(['# Latest\nCurrent logical state.']);
     expect(rpc).toHaveBeenLastCalledWith(
       'replace_project_document_embedding_chunks',
       expect.objectContaining({
@@ -251,8 +251,10 @@ describe('project document embedding index service', () => {
         documentId: DOCUMENT_ID,
       })
     ).resolves.toEqual({ documentId: DOCUMENT_ID, chunks: 1 });
-    expect(embedTexts).toHaveBeenNthCalledWith(1, ['# Old\nOld state.']);
-    expect(embedTexts).toHaveBeenNthCalledWith(2, ['# New\nLatest state.']);
+    expect(embedTexts.mock.calls.map(([texts]) => texts)).toEqual([
+      ['# Old\nOld state.'],
+      ['# New\nLatest state.'],
+    ]);
     expect(rpc).toHaveBeenLastCalledWith(
       'replace_project_document_embedding_chunks',
       expect.objectContaining({

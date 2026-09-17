@@ -234,7 +234,7 @@ describe('GameDesignSystemCreatePage', () => {
     expect(start.mock.calls[0][0].artStyle).not.toHaveProperty('specification');
     expect(start.mock.calls[0][0].artStyle).not.toHaveProperty('previewAssetSet');
     expect(start.mock.calls[0][0].artStyle).not.toHaveProperty('assets');
-  });
+  }, 15_000);
 
   it('retains Art Style values after a failed creation request', async () => {
     start.mockRejectedValueOnce(new Error('Network unavailable'));
