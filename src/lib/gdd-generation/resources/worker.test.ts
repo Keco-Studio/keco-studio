@@ -146,7 +146,8 @@ describe('GDD resource worker', () => {
     });
 
     expect(reviewMock).toHaveBeenCalledWith(
-      { ...gddInput, resourceMode: 'inline' }, '# GDD', {}, { recoverDialogue: false },
+      { ...gddInput, resourceMode: 'inline' }, '# GDD', {},
+      { recoverDialogue: false, signal: expect.any(AbortSignal) },
     );
     expect(materialize).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       jobId: 'job-1',
@@ -243,7 +244,7 @@ describe('GDD resource worker', () => {
       { ...gddInput, resourceMode: 'inline' },
       '# GDD\n\n<!-- KECO_TABLE_REF Skills -->',
       {},
-      { recoverDialogue: false },
+      { recoverDialogue: false, signal: expect.any(AbortSignal) },
     );
   });
 
@@ -275,6 +276,204 @@ describe('GDD resource worker', () => {
     }));
   });
 
+  it('recovers missing narrative plans before materializing Dialogue Documents', async () => {
+    const recoveredPlans = [{
+      chapterKey: 'chapter-1',
+      title: 'Coastline',
+      content: 'Keeper: The eastern light is still burning.',
+      hasChoices: false,
+      branchSummary: [],
+    }];
+    const input = {
+      contractVersion: 2,
+      mode: 'professional',
+      resourceMode: 'async',
+      projectId: 'project-1',
+      designSystemId: 'system-1',
+      rules: { tableGuidance: [] },
+    };
+    const tablePlans = [{
+      table: 'DialogueNodes',
+      purpose: 'Store dialogue lines and clues.',
+      fields: ['id', 'speaker', 'text', 'choices', 'clueId'],
+      rows: [{ name: 'DN_CH01_UNLOCK', values: { speaker: 'Keeper', text: 'The eastern light is still burning.' } }],
+    }];
+    const markdown = '# Puzzle GDD\n\n## Chapter 1\nThe keeper unlocks the coast puzzle.';
+    const claim = jest.fn(async () => resourceJob('dialogue', {
+      dialoguePlans: [], input, markdown, tablePlans,
+    }));
+    const reviewMock = jest.fn(async (..._args: unknown[]) => ({
+      tablePlans,
+      dialoguePlans: recoveredPlans,
+      dialoguePlanWarning: null,
+    }));
+    const materialize = jest.fn(async (..._args: unknown[]) => undefined);
+
+    await processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim,
+      finish: jest.fn(async () => 'completed' as const),
+      retry: jest.fn(async () => 'queued' as const),
+      compile: jest.fn(async () => []),
+      materialize,
+      readDocument: jest.fn(async () => ({ markdown, yjsState: 'old-yjs' })),
+      review: reviewMock as never,
+    });
+
+    expect(reviewMock).toHaveBeenCalledWith(
+      input,
+      markdown,
+      {},
+      { dialoguePlans: [], recoverDialogue: true, tablePlans, signal: expect.any(AbortSignal) },
+    );
+    expect(materialize).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      dialogueResources: [expect.objectContaining({ chapterKey: 'chapter-1', title: 'Coastline' })],
+      markdown: expect.stringContaining('Coastline dialogue'),
+    }));
+  });
+
+  it('renews the resource lease while dialogue recovery is running', async () => {
+    jest.useFakeTimers();
+    let resolveReview!: (value: {
+      tablePlans: unknown[];
+      dialoguePlans: Array<{ chapterKey: string; title: string; content: string; hasChoices: boolean; branchSummary: string[] }>;
+      dialoguePlanWarning: null;
+    }) => void;
+    const heartbeat = jest.fn(async (..._args: unknown[]) => undefined);
+    const review = jest.fn(() => new Promise((resolve) => { resolveReview = resolve; }));
+    const resultPromise = processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim: jest.fn(async () => resourceJob('dialogue', {
+        dialoguePlans: [],
+        input: { contractVersion: 2, mode: 'professional', rules: { tableGuidance: [] } },
+        markdown: '# Puzzle GDD\n\nUnlock dialogue required.',
+        tablePlans: [],
+      })),
+      heartbeat,
+      finish: jest.fn(async () => 'completed' as const),
+      retry: jest.fn(async () => 'queued' as const),
+      compile: jest.fn(async () => []),
+      materialize: jest.fn(async () => undefined),
+      readDocument: jest.fn(async () => ({ markdown: '# Puzzle GDD', yjsState: 'old-yjs' })),
+      review: review as never,
+    } as never);
+
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(heartbeat).toHaveBeenCalledWith(expect.anything(), 'resource-1', 'worker-1');
+    resolveReview({
+      tablePlans: [],
+      dialoguePlans: [{
+        chapterKey: 'chapter-1', title: 'Coastline', content: 'Keeper: Look east.',
+        hasChoices: false, branchSummary: [],
+      }],
+      dialoguePlanWarning: null,
+    });
+    await expect(resultPromise).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'completed' });
+    jest.useRealTimers();
+  });
+
+  it('aborts a recovery when its final heartbeat never settles', async () => {
+    jest.useFakeTimers();
+    let resolveReview!: (value: { tablePlans: unknown[]; dialoguePlans: unknown[]; dialoguePlanWarning: null }) => void;
+    const heartbeat = jest.fn(() => new Promise<void>(() => undefined));
+    const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    let result: unknown;
+    const resultPromise = processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim: jest.fn(async () => resourceJob('dialogue', {
+        dialoguePlans: [],
+        input: { contractVersion: 2, mode: 'professional', rules: { tableGuidance: [] } },
+        markdown: '# Puzzle GDD\n\nUnlock dialogue required.',
+        tablePlans: [],
+      })),
+      heartbeat,
+      finish: jest.fn(async () => 'completed' as const),
+      retry,
+      compile: jest.fn(async () => []),
+      materialize: jest.fn(async () => undefined),
+      review: jest.fn(() => new Promise((resolve) => { resolveReview = resolve; })) as never,
+    } as never);
+    void resultPromise.then((value) => { result = value; });
+
+    try {
+      await jest.advanceTimersByTimeAsync(30_000);
+      resolveReview({ tablePlans: [], dialoguePlans: [], dialoguePlanWarning: null });
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(210_000);
+      await Promise.resolve();
+
+      expect(result).toEqual({ claimed: true, jobId: 'resource-1', status: 'queued' });
+      expect(retry).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        error: 'GDD resource recovery deadline exceeded.',
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries the dialogue resource instead of silently completing when recovery stays empty', async () => {
+    const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    const materialize = jest.fn(async (..._args: unknown[]) => undefined);
+
+    await expect(processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim: jest.fn(async () => resourceJob('dialogue', {
+        dialoguePlans: [],
+        input: {
+          contractVersion: 2,
+          mode: 'professional',
+          resourceMode: 'async',
+          projectId: 'project-1',
+          designSystemId: 'system-1',
+          rules: { tableGuidance: [] },
+        },
+        markdown: '# Puzzle GDD\n\n## Chapter 1\nAn unlock dialogue is required.',
+        tablePlans: [],
+      })),
+      finish: jest.fn(async () => 'completed' as const),
+      retry,
+      compile: jest.fn(async () => []),
+      materialize,
+      readDocument: jest.fn(async () => ({ markdown: '# Puzzle GDD', yjsState: 'old-yjs' })),
+      review: jest.fn(async () => ({
+        dialoguePlans: [],
+        dialoguePlanWarning: 'Narrative GDD still has no concrete dialogue scenes.',
+      })) as never,
+    })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'queued' });
+
+    expect(materialize).not.toHaveBeenCalled();
+    expect(retry).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      error: 'Narrative GDD still has no concrete dialogue scenes.',
+    }));
+  });
+
+  it('leaves an empty dialogue recovery failed after its final attempt', async () => {
+    const retry = jest.fn(async (..._args: unknown[]) => 'failed' as const);
+
+    await expect(processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim: jest.fn(async () => ({
+        ...resourceJob('dialogue', {
+          dialoguePlans: [],
+          input: { contractVersion: 2, mode: 'professional', rules: { tableGuidance: [] } },
+          markdown: '# Puzzle GDD\n\nUnlock dialogue required.',
+          tablePlans: [],
+        }),
+        attempt_count: 3,
+        max_attempts: 3,
+      })),
+      finish: jest.fn(async () => 'completed' as const),
+      retry,
+      compile: jest.fn(async () => []),
+      materialize: jest.fn(async () => undefined),
+      review: jest.fn(async () => ({
+        dialoguePlans: [],
+        dialoguePlanWarning: 'Dialogue recovery produced no scenes.',
+      })) as never,
+    })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'failed' });
+
+    expect(retry).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      jobId: 'resource-1',
+      workerId: 'worker-1',
+      error: 'Dialogue recovery produced no scenes.',
+    }));
+  });
+
   it('retries only the resource job when strict guided-table repair remains incomplete', async () => {
     const gddInput = {
       resourceMode: 'async',
@@ -302,7 +501,8 @@ describe('GDD resource worker', () => {
     })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'queued' });
 
     expect(reviewMock).toHaveBeenCalledWith(
-      { ...gddInput, resourceMode: 'inline' }, '# GDD', {}, { recoverDialogue: false },
+      { ...gddInput, resourceMode: 'inline' }, '# GDD', {},
+      { recoverDialogue: false, signal: expect.any(AbortSignal) },
     );
     expect(materialize).not.toHaveBeenCalled();
     expect(finish).not.toHaveBeenCalled();

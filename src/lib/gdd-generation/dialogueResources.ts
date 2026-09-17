@@ -222,8 +222,8 @@ export function renderDialogueReferences(
 export function renderPendingDialogueReferences(resources: DialogueResource[]): string {
   if (resources.length === 0) return '- No dialogue resources were generated.';
   return resources.map((resource) => [
-    `- ${resource.documentName}`,
-    '  - Script: Generating',
+    `- Document: ${resource.documentName}`,
+    '  - Status: Generating',
   ].join('\n')).join('\n');
 }
 

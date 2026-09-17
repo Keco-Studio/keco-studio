@@ -31,6 +31,13 @@ export type GddV2GeneratorDependencies = {
   planScene?: typeof planDialogueScene;
 };
 
+type GddV2ReviewRuntime = {
+  signal?: AbortSignal;
+  dialoguePlans?: DialoguePlan[];
+  recoverDialogue?: boolean;
+  tablePlans?: GeneratedTablePlan[];
+};
+
 export type GeneratedGddV2 = {
   markdown: string;
   review: ReviewV2;
@@ -58,13 +65,16 @@ export async function reviewGddMarkdownV2(
   input: GddGenerationRequestV2,
   markdown: string,
   dependencyInput: Completion | GddV2GeneratorDependencies = {},
-  runtime: { signal?: AbortSignal; dialoguePlans?: DialoguePlan[]; recoverDialogue?: boolean } = {},
+  runtime: GddV2ReviewRuntime = {},
 ): Promise<GeneratedGddV2> {
   const dependencies = resolveDependencies(dependencyInput);
   let normalized = normalizeGeneratedMarkdown(markdown, input.projectName, input.rules.tableGuidance);
   normalized = {
     ...normalized,
-    tablePlans: canonicalizeGuidedTablePlans(normalized.tablePlans, requiredTableGuidance(input)),
+    tablePlans: canonicalizeGuidedTablePlans(
+      runtime.tablePlans?.length ? runtime.tablePlans : normalized.tablePlans,
+      requiredTableGuidance(input),
+    ),
   };
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
@@ -127,11 +137,15 @@ export async function reviewGddMarkdownV2(
       ...normalized,
       markdown: stripDialogueSceneMarkers(normalized.markdown),
     };
-  } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+  } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input, {
+    markdown: normalized.markdown,
+    tablePlans: normalized.tablePlans,
+  })) {
     repairRound = Math.max(repairRound, 1);
     try {
       const recovered = await recoverMissingDialoguePlans(
         normalized.markdown,
+        normalized.tablePlans,
         dependencies,
         runtime.signal,
       );
@@ -589,8 +603,8 @@ function mergeRepairedTablePlans(
   ];
 }
 
-const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship)/i;
-const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)/i;
+const NARRATIVE_INTENT = /(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b|叙事|故事|对话|剧情|角色关系)/i;
+const NARRATIVE_EXCLUSION = /(?:(?:\bno\b|\bwithout\b|\bexclude\b|\bavoid\b)[^.!?;\n]{0,40}(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b)|(?:无|不含|不要|避免)[^。！？；\n]{0,20}(?:叙事|故事|对话|剧情|角色关系))/i;
 
 function hasPositiveNarrativeSignal(value: string): boolean {
   return value
@@ -598,20 +612,39 @@ function hasPositiveNarrativeSignal(value: string): boolean {
     .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
 }
 
-function hasNarrativeTableGuidance(input: GddGenerationRequestV2): boolean {
-  return input.rules.tableGuidance.some((guidance) => {
-    const table = guidance.table.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-    const fields = new Set(guidance.fields.map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
-    if (/^(?:events?|eventchoices?|dialogues?|conversations?|scripts?|storynodes?)$/.test(table)) return true;
-    const hasParticipants = fields.has('participants') || fields.has('speakers') || fields.has('characterids');
+function hasNarrativeTableDefinitions(definitions: Array<{ table?: string; fields?: string[] }>): boolean {
+  return definitions.some((guidance) => {
+    const tableName = typeof guidance.table === 'string' ? guidance.table : '';
+    if (/(?:对话|剧情|台词)/.test(tableName)) return true;
+    const table = tableName.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+    const fields = new Set((guidance.fields ?? []).map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
+    if (/^(?:dialogues?|dialoguenodes?|conversations?|storynodes?)$/.test(table)) return true;
+    const hasParticipants = fields.has('participants')
+      || fields.has('speakers')
+      || fields.has('speaker')
+      || fields.has('speakerid')
+      || fields.has('characterids');
     const hasBranching = fields.has('choiceids') || fields.has('choices') || fields.has('followupeventids') || fields.has('branches');
     const hasSpokenContent = fields.has('introtext') || fields.has('dialogue') || fields.has('text');
     return hasParticipants && (hasBranching || hasSpokenContent);
   });
 }
 
-function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
-  return hasNarrativeTableGuidance(input) || hasPositiveNarrativeSignal([
+const CONCRETE_DIALOGUE_REQUIREMENT = /(?:dialoguenodes?|unlock dialogue|dialogue sequence|spoken (?:scene|interaction)|对话节点|解锁对话|对话序列|对话台词)/i;
+
+function hasConcreteDialogueRequirement(value: string): boolean {
+  return value
+    .split(/[.!?;。！？；\n]+/)
+    .some((segment) => CONCRETE_DIALOGUE_REQUIREMENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
+}
+
+export function hasNarrativeIntent(
+  input: GddGenerationRequestV2,
+  evidence: { markdown?: string; tablePlans?: GeneratedTablePlan[] } = {},
+): boolean {
+  return hasNarrativeTableDefinitions(input.rules.tableGuidance)
+    || hasNarrativeTableDefinitions(evidence.tablePlans ?? [])
+    || hasPositiveNarrativeSignal([
     ...input.rules.genres,
     ...input.rules.philosophies,
     input.rules.suitableFor,
@@ -621,7 +654,8 @@ function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
     input.designDocument.decisionStructure,
     input.designDocument.contentModel,
     input.designDocument.experiencePresentation,
-  ].join('\n'));
+  ].join('\n'))
+    || hasConcreteDialogueRequirement(evidence.markdown ?? '');
 }
 
 function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
@@ -650,6 +684,7 @@ function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
 
 async function recoverMissingDialoguePlans(
   markdown: string,
+  tablePlans: GeneratedTablePlan[],
   dependencies: Required<GddV2GeneratorDependencies>,
   signal?: AbortSignal,
 ): Promise<{ plans: DialoguePlan[]; warning: string | null }> {
@@ -661,12 +696,17 @@ async function recoverMissingDialoguePlans(
       `Each item must have this exact shape: ${dialogueSceneShapeExample}`,
       'Extract only concrete chapters, tasks, meetings, confrontations, or choice scenes that require spoken interaction.',
       'Do not extract abstract dialogue-system descriptions or illustrative examples.',
+      'A named chapter that explicitly requires an unlock dialogue sequence is a concrete scene requirement even when the GDD has not written the final spoken lines yet.',
+      'Use structured DialogueNodes, conversation, script, clue, and chapter table rows as authoritative scene evidence when provided.',
       'Preserve scene order and return an empty array only when the GDD contains no concrete spoken scene.',
       'You may return up to 100 concrete scenes; do not stop at an arbitrary 20-scene limit.',
     ].join('\n'),
   }, {
     role: 'user',
-    content: `GDD markdown:\n\n${markdown.slice(0, 32_000)}`,
+    content: [
+      `GDD markdown:\n\n${markdown.slice(0, 32_000)}`,
+      `Structured table plans:\n\n${JSON.stringify(tablePlans).slice(0, 24_000)}`,
+    ].join('\n\n'),
   }], {
     ...gddV2LlmOptions(6_000),
     ...(signal ? { signal } : {}),

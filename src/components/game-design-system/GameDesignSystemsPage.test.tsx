@@ -27,6 +27,8 @@ const fetchGddJob = jest.fn();
 const fetchLatestGddJob = jest.fn();
 const cancelGdd = jest.fn();
 const retryGddResource = jest.fn();
+const fetchDialogueJobs = jest.fn();
+const retryDialogue = jest.fn();
 const push = jest.fn();
 const system: GameDesignSystem = {
   id: 'system-1', owner_id: 'user-1', source: 'user', title: 'Tactical Rules', summary: 'Old summary',
@@ -122,6 +124,8 @@ jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   fetchProjectGddGenerationJob: (...args: unknown[]) => fetchGddJob(...args),
   fetchLatestProjectGddGenerationJob: (...args: unknown[]) => fetchLatestGddJob(...args),
   cancelProjectGddGeneration: (...args: unknown[]) => cancelGdd(...args),
+  fetchGddDialogueJobs: (...args: unknown[]) => fetchDialogueJobs(...args),
+  retryGddDialogueJob: (...args: unknown[]) => retryDialogue(...args),
   retryGddResourceJob: (...args: unknown[]) => retryGddResource(...args),
 }));
 
@@ -141,6 +145,7 @@ describe('GameDesignSystemsPage', () => {
     });
     fetchGddJob.mockResolvedValue(null);
     fetchLatestGddJob.mockResolvedValue(null);
+    fetchDialogueJobs.mockResolvedValue([]);
     cancelGdd.mockResolvedValue({
       id: 'gdd-job-1', project_id: 'project-1', status: 'failed', phase: 'failed',
       output_document_id: null, error: 'Generation cancelled by user.',
@@ -149,6 +154,7 @@ describe('GameDesignSystemsPage', () => {
       id: 'resource-1', kind: 'maps', status: 'queued', attempt_count: 0, max_attempts: 3,
       available_at: '', error: null, completed_at: null,
     });
+    retryDialogue.mockResolvedValue(null);
     fetchSystems.mockResolvedValue([system]);
     fetchDetail.mockResolvedValue({ ...system, current_version: version, versions: [version] });
   });
@@ -623,6 +629,55 @@ describe('GameDesignSystemsPage', () => {
     const callsAfterCompletion = fetchGddJob.mock.calls.length;
     await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
     expect(fetchGddJob).toHaveBeenCalledTimes(callsAfterCompletion);
+    jest.useRealTimers();
+  });
+
+  it('reloads dialogue jobs after async dialogue materialization completes', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    startGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+      resource_mode: 'async', output_document_id: 'gdd-document-1', output_document_name: 'Puzzle GDD',
+      resources: [{
+        id: 'dialogue-resource-1', kind: 'dialogue', status: 'queued',
+        attempt_count: 0, max_attempts: 3, available_at: '', error: null, completed_at: null,
+      }],
+      maps: [],
+    });
+    fetchGddJob.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+      resource_mode: 'async', output_document_id: 'gdd-document-1', output_document_name: 'Puzzle GDD',
+      resources: [{
+        id: 'dialogue-resource-1', kind: 'dialogue', status: 'completed',
+        attempt_count: 1, max_attempts: 3, available_at: '', error: null,
+        completed_at: '2026-09-17T08:00:00.000Z',
+      }],
+      maps: [],
+    });
+    fetchDialogueJobs
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        id: 'dialogue-job-1', gdd_generation_job_id: 'gdd-job-1', project_id: 'project-1',
+        chapter_key: 'chapter-1', title: '第一章：海岸线', document_id: 'dialogue-document-1',
+        script_library_id: 'script-1', status: 'completed', attempt_count: 1, max_attempts: 3,
+        available_at: '', last_error: null, completed_at: '2026-09-17T08:01:00.000Z',
+      }]);
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
+    await waitFor(() => expect(fetchDialogueJobs).toHaveBeenCalledTimes(1));
+
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+
+    expect(await screen.findByText('第一章：海岸线')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Document' }).getAttribute('href')).toBe('/project-1/doc/dialogue-document-1');
+    expect(screen.getByRole('link', { name: 'Script' }).getAttribute('href')).toBe('/script-system/project-1/script/script-1');
+    expect(fetchDialogueJobs).toHaveBeenCalledTimes(2);
     jest.useRealTimers();
   });
 

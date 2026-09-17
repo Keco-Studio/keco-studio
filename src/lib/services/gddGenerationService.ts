@@ -358,6 +358,21 @@ export async function claimGddResourceJob(serviceClient: SupabaseClient, workerI
   return (row as GddResourceJob | undefined) ?? null;
 }
 
+export async function heartbeatGddResourceJob(
+  serviceClient: SupabaseClient,
+  jobId: string,
+  workerId: string,
+  leaseSeconds = 300,
+): Promise<void> {
+  const { data, error } = await serviceClient.rpc('heartbeat_gdd_resource_job', {
+    p_job_id: jobId,
+    p_worker_id: workerId,
+    p_lease_seconds: leaseSeconds,
+  });
+  if (error) throw error;
+  if (data !== true) throw new Error('GDD resource job lease was lost.');
+}
+
 export async function getGddResourceJob(
   serviceClient: SupabaseClient,
   input: { projectId: string; jobId: string; resourceJobId: string },

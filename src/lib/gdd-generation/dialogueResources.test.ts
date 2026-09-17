@@ -4,6 +4,7 @@ import {
   materializeDialogueResources,
   normalizeDialoguePlans,
   renderDialogueReferences,
+  renderPendingDialogueReferences,
   sanitizeDialogueResourcesForPersistence,
 } from './dialogueResources';
 
@@ -154,6 +155,15 @@ describe('GDD dialogue resources', () => {
     expect(markdown).toContain(`[Arrival dialogue](/project-1/doc/${resource.documentId})`);
     expect(markdown).toContain(`GDD dialogue job: ${resource.dialogueJobId}`);
     expect(markdown).toContain('Generating');
+  });
+
+  it('uses the Dialogue Document name as the async placeholder', () => {
+    const [resource] = materializeDialogueResources('gdd-job-1', [validPlan]);
+    const markdown = renderPendingDialogueReferences([resource]);
+
+    expect(markdown).toContain('- Document: Arrival dialogue');
+    expect(markdown).toContain('  - Status: Generating');
+    expect(markdown).not.toContain('Script:');
   });
 
   it('links a completed dialogue resource to its script library', () => {

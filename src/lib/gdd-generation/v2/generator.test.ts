@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
-import { generateGddMarkdownV2, reviewGddMarkdownV2, GddV2GenerationValidationError } from './generator';
+import { generateGddMarkdownV2, hasNarrativeIntent, reviewGddMarkdownV2, GddV2GenerationValidationError } from './generator';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
@@ -62,6 +62,24 @@ const scenePlan = (event: DialogueSceneEvent) => ({
 });
 
 describe('GDD v2 direct Markdown generator', () => {
+  it('does not mistake History or operational Events tables for dialogue intent', () => {
+    const nonNarrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'Reconstruct historical trade routes from timed discoveries.',
+      rules: {
+        ...input.rules,
+        genres: ['History puzzle'],
+        tableGuidance: [{
+          table: 'Events',
+          purpose: 'Timed reward schedule.',
+          fields: ['id', 'timestamp', 'reward'],
+        }],
+      },
+    };
+
+    expect(hasNarrativeIntent(nonNarrativeInput)).toBe(false);
+  });
+
   it('injects the validated Art Style as isolated untrusted rendering data', async () => {
     const complete = jest.fn(async () => '# GDD\n\n## Overview\nBody.');
     const artStyle = compileGameArtStyle({
@@ -677,6 +695,55 @@ describe('GDD v2 direct Markdown generator', () => {
     }
 
     const result = await generateGddMarkdownV2(narrativeInput, { stream, complete, planScene });
+
+    expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
+  });
+
+  it('uses DialogueNodes table rows to recover chapter dialogue required by the GDD', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        genres: ['Puzzle'],
+        tableGuidance: [],
+      },
+    };
+    const dialogueTable = {
+      table: 'DialogueNodes',
+      purpose: 'Store dialogue lines, choices, and clues.',
+      fields: ['id', 'speaker', 'text', 'choices', 'clueId'],
+      rows: [{
+        name: 'DN_CH01_UNLOCK',
+        values: {
+          id: 'DN_CH01_UNLOCK',
+          speaker: 'Lighthouse keeper',
+          text: 'The eastern light is still burning.',
+          choices: [],
+          clueId: 'CL_CH01_01',
+        },
+      }],
+    };
+    const recoveredEvent: DialogueSceneEvent = {
+      chapterKey: 'chapter-1',
+      title: 'Coastline',
+      scene: 'The lighthouse keeper reveals the clue that unlocks the coastline puzzle.',
+      participants: ['Lighthouse keeper', 'Explorer'],
+      choices: [],
+      consequences: 'The coastline puzzle is unlocked.',
+    };
+    const complete = jest.fn(async (messages: ChatMessage[]) => (
+      typeof messages[1]?.content === 'string' && messages[1].content.includes('DN_CH01_UNLOCK')
+        ? JSON.stringify([recoveredEvent])
+        : '[]'
+    ));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+
+    const result = await reviewGddMarkdownV2(
+      narrativeInput,
+      '# Puzzle GDD\n\n## Chapter 1\nOne unlock dialogue sequence is required.',
+      { complete, planScene },
+      { dialoguePlans: [], recoverDialogue: true, tablePlans: [dialogueTable] },
+    );
 
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });

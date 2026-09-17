@@ -480,19 +480,28 @@ function ProjectsView(props: {
   }, [gddJobs, onFeedback, queryClient]);
 
   useEffect(() => {
-    const completed = Object.entries(gddJobs).filter(([targetProjectId, job]) => (
+    const completed = Object.entries(gddJobs).map(([targetProjectId, job]) => {
+      const dialogueResource = job.resources?.find((resource) => resource.kind === 'dialogue');
+      const loadKey = [
+        job.id,
+        dialogueResource?.id ?? 'none',
+        dialogueResource?.status ?? 'none',
+        dialogueResource?.completed_at ?? '',
+      ].join(':');
+      return [targetProjectId, job, loadKey] as const;
+    }).filter(([targetProjectId, job, loadKey]) => (
       (job.status === 'completed' || job.status === 'completed_with_map_failures')
-      && loadedDialogueGddJobsRef.current[targetProjectId] !== job.id
+      && loadedDialogueGddJobsRef.current[targetProjectId] !== loadKey
     ));
     if (completed.length === 0) return undefined;
-    for (const [targetProjectId, job] of completed) {
-      loadedDialogueGddJobsRef.current[targetProjectId] = job.id;
+    for (const [targetProjectId, , loadKey] of completed) {
+      loadedDialogueGddJobsRef.current[targetProjectId] = loadKey;
     }
-    void Promise.all(completed.map(async ([targetProjectId, job]) => {
+    void Promise.all(completed.map(async ([targetProjectId, job, loadKey]) => {
       try {
-        return [targetProjectId, job.id, await fetchGddDialogueJobs(targetProjectId, job.id)] as const;
+        return [targetProjectId, loadKey, await fetchGddDialogueJobs(targetProjectId, job.id)] as const;
       } catch {
-        if (loadedDialogueGddJobsRef.current[targetProjectId] === job.id) {
+        if (loadedDialogueGddJobsRef.current[targetProjectId] === loadKey) {
           delete loadedDialogueGddJobsRef.current[targetProjectId];
         }
         return null;

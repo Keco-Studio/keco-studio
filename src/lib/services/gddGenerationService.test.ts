@@ -11,6 +11,7 @@ import {
   getLatestPublicGddGenerationJob,
   GddActiveJobConflictError,
   GddIdempotencyConflictError,
+  heartbeatGddResourceJob,
   materializeGddMapArtifacts,
   materializeGddResourcePayload,
   persistCompletedGddGenerationJob,
@@ -28,6 +29,17 @@ describe('gddGenerationService', () => {
     } as never,
     idempotencyKey: 'request-1', inputHash: 'a'.repeat(64),
   };
+
+  it('renews a claimed GDD resource lease through the guarded RPC', async () => {
+    const rpc = jest.fn(async (..._args: unknown[]) => ({ data: true, error: null }));
+
+    await expect(heartbeatGddResourceJob({ rpc } as never, 'resource-1', 'worker-1')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('heartbeat_gdd_resource_job', {
+      p_job_id: 'resource-1',
+      p_worker_id: 'worker-1',
+      p_lease_seconds: 300,
+    });
+  });
 
   it('creates or recovers a job only through the guarded service-role RPC', async () => {
     const existing = { id: 'job-1', input_hash: 'hash-a', status: 'queued' };

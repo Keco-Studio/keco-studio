@@ -8,6 +8,7 @@ import { compileGddMapBriefs } from '../maps/compiler';
 import {
   claimGddResourceJob,
   finishGddResourceJob,
+  heartbeatGddResourceJob,
   materializeGddMapArtifacts,
   materializeGddResourcePayload,
   readGddResourceDocument,
@@ -31,6 +32,7 @@ function resolveArtStyle(value: unknown): GameArtStyleSnapshot | null {
 
 type Dependencies = {
   claim: typeof claimGddResourceJob;
+  heartbeat?: typeof heartbeatGddResourceJob;
   finish: typeof finishGddResourceJob;
   retry: typeof retryGddResourceJob;
   compile: typeof compileGddMapBriefs;
@@ -42,6 +44,7 @@ type Dependencies = {
 
 const defaults: Dependencies = {
   claim: claimGddResourceJob,
+  heartbeat: heartbeatGddResourceJob,
   finish: finishGddResourceJob,
   retry: retryGddResourceJob,
   compile: compileGddMapBriefs,
@@ -50,6 +53,59 @@ const defaults: Dependencies = {
   readDocument: readGddResourceDocument,
   review: reviewGddMarkdownV2,
 };
+
+const RESOURCE_RECOVERY_DEADLINE_MS = 240_000;
+const RESOURCE_HEARTBEAT_INTERVAL_MS = 30_000;
+
+async function runRecoveryWithLease<T>(
+  input: { serviceClient: SupabaseClient; workerId: string; job: GddResourceJob },
+  heartbeat: typeof heartbeatGddResourceJob,
+  recover: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let heartbeatFailure: unknown;
+  let pendingHeartbeat = Promise.resolve();
+  const deadline = setTimeout(() => {
+    controller.abort(new Error('GDD resource recovery deadline exceeded.'));
+  }, RESOURCE_RECOVERY_DEADLINE_MS);
+  const timer = setInterval(() => {
+    pendingHeartbeat = pendingHeartbeat
+      .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId))
+      .catch((error) => {
+        heartbeatFailure = error;
+        controller.abort(error);
+      });
+  }, RESOURCE_HEARTBEAT_INTERVAL_MS);
+  try {
+    let recovered: T;
+    try {
+      recovered = await Promise.race([
+        recover(controller.signal),
+        new Promise<T>((_, reject) => {
+          controller.signal.addEventListener('abort', () => {
+            reject(controller.signal.reason ?? new Error('GDD resource recovery was aborted.'));
+          }, { once: true });
+        }),
+      ]);
+    } catch (error) {
+      if (heartbeatFailure) throw heartbeatFailure;
+      throw error;
+    }
+    await Promise.race([
+      pendingHeartbeat,
+      new Promise<void>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(controller.signal.reason ?? new Error('GDD resource recovery was aborted.'));
+        }, { once: true });
+      }),
+    ]);
+    if (heartbeatFailure) throw heartbeatFailure;
+    return recovered;
+  } finally {
+    clearInterval(timer);
+    clearTimeout(deadline);
+  }
+}
 
 function message(error: unknown): string {
   if (error && typeof error === 'object') {
@@ -79,6 +135,7 @@ export async function processClaimedGddResourceJob(
   const { serviceClient, workerId, job } = input;
   const readDocument = dependencies.readDocument ?? defaults.readDocument!;
   const materializeMaps = dependencies.materializeMaps ?? defaults.materializeMaps!;
+  const heartbeat = dependencies.heartbeat ?? defaults.heartbeat!;
   try {
     if (job.kind === 'maps') {
       const payload = job.payload as { markdown?: unknown; artStyle?: unknown };
@@ -122,16 +179,15 @@ export async function processClaimedGddResourceJob(
         throw new Error('Resource payload is missing its GDD context.');
       }
       const gddInput = payload.input as GddGenerationRequestV2;
+      const sourceMarkdown = payload.markdown;
       let tableResources;
       if (Array.isArray(payload.resources) && payload.resources.length > 0) {
         tableResources = sanitizeTableResourcesForPersistence(payload.resources);
       } else {
-        const reviewed = await dependencies.review(
-          { ...gddInput, resourceMode: 'inline' },
-          payload.markdown,
-          {},
-          { recoverDialogue: false },
-        );
+        const reviewed = await runRecoveryWithLease(input, heartbeat, (signal) => dependencies.review(
+          { ...gddInput, resourceMode: 'inline' }, sourceMarkdown, {},
+          { recoverDialogue: false, signal },
+        ));
         const expectedTables = gddInput.rules.tableGuidance.map((guidance) => guidance.table.toLocaleLowerCase());
         const generatedTables = new Set(reviewed.tablePlans.map((plan) => plan.table.toLocaleLowerCase()));
         const missing = expectedTables.filter((table) => !generatedTables.has(table));
@@ -159,9 +215,33 @@ export async function processClaimedGddResourceJob(
         yjsState,
       });
     } else if (job.kind === 'dialogue') {
-      const payload = job.payload as { dialoguePlans?: unknown };
-      const dialoguePlans = normalizeDialoguePlans(payload.dialoguePlans);
-      if (dialoguePlans.length === 0) throw new Error('Dialogue resource payload has no story plans.');
+      const payload = job.payload as {
+        dialoguePlans?: unknown;
+        input?: unknown;
+        markdown?: unknown;
+        tablePlans?: unknown;
+      };
+      let dialoguePlans = Array.isArray(payload.dialoguePlans)
+        ? normalizeDialoguePlans(payload.dialoguePlans)
+        : [];
+      if (dialoguePlans.length === 0) {
+        if (!payload.input || typeof payload.input !== 'object' || typeof payload.markdown !== 'string') {
+          throw new Error('Dialogue resource payload has no story plans or recovery context.');
+        }
+        const sourceMarkdown = payload.markdown;
+        const reviewed = await runRecoveryWithLease(input, heartbeat, (signal) => dependencies.review(
+          payload.input as GddGenerationRequestV2, sourceMarkdown, {}, {
+            dialoguePlans: [],
+            recoverDialogue: true,
+            tablePlans: Array.isArray(payload.tablePlans) ? payload.tablePlans : [],
+            signal,
+          },
+        ));
+        dialoguePlans = normalizeDialoguePlans(reviewed.dialoguePlans);
+        if (dialoguePlans.length === 0) {
+          throw new Error(reviewed.dialoguePlanWarning || 'Dialogue recovery produced no story plans.');
+        }
+      }
       const dialogueResources = materializeDialogueResources(job.gdd_generation_job_id, dialoguePlans);
       const document = await readDocument(serviceClient, job.document_id);
       const markdown = coerceGeneratedSanctionedMdx(
