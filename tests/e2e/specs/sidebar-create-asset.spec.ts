@@ -13,6 +13,7 @@ import {
 } from '../utils/supabase-admin';
 
 test.describe('Sidebar Create Asset actions', () => {
+  test.describe.configure({ mode: 'serial' });
   test.setTimeout(180_000);
 
   let admin: SupabaseClient;
