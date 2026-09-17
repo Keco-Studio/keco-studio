@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Tooltip, App } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -30,6 +31,8 @@ interface MediaFileUploadProps {
   onBlur?: () => void;
   // Optional parent-controlled toast, such as LibraryAssetsTable's TableToast.
   onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
+  projectId?: string;
+  sourceKind?: 'library_media' | 'document_image';
 }
 
 export function MediaFileUpload({
@@ -41,7 +44,11 @@ export function MediaFileUpload({
   onFocus,
   onBlur,
   onShowToast,
+  projectId: projectIdProp,
+  sourceKind = 'library_media',
 }: MediaFileUploadProps) {
+  const params = useParams<{ projectId?: string }>();
+  const projectId = projectIdProp ?? params?.projectId;
   const supabase = useSupabase();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { message } = App.useApp();
@@ -154,7 +161,12 @@ export function MediaFileUpload({
     try {
       // Get user ID from auth, not from userProfile
       const userId = await getCurrentUserId(supabase);
-      const metadata = await uploadMediaFile(supabase, file, userId);
+      if (!projectId) throw new Error('Project context is required for file uploads');
+      const metadata = await uploadMediaFile(supabase, file, {
+        userId,
+        projectId,
+        sourceKind,
+      });
       onChange(metadata);
       setUploadProgress('Upload complete!');
       setTimeout(() => {
