@@ -94,17 +94,12 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Supabase Migrations
     needs: check-migrations
-    # Only branch pushes may mutate a shared remote database. Pull requests validate
-    # migrations through the isolated Supabase instances used by Playwright.
-    # Main and release pushes always retry unapplied migrations.
+    # Only branch pushes with changed migration files may mutate a shared remote
+    # database. Pull requests validate migrations through isolated Supabase instances.
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
-      github.event_name == 'push' && (
-          needs.check-migrations.outputs.has-migrations == 'true' ||
-          github.ref == 'refs/heads/main' ||
-          github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/heads/release/')
-        )
+      github.event_name == 'push' &&
+      needs.check-migrations.outputs.has-migrations == 'true'
 
     steps:
       - name: Checkout code
