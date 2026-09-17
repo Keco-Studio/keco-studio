@@ -38,7 +38,16 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/reservation\.requested_by\s*=\s*auth\.uid\(\)/i);
     expect(sql).toMatch(/reservation\.status\s*=\s*'pending'/i);
     expect(sql).toMatch(/reservation\.expires_at\s*>\s*clock_timestamp\(\)/i);
-    expect(sql).toMatch(/create policy project_assets_storage_insert[\s\S]*private\.storage_has_pending_upload_reservation\(bucket_id, name\)/i);
+    for (const policy of [
+      'library_media_files_project_insert',
+      'library_media_files_project_update',
+      'project_assets_storage_insert',
+      'project_assets_storage_update',
+      'tiptap_images_project_insert',
+      'tiptap_images_project_update',
+    ]) {
+      expect(sql).toMatch(new RegExp(`create policy ${policy}[\\s\\S]*private\\.storage_has_pending_upload_reservation\\(bucket_id, name\\)`, 'i'));
+    }
     expect(sql).toMatch(/grant usage on schema private to authenticated/i);
     expect(sql).toMatch(/grant execute on function private\.storage_has_pending_upload_reservation\(text, text\) to authenticated/i);
     expect(sql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);

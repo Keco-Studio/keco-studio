@@ -92,10 +92,11 @@ describeDb('account project storage real Postgres behavior', () => {
     expectedBytes: number | string,
     objectPath = pathFor(actor),
     projectId = fx.projectId,
+    bucketId = 'project-assets',
   ) {
     const result = await actor.client.rpc('reserve_project_storage_upload', {
       p_project_id: projectId,
-      p_bucket_id: 'project-assets',
+      p_bucket_id: bucketId,
       p_object_path: objectPath,
       p_expected_bytes: expectedBytes,
       p_display_name: `storage-${fx.suffix}.bin`,
@@ -131,11 +132,11 @@ describeDb('account project storage real Postgres behavior', () => {
     return result.data as Record<string, unknown>;
   }
 
-  async function upload(actor: RlsUser, objectPath: string, size: number) {
-    const result = await actor.client.storage.from('project-assets').upload(
+  async function upload(actor: RlsUser, objectPath: string, size: number, bucketId = 'project-assets', upsert = false) {
+    const result = await actor.client.storage.from(bucketId).upload(
       objectPath,
       new Uint8Array(size),
-      { contentType: 'image/png', upsert: false },
+      { contentType: 'image/png', upsert },
     );
     return result.error;
   }
@@ -216,6 +217,29 @@ describeDb('account project storage real Postgres behavior', () => {
       .rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
     await expect(finalize(fx.owner, reservation.reservationId as string, 3))
       .resolves.toMatchObject({ sizeBytes: 3 });
+  });
+
+  it('rechecks current membership on update policies after an editor reservation', async () => {
+    const objectPath = pathFor(fx.editor);
+    const reservation = await reserve(fx.editor, 3, objectPath, fx.projectId, 'tiptap-images');
+    expect(await upload(fx.editor, objectPath, 3, 'tiptap-images')).toBeNull();
+
+    const removed = await fx.svc.from('project_collaborators').delete()
+      .eq('project_id', fx.projectId).eq('user_id', fx.editor.id);
+    if (removed.error) throw new Error(`remove editor failed: ${removed.error.message}`);
+
+    await expect(upload(fx.editor, objectPath, 3, 'tiptap-images', true)).resolves.not.toBeNull();
+
+    await fx.svc.from('project_collaborators').insert({
+      project_id: fx.projectId,
+      user_id: fx.editor.id,
+      role: 'editor',
+      invited_by: fx.owner.id,
+      invited_at: new Date().toISOString(),
+      accepted_at: new Date().toISOString(),
+    });
+    await fx.svc.from('storage_upload_reservations').delete().eq('id', reservation.reservationId as string);
+    await fx.svc.storage.from('tiptap-images').remove([objectPath]);
   });
 
   it('releases expired reservations before retrying the same object path', async () => {

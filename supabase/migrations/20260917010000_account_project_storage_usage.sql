@@ -797,7 +797,7 @@ create policy tiptap_images_project_update
     bucket_id = 'tiptap-images'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 
 revoke all on function public.storage_require_writer(uuid, uuid) from public, anon, authenticated, service_role;
