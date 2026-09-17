@@ -110,7 +110,7 @@
 .metricPanel {
   position: relative;
   display: flex;
-  min-height: 170px;
+  min-height: 216px;
   flex-direction: column;
   padding: 18px;
   overflow: hidden;
@@ -192,9 +192,60 @@
 }
 
 .metricSkeleton {
+  display: block;
   width: 82px;
   height: 32px;
   margin: 5px 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #edf0f3 25%, #f8fafc 50%, #edf0f3 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+.creditMetricDetails {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.creditMetricDetails > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.creditMetricDetails strong {
+  overflow: hidden;
+  color: #334155;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creditMetricSkeletons {
+  display: grid;
+  min-height: 82px;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.creditMetricSkeletons .metricSkeleton {
+  grid-column: 1 / -1;
+}
+
+.creditDetailSkeleton {
+  display: block;
+  width: 100%;
+  max-width: 112px;
+  height: 26px;
   border-radius: 6px;
   background: linear-gradient(90deg, #edf0f3 25%, #f8fafc 50%, #edf0f3 75%);
   background-size: 200% 100%;
@@ -393,6 +444,47 @@
   color: #94a3b8;
 }
 
+.creditCell {
+  display: flex;
+  min-width: 132px;
+  flex-direction: column;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.creditLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.creditLine strong {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.creditWarning,
+.creditExhausted {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: #9a6700;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.creditExhausted {
+  color: #b42318;
+}
+
 .statusCell {
   display: inline-flex;
   align-items: center;
@@ -584,7 +676,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .spinning,
-  .metricSkeleton {
+  .metricSkeleton,
+  .creditDetailSkeleton {
     animation: none;
   }
 }

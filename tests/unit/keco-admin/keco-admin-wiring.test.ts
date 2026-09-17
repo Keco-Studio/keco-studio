@@ -30,6 +30,9 @@ describe('Keco Admin page wiring', () => {
     expect(css).toMatch(/@media \(max-width:\s*980px\)[\s\S]*repeat\(2,/);
     expect(css).toMatch(/@media \(max-width:\s*680px\)[\s\S]*grid-template-columns:\s*1fr/);
     expect(css).toMatch(/\.tableScroller\s*\{[\s\S]*overflow-x:\s*auto/);
+    expect(css).toMatch(/\.creditCell\s*\{[\s\S]*font-variant-numeric:\s*tabular-nums/);
+    expect(css).toMatch(/\.creditMetricDetails\s*\{[\s\S]*min-height:/);
+    expect(css).toMatch(/\.creditMetricSkeletons\s*\{[\s\S]*min-height:/);
     expect(css).toContain(':focus-visible');
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(css).not.toMatch(/font-size:\s*(?:clamp|min|max)\(/);

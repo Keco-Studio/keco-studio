@@ -29,6 +29,15 @@ import { GET } from '@/app/api/keco-admin/overview/route';
 const ADMIN_ID = 'aae0969f-0cb2-4632-8624-b9f40f2f4543';
 const OTHER_ID = '11111111-1111-4111-8111-111111111111';
 const originalAdminId = process.env.KECO_ADMIN_USER_ID;
+const creditUsage = {
+  allocated: 100_000_000,
+  used: 7,
+  remaining: 99_999_993,
+  overage: 0,
+  deepseekTokens: 21,
+  incompleteCount: 1,
+  trackedFrom: '2026-09-15T00:00:00.000Z',
+};
 
 function request() {
   return new NextRequest('https://keco.example/api/keco-admin/overview');
@@ -42,6 +51,7 @@ describe('Keco Admin overview API', () => {
     getSupabaseServiceRoleClient.mockReturnValue({ service: true });
     readKecoAdminOverview.mockResolvedValue({
       totalUsers: 9,
+      creditUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [],
     });
@@ -81,6 +91,7 @@ describe('Keco Admin overview API', () => {
   it('returns the administrator overview contract with users', async () => {
     readKecoAdminOverview.mockResolvedValue({
       totalUsers: 9,
+      creditUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -89,6 +100,12 @@ describe('Keco Admin overview API', () => {
           createdAt: '2026-01-01T00:00:00.000Z',
           lastSignInAt: null,
           status: 'active',
+          creditAllocated: 100_000_000,
+          creditUsed: 7,
+          creditRemaining: 99_999_993,
+          creditOverage: 0,
+          deepseekTokens: 21,
+          creditUsageIncompleteCount: 1,
         },
       ],
     });
@@ -99,6 +116,7 @@ describe('Keco Admin overview API', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     await expect(response.json()).resolves.toEqual({
       totalUsers: 9,
+      creditUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -107,6 +125,12 @@ describe('Keco Admin overview API', () => {
           createdAt: '2026-01-01T00:00:00.000Z',
           lastSignInAt: null,
           status: 'active',
+          creditAllocated: 100_000_000,
+          creditUsed: 7,
+          creditRemaining: 99_999_993,
+          creditOverage: 0,
+          deepseekTokens: 21,
+          creditUsageIncompleteCount: 1,
         },
       ],
     });

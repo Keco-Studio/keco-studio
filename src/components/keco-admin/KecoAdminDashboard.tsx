@@ -12,6 +12,7 @@ import {
   SearchOutlined,
   ThunderboltOutlined,
   UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import type {
   KecoAdminOverview,
@@ -26,6 +27,10 @@ class KecoAdminRequestError extends Error {
   }
 }
 
+function isCreditCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 function isUser(value: unknown): value is KecoAdminUser {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<KecoAdminUser>;
@@ -34,18 +39,34 @@ function isUser(value: unknown): value is KecoAdminUser {
     (candidate.email === null || typeof candidate.email === 'string') &&
     typeof candidate.createdAt === 'string' &&
     (candidate.lastSignInAt === null || typeof candidate.lastSignInAt === 'string') &&
-    (candidate.status === 'active' || candidate.status === 'suspended')
+    (candidate.status === 'active' || candidate.status === 'suspended') &&
+    isCreditCount(candidate.creditAllocated) &&
+    isCreditCount(candidate.creditUsed) &&
+    isCreditCount(candidate.creditRemaining) &&
+    isCreditCount(candidate.creditOverage) &&
+    isCreditCount(candidate.deepseekTokens) &&
+    isCreditCount(candidate.creditUsageIncompleteCount)
   );
 }
 
 function isOverview(value: unknown): value is KecoAdminOverview {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<KecoAdminOverview>;
+  const creditUsage = candidate.creditUsage;
   return (
     Number.isInteger(candidate.totalUsers) &&
     Number(candidate.totalUsers) >= 0 &&
     typeof candidate.refreshedAt === 'string' &&
     Number.isFinite(Date.parse(candidate.refreshedAt)) &&
+    Boolean(creditUsage) &&
+    isCreditCount(creditUsage?.allocated) &&
+    isCreditCount(creditUsage?.used) &&
+    isCreditCount(creditUsage?.remaining) &&
+    isCreditCount(creditUsage?.overage) &&
+    isCreditCount(creditUsage?.deepseekTokens) &&
+    isCreditCount(creditUsage?.incompleteCount) &&
+    typeof creditUsage?.trackedFrom === 'string' &&
+    Number.isFinite(Date.parse(creditUsage.trackedFrom)) &&
     Array.isArray(candidate.users) &&
     candidate.users.every(isUser)
   );
@@ -101,11 +122,16 @@ function statusLabel(status: KecoAdminUserStatus): string {
   return status === 'suspended' ? 'Suspended' : 'Active';
 }
 
+function formatCredits(value: number): string {
+  return value.toLocaleString('en-US');
+}
+
+function incompleteUsageTitle(count: number): string {
+  const record = count === 1 ? 'record is' : 'records are';
+  return `${formatCredits(count)} usage ${record} awaiting final Credit totals and not included in Used.`;
+}
+
 const unavailableMetrics = [
-  {
-    label: 'Credit usage',
-    icon: <ThunderboltOutlined aria-hidden />,
-  },
   {
     label: 'Storage used',
     icon: <DatabaseOutlined aria-hidden />,
@@ -193,7 +219,7 @@ export function KecoAdminDashboard() {
           <>
             {refreshFailed ? (
               <div className={styles.refreshError} role="status">
-                Refresh failed. Showing the last synced total.
+                Refresh failed. Showing the last synced values.
               </div>
             ) : null}
 
@@ -220,6 +246,60 @@ export function KecoAdminDashboard() {
                 <span className={styles.liveStatus}>
                   <span aria-hidden />
                   Live from Supabase Auth
+                </span>
+              </article>
+
+              <article className={`${styles.metricPanel} ${styles.metricPanelLive}`}>
+                <div className={`${styles.metricIcon} ${styles.metricIconLive}`}>
+                  <ThunderboltOutlined aria-hidden />
+                </div>
+                <span className={styles.metricLabel}>Credit usage</span>
+                {isLoading ? (
+                  <div
+                    className={styles.creditMetricSkeletons}
+                    data-testid="keco-admin-credit-loading"
+                    aria-label="Loading Credit usage"
+                  >
+                    <span className={styles.metricSkeleton} />
+                    <span className={styles.creditDetailSkeleton} />
+                    <span className={styles.creditDetailSkeleton} />
+                  </div>
+                ) : data ? (
+                  <>
+                    <strong
+                      className={styles.metricValue}
+                      data-testid="keco-admin-credit-used"
+                    >
+                      {formatCredits(data.creditUsage.used)}
+                    </strong>
+                    <div className={styles.creditMetricDetails}>
+                      <span>
+                        Allocated
+                        <strong data-testid="keco-admin-credit-allocated">
+                          {formatCredits(data.creditUsage.allocated)}
+                        </strong>
+                      </span>
+                      <span>
+                        Remaining
+                        <strong data-testid="keco-admin-credit-remaining">
+                          {formatCredits(data.creditUsage.remaining)}
+                        </strong>
+                      </span>
+                    </div>
+                    {data.creditUsage.incompleteCount > 0 ? (
+                      <span
+                        className={styles.creditWarning}
+                        title={incompleteUsageTitle(data.creditUsage.incompleteCount)}
+                      >
+                        <WarningOutlined aria-hidden />
+                        Incomplete usage
+                      </span>
+                    ) : null}
+                  </>
+                ) : null}
+                <span className={styles.liveStatus}>
+                  <span aria-hidden />
+                  Live from Credit ledger
                 </span>
               </article>
 
@@ -347,7 +427,37 @@ export function KecoAdminDashboard() {
                             <span className={styles.unavailableCell}>&mdash;</span>
                           </td>
                           <td>
-                            <span className={styles.unavailableCell}>&mdash;</span>
+                            <div className={styles.creditCell}>
+                              <span className={styles.creditLine}>
+                                <span>Used</span>
+                                <strong data-testid={`keco-admin-credit-used-${user.id}`}>
+                                  {formatCredits(user.creditUsed)}
+                                </strong>
+                              </span>
+                              <span className={styles.creditLine}>
+                                <span>Remaining</span>
+                                <strong data-testid={`keco-admin-credit-remaining-${user.id}`}>
+                                  {formatCredits(user.creditRemaining)}
+                                </strong>
+                              </span>
+                              {user.creditUsageIncompleteCount > 0 ? (
+                                <span
+                                  className={styles.creditWarning}
+                                  title={incompleteUsageTitle(user.creditUsageIncompleteCount)}
+                                >
+                                  <WarningOutlined aria-hidden />
+                                  Incomplete usage
+                                </span>
+                              ) : null}
+                              {user.creditOverage > 0 ? (
+                                <span
+                                  className={styles.creditExhausted}
+                                  title={`${formatCredits(user.creditOverage)} Credits over allocation`}
+                                >
+                                  Exhausted
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td>
                             <span className={styles.unavailableCell}>&mdash;</span>
