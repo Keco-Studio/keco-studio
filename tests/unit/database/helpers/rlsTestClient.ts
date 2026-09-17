@@ -45,6 +45,14 @@ export const RLS_DB_TESTS_ENABLED =
   ANON_KEY.length > 0 &&
   SERVICE_ROLE_KEY.length > 0;
 
+export function enforceRlsDbTestRun(required: boolean, enabled: boolean): void {
+  if (required && !enabled) {
+    throw new Error(
+      'REQUIRE_RLS_DB_TESTS=1 requires the local RLS database suite to be enabled.',
+    );
+  }
+}
+
 /** service_role client: bypasses RLS. Used to build/tear down fixtures only. */
 export function serviceClient(): SupabaseClient {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {

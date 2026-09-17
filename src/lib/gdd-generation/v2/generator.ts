@@ -1,5 +1,6 @@
 import type { ChatMessage, StreamChunk } from '@/lib/agent/types';
 import { completeLlm, streamLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
 import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
@@ -21,6 +22,7 @@ import {
   type DialogueSceneEvent,
 } from './dialogueSceneStream';
 import { planDialogueScene } from './dialoguePlanner';
+import { gddFeatureUsage, gddLlmProvider, gddUsage } from '../usage';
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 type TextStream = (messages: ChatMessage[], options?: StreamLlmOptions) => AsyncIterable<StreamChunk>;
@@ -29,6 +31,17 @@ export type GddV2GeneratorDependencies = {
   stream?: TextStream;
   complete?: Completion;
   planScene?: typeof planDialogueScene;
+  usageBinding?: AiUsageBinding;
+};
+
+type ResolvedGddV2GeneratorDependencies = Required<Omit<GddV2GeneratorDependencies, 'usageBinding'>>
+  & Pick<GddV2GeneratorDependencies, 'usageBinding'>;
+
+type GddV2ReviewRuntime = {
+  signal?: AbortSignal;
+  dialoguePlans?: DialoguePlan[];
+  recoverDialogue?: boolean;
+  tablePlans?: GeneratedTablePlan[];
 };
 
 export type GeneratedGddV2 = {
@@ -54,17 +67,29 @@ export class GddV2ResourceRecoveryError extends Error {
   }
 }
 
+export const GDD_READABLE_CONTENT_RULES = [
+  'Explain each useful player-facing design concept under a human-readable name when detail helps implementation; behavior, parameters, feedback, edge cases, and variants belong in prose.',
+  'Use human-readable game-facing names in prose, headings, and labels. Do not use internal IDs, schema field names, JSON, or backticked codes as a substitute for design explanation.',
+  'Tables own record-level data. Do not enumerate or restate table records field by field in the GDD body. Do not create "record template", "entry template", or "N example records" subsections.',
+  'For table plans, use a human-readable row name. Do not invent identifier, ID, code, or reference fields unless the pinned table guidance requires them. When stable IDs are required, use one concise readable key per entity and avoid redundant ID columns or opaque long alphanumeric values.',
+  'Emit exactly one KECO_TABLE_REF for each planned table. Do not repeat the table name, a label, or a Markdown link immediately before the placeholder.',
+  'Do not wrap ordinary names, labels, or IDs in inline code unless they are literal syntax the reader must type.',
+] as const;
+
 export async function reviewGddMarkdownV2(
   input: GddGenerationRequestV2,
   markdown: string,
   dependencyInput: Completion | GddV2GeneratorDependencies = {},
-  runtime: { signal?: AbortSignal; dialoguePlans?: DialoguePlan[]; recoverDialogue?: boolean } = {},
+  runtime: GddV2ReviewRuntime = {},
 ): Promise<GeneratedGddV2> {
   const dependencies = resolveDependencies(dependencyInput);
   let normalized = normalizeGeneratedMarkdown(markdown, input.projectName, input.rules.tableGuidance);
   normalized = {
     ...normalized,
-    tablePlans: canonicalizeGuidedTablePlans(normalized.tablePlans, requiredTableGuidance(input)),
+    tablePlans: canonicalizeGuidedTablePlans(
+      runtime.tablePlans?.length ? runtime.tablePlans : normalized.tablePlans,
+      requiredTableGuidance(input),
+    ),
   };
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
@@ -81,6 +106,7 @@ export async function reviewGddMarkdownV2(
       requiredTableRepairs,
       dependencies.complete,
       runtime.signal,
+      dependencies.usageBinding,
     );
     if (repaired.tablePlans.length > 0) {
       normalized = {
@@ -127,11 +153,15 @@ export async function reviewGddMarkdownV2(
       ...normalized,
       markdown: stripDialogueSceneMarkers(normalized.markdown),
     };
-  } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+  } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input, {
+    markdown: normalized.markdown,
+    tablePlans: normalized.tablePlans,
+  })) {
     repairRound = Math.max(repairRound, 1);
     try {
       const recovered = await recoverMissingDialoguePlans(
         normalized.markdown,
+        normalized.tablePlans,
         dependencies,
         runtime.signal,
       );
@@ -165,6 +195,7 @@ export async function reviewGddMarkdownV2(
 
 export function gddV2LlmOptions(maxCompletionTokens: number): StreamLlmOptions {
   return {
+    provider: gddLlmProvider(),
     model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-flash',
     ...(process.env.GDD_GENERATION_LLM_API_URL ? { baseUrl: process.env.GDD_GENERATION_LLM_API_URL } : {}),
     ...(process.env.GDD_GENERATION_LLM_API_KEY ? { apiKey: process.env.GDD_GENERATION_LLM_API_KEY } : {}),
@@ -239,6 +270,7 @@ function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
       'Do not return JSON. Do not wrap the answer in a Markdown code fence. Do not add commentary before or after the document.',
       ...modeRules,
       'Start with one H1 title. Use Markdown headings, lists, blockquotes, and fenced formula or flow examples only when they improve readability.',
+      ...GDD_READABLE_CONTENT_RULES,
       'Do not render Markdown tables in the GDD body. Represent every tabular structure as an independent Keco table plan so the worker can create and reference the table resource.',
       'For supermarket, management, RPG, or any data-driven game, you MUST emit at least one KECO_TABLE_PLAN with concrete rows for the core entities the GDD discusses (for example products, staff, customers, upgrades). Emitting KECO_TABLE_REF without a matching plan is invalid.',
       'Where a table belongs in the prose, emit exactly one HTML comment placeholder using the table name: <!-- KECO_TABLE_REF Skills -->. Do not write the table name, a "TableName:" label, or any Markdown link on the line before the placeholder — the editor already shows the linked table title. Do not put table rows in the GDD body.',
@@ -340,6 +372,21 @@ function escapeNumericLessThanInProse(markdown: string): string {
   }).join('\n');
 }
 
+function removeStandaloneEscapeLines(markdown: string): string {
+  let fence: { marker: string; length: number } | null = null;
+  return markdown.split(/\r?\n/).filter((line) => {
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0];
+      const length = fenceMatch[1].length;
+      if (!fence) fence = { marker, length };
+      else if (fence.marker === marker && length >= fence.length) fence = null;
+      return true;
+    }
+    return fence !== null || !/^\\+$/.test(line.trim());
+  }).join('\n');
+}
+
 function coerceBareTableMarkers(markdown: string): string {
   const lines = markdown.split(/\r?\n/);
   const output: string[] = [];
@@ -395,7 +442,9 @@ function normalizeGeneratedMarkdown(
 } {
   const extracted = extractTablePlanMarker(coerceBareTableMarkers(raw));
   const markdown = escapeNumericLessThanInProse(
-    removeProvenanceSections(unwrapMarkdownCodeFence(extracted.markdown)),
+    removeStandaloneEscapeLines(
+      removeProvenanceSections(unwrapMarkdownCodeFence(extracted.markdown)),
+    ),
   );
   if (!markdown) throw new GddV2GenerationValidationError('Model returned an empty GDD.');
   if (/^#{1,6}[ \t]+.+$/.test(markdown.split(/\r?\n/).at(-1) ?? '')) {
@@ -415,6 +464,7 @@ async function repairMissingTablePlans(
   requiredTables: Array<{ table: string; purpose?: string; fields?: string[] }>,
   complete: Completion,
   signal?: AbortSignal,
+  usageBinding?: AiUsageBinding,
 ): Promise<{ tablePlans: GeneratedTablePlan[]; warning: string | null }> {
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
@@ -428,6 +478,8 @@ async function repairMissingTablePlans(
         'Include exactly one plan for the required table, matching its spelling and casing.',
         'Preserve the supplied purpose and fields exactly and in the same field order.',
         'Every table must contain at least one concrete row drawn from entities named in the GDD.',
+        'Give every row a human-readable row name instead of using an internal code as its display name.',
+        'Do not invent identifier fields. When stable IDs are required by the supplied fields, use one concise readable key per entity and avoid redundant ID columns or opaque long alphanumeric values.',
         'Do not invent another table name. Do not return Markdown prose.',
       ].join('\n'),
     }, {
@@ -442,6 +494,7 @@ async function repairMissingTablePlans(
       const raw = await complete(messages, {
         ...gddV2LlmOptions(6_000),
         signal: controller.signal,
+        ...(gddFeatureUsage(usageBinding, 'gdd_table', 'repair_missing_table') ? { usageBinding: gddFeatureUsage(usageBinding, 'gdd_table', 'repair_missing_table') } : {}),
       });
       const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
         ? raw
@@ -589,8 +642,8 @@ function mergeRepairedTablePlans(
   ];
 }
 
-const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship)/i;
-const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)/i;
+const NARRATIVE_INTENT = /(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b|\u53d9\u4e8b|\u6545\u4e8b|\u5bf9\u8bdd|\u5267\u60c5|\u89d2\u8272\u5173\u7cfb)/i;
+const NARRATIVE_EXCLUSION = /(?:(?:\bno\b|\bwithout\b|\bexclude\b|\bavoid\b)[^.!?;\n]{0,40}(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b)|(?:\u65e0|\u4e0d\u542b|\u4e0d\u8981|\u907f\u514d)[^。！？；\n]{0,20}(?:\u53d9\u4e8b|\u6545\u4e8b|\u5bf9\u8bdd|\u5267\u60c5|\u89d2\u8272\u5173\u7cfb))/i;
 
 function hasPositiveNarrativeSignal(value: string): boolean {
   return value
@@ -598,20 +651,39 @@ function hasPositiveNarrativeSignal(value: string): boolean {
     .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
 }
 
-function hasNarrativeTableGuidance(input: GddGenerationRequestV2): boolean {
-  return input.rules.tableGuidance.some((guidance) => {
-    const table = guidance.table.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-    const fields = new Set(guidance.fields.map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
-    if (/^(?:events?|eventchoices?|dialogues?|conversations?|scripts?|storynodes?)$/.test(table)) return true;
-    const hasParticipants = fields.has('participants') || fields.has('speakers') || fields.has('characterids');
+function hasNarrativeTableDefinitions(definitions: Array<{ table?: string; fields?: string[] }>): boolean {
+  return definitions.some((guidance) => {
+    const tableName = typeof guidance.table === 'string' ? guidance.table : '';
+    if (/(?:\u5bf9\u8bdd|\u5267\u60c5|\u53f0\u8bcd)/.test(tableName)) return true;
+    const table = tableName.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+    const fields = new Set((guidance.fields ?? []).map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
+    if (/^(?:dialogues?|dialoguenodes?|conversations?|storynodes?)$/.test(table)) return true;
+    const hasParticipants = fields.has('participants')
+      || fields.has('speakers')
+      || fields.has('speaker')
+      || fields.has('speakerid')
+      || fields.has('characterids');
     const hasBranching = fields.has('choiceids') || fields.has('choices') || fields.has('followupeventids') || fields.has('branches');
     const hasSpokenContent = fields.has('introtext') || fields.has('dialogue') || fields.has('text');
     return hasParticipants && (hasBranching || hasSpokenContent);
   });
 }
 
-function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
-  return hasNarrativeTableGuidance(input) || hasPositiveNarrativeSignal([
+const CONCRETE_DIALOGUE_REQUIREMENT = /(?:dialoguenodes?|unlock dialogue|dialogue sequence|spoken (?:scene|interaction)|\u5bf9\u8bdd\u8282\u70b9|\u89e3\u9501\u5bf9\u8bdd|\u5bf9\u8bdd\u5e8f\u5217|\u5bf9\u8bdd\u53f0\u8bcd)/i;
+
+function hasConcreteDialogueRequirement(value: string): boolean {
+  return value
+    .split(/[.!?;。！？；\n]+/)
+    .some((segment) => CONCRETE_DIALOGUE_REQUIREMENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
+}
+
+export function hasNarrativeIntent(
+  input: GddGenerationRequestV2,
+  evidence: { markdown?: string; tablePlans?: GeneratedTablePlan[] } = {},
+): boolean {
+  return hasNarrativeTableDefinitions(input.rules.tableGuidance)
+    || hasNarrativeTableDefinitions(evidence.tablePlans ?? [])
+    || hasPositiveNarrativeSignal([
     ...input.rules.genres,
     ...input.rules.philosophies,
     input.rules.suitableFor,
@@ -621,7 +693,8 @@ function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
     input.designDocument.decisionStructure,
     input.designDocument.contentModel,
     input.designDocument.experiencePresentation,
-  ].join('\n'));
+  ].join('\n'))
+    || hasConcreteDialogueRequirement(evidence.markdown ?? '');
 }
 
 function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
@@ -650,7 +723,8 @@ function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
 
 async function recoverMissingDialoguePlans(
   markdown: string,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  tablePlans: GeneratedTablePlan[],
+  dependencies: ResolvedGddV2GeneratorDependencies,
   signal?: AbortSignal,
 ): Promise<{ plans: DialoguePlan[]; warning: string | null }> {
   const raw = await dependencies.complete([{
@@ -661,15 +735,21 @@ async function recoverMissingDialoguePlans(
       `Each item must have this exact shape: ${dialogueSceneShapeExample}`,
       'Extract only concrete chapters, tasks, meetings, confrontations, or choice scenes that require spoken interaction.',
       'Do not extract abstract dialogue-system descriptions or illustrative examples.',
+      'A named chapter that explicitly requires an unlock dialogue sequence is a concrete scene requirement even when the GDD has not written the final spoken lines yet.',
+      'Use structured DialogueNodes, conversation, script, clue, and chapter table rows as authoritative scene evidence when provided.',
       'Preserve scene order and return an empty array only when the GDD contains no concrete spoken scene.',
       'You may return up to 100 concrete scenes; do not stop at an arbitrary 20-scene limit.',
     ].join('\n'),
   }, {
     role: 'user',
-    content: `GDD markdown:\n\n${markdown.slice(0, 32_000)}`,
+    content: [
+      `GDD markdown:\n\n${markdown.slice(0, 32_000)}`,
+      `Structured table plans:\n\n${JSON.stringify(tablePlans).slice(0, 24_000)}`,
+    ].join('\n\n'),
   }], {
     ...gddV2LlmOptions(6_000),
     ...(signal ? { signal } : {}),
+    ...(gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'recover_scenes') ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'recover_scenes') } : {}),
   });
   const events = parseDialogueRecoveryEvents(raw);
   if (events.length === 0) {
@@ -687,15 +767,18 @@ async function recoverMissingDialoguePlans(
 async function planDialogueSceneEvents(
   events: DialogueSceneEvent[],
   markdown: string,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  dependencies: ResolvedGddV2GeneratorDependencies,
   signal?: AbortSignal,
 ): Promise<DialoguePlan[]> {
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
   try {
-    return await Promise.all(events.map((event) => runWithSlot(async () => dependencies.planScene(
+    return await Promise.all(events.map((event, sceneIndex) => runWithSlot(async () => dependencies.planScene(
       { event, gddContext: plannerContext(markdown) },
-      { complete: dependencies.complete },
+      {
+        complete: dependencies.complete,
+        ...(dependencies.usageBinding ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', dependencies.usageBinding.context.operation, { sceneIndex }) } : {}),
+      },
       { signal: controller.signal },
     ))));
   } finally {
@@ -715,6 +798,7 @@ export async function generateGddMarkdownV2(
     maxCompletionTokens,
     dependencies,
     runtime.signal,
+    'quick_generate',
   );
   if (generated.finishReason === 'length') {
     generated = await consumeGddStream(
@@ -722,6 +806,7 @@ export async function generateGddMarkdownV2(
       input.mode === 'professional' ? 24_000 : 12_000,
       dependencies,
       runtime.signal,
+      'truncation_recovery',
     );
     if (generated.finishReason === 'length') {
       throw new GddV2GenerationValidationError('Model reached the output limit before completing the GDD.');
@@ -751,15 +836,16 @@ function completionAsStream(complete: Completion): TextStream {
   };
 }
 
-function resolveDependencies(input: Completion | GddV2GeneratorDependencies): Required<GddV2GeneratorDependencies> {
+function resolveDependencies(input: Completion | GddV2GeneratorDependencies): ResolvedGddV2GeneratorDependencies {
   if (typeof input === 'function') {
-    return { complete: input, stream: completionAsStream(input), planScene: planDialogueScene };
+    return { complete: input, stream: completionAsStream(input), planScene: planDialogueScene, usageBinding: undefined };
   }
   const complete = input.complete ?? completeLlm;
   return {
     complete,
     stream: input.stream ?? (input.complete ? completionAsStream(complete) : streamLlm),
     planScene: input.planScene ?? planDialogueScene,
+    usageBinding: input.usageBinding,
   };
 }
 
@@ -821,8 +907,9 @@ function linkedAbortController(parent?: AbortSignal): { controller: AbortControl
 async function consumeGddStream(
   messages: ChatMessage[],
   maxCompletionTokens: number,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  dependencies: ResolvedGddV2GeneratorDependencies,
   parentSignal?: AbortSignal,
+  operation = 'quick_generate',
 ): Promise<{ raw: string; dialoguePlans: DialoguePlan[]; finishReason?: string }> {
   const { controller, unlink } = linkedAbortController(parentSignal);
   const parser = new DialogueSceneStreamParser();
@@ -839,7 +926,10 @@ async function consumeGddStream(
       index,
       plan: await dependencies.planScene(
         { event, gddContext },
-        { complete: dependencies.complete },
+        {
+          complete: dependencies.complete,
+          ...(dependencies.usageBinding ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', dependencies.usageBinding.context.operation, { sceneIndex: index }) } : {}),
+        },
         { signal: controller.signal },
       ),
     })).catch((error) => {
@@ -856,6 +946,7 @@ async function consumeGddStream(
     for await (const chunk of dependencies.stream(messages, {
       ...gddV2LlmOptions(maxCompletionTokens),
       signal: controller.signal,
+      ...(gddUsage(dependencies.usageBinding, operation) ? { usageBinding: gddUsage(dependencies.usageBinding, operation) } : {}),
     })) {
       if (chunk.type === 'text_delta') {
         const parsed = parser.push(chunk.content);

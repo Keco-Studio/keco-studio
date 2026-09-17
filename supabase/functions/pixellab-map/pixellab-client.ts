@@ -4,12 +4,105 @@ import {
   PixelLabMapError,
   type SemanticCapability,
 } from "./types.ts";
-import { providerImageReference, providerTextBlocks } from "./provider-response.ts";
+import type { EdgeAiUsageAttempt, EdgeAiUsageContext, EdgeAiUsageRecorder } from "../_shared/ai-usage.ts";
+import { providerImageReference, providerJobId, providerTextBlocks } from "./provider-response.ts";
 import { MAX_PNG_BYTES } from "./png.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
 const REST_URL = "https://api.pixellab.ai/v1";
 const MAX_BASE64_LENGTH = Math.ceil(MAX_PNG_BYTES / 3) * 4 + 4;
+
+type UsageOptions = { context: EdgeAiUsageContext; recorder: EdgeAiUsageRecorder };
+
+class PixelLabMapTransportError extends Error {}
+
+function safeProviderIdentifier(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function mcpText(value: Record<string, unknown>): string[] {
+  const content = value.content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((entry) => {
+    const block = record(entry);
+    return typeof block?.text === "string" ? [block.text] : [];
+  });
+}
+
+function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
+  const jsonText = mcpText(value).flatMap((text) => {
+    try {
+      const parsed = record(JSON.parse(text));
+      return parsed ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [value, record(value.structuredContent), ...jsonText]
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+}
+
+function textIdentifier(value: Record<string, unknown>, labels: string[]): string | undefined {
+  const pattern = new RegExp(`(?:${labels.join("|")})\\s*[:=]\\s*["']?([A-Za-z0-9][A-Za-z0-9._:-]{0,255})`, "i");
+  for (const text of mcpText(value)) {
+    const identifier = text.match(pattern)?.[1];
+    if (identifier) return safeProviderIdentifier(identifier);
+  }
+  return undefined;
+}
+
+function textCredits(value: Record<string, unknown>): number | undefined {
+  const pattern = /(?:provider[_\s-]?credits?|credits?[_\s-]?(?:used|cost)?|credit[_\s-]?cost)\s*[:=]\s*(-?\d+(?:\.\d+)?)/i;
+  for (const text of mcpText(value)) {
+    const candidate = Number(text.match(pattern)?.[1]);
+    if (Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) return candidate;
+  }
+  return undefined;
+}
+
+function nativeCredits(value: Record<string, unknown>): number | undefined {
+  for (const source of mcpRecords(value)) {
+    for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
+      const candidate = source[key];
+      if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) {
+        return candidate;
+      }
+    }
+  }
+  return textCredits(value);
+}
+
+function providerRequestId(value: Record<string, unknown>): string | undefined {
+  for (const source of mcpRecords(value)) {
+    const requestId = safeProviderIdentifier(source.request_id) ?? safeProviderIdentifier(source.requestId);
+    if (requestId) return requestId;
+  }
+  const textRequestId = textIdentifier(value, ["request[_\\s-]?id"]);
+  if (textRequestId) return textRequestId;
+  for (const source of mcpRecords(value)) {
+    const jobId = safeProviderIdentifier(source.job_id)
+      ?? safeProviderIdentifier(source.jobId)
+      ?? safeProviderIdentifier(source.object_id)
+      ?? safeProviderIdentifier(source.tileset_id)
+      ?? safeProviderIdentifier(source.id);
+    if (jobId) return jobId;
+  }
+  return textIdentifier(value, ["job[_\\s-]?id", "object[_\\s-]?id", "tileset[_\\s-]?id"])
+    ?? safeProviderIdentifier(providerJobId({ content: mcpText(value).map((text) => ({ text })) }) ?? undefined);
+}
+
+function restOperation(operation: string): string {
+  const normalized = operation.replace(/^\/+/, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
+  return `rest_${normalized || "unknown"}`;
+}
 
 const CAPABILITIES: Record<SemanticCapability, {
   preferred: string;
@@ -272,41 +365,111 @@ export function providerArgumentsFor(
 }
 
 export class PixelLabClient {
+  private usageAttempt = 0;
+
   constructor(
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly usage?: UsageOptions,
   ) {
     if (!token) throw new PixelLabMapError("pixellab_not_configured", undefined, 503);
   }
 
-  private async mcp(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    let response: Response;
+  private async tracked<T>(
+    operation: string,
+    request: () => Promise<T>,
+    resultForEvent: (result: T) => Record<string, unknown> | undefined,
+  ): Promise<T> {
+    const eventKey = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    const attempt = ++this.usageAttempt;
     try {
-      response = await this.fetcher(MCP_URL, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.token}`,
-          accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
+      const result = await request();
+      const response = resultForEvent(result) ?? {};
+      await this.recordAttempt({
+        eventKey, attempt, operation, startedAt, outcome: "succeeded", response,
+      });
+      return result;
+    } catch (error) {
+      await this.recordAttempt({
+        eventKey, attempt, operation, startedAt,
+        outcome: error instanceof TypeError || error instanceof PixelLabMapTransportError
+          ? "transport_error"
+          : "provider_error",
+        response: {},
+      });
+      if (error instanceof PixelLabMapTransportError) throw new PixelLabMapError("pixellab_upstream");
+      throw error;
+    }
+  }
+
+  private async recordAttempt(input: {
+    eventKey: string; attempt: number; operation: string; startedAt: string;
+    outcome: EdgeAiUsageAttempt["outcome"]; response: Record<string, unknown>;
+  }): Promise<void> {
+    if (!this.usage) return;
+    try {
+      await this.usage.recorder({
+        eventKey: input.eventKey,
+        context: { ...this.usage.context },
+        requestKind: "provider_generation",
+        provider: "pixellab",
+        model: null,
+        attempt: input.attempt,
+        providerRequestId: providerRequestId(input.response),
+        outcome: input.outcome,
+        usage: null,
+        providerCredits: nativeCredits(input.response),
+        startedAt: input.startedAt,
+        finishedAt: new Date().toISOString(),
+        metadata: { providerOperation: input.operation },
       });
     } catch {
-      throw new PixelLabMapError("pixellab_upstream");
+      // Telemetry must never change the provider request outcome.
     }
-    if (!response.ok) throw responseError(response.status);
-    const payload = parseMcpPayload(await response.text());
-    if (payload.error) throw new PixelLabMapError("pixellab_upstream");
-    const result = payload.result;
-    if (result && typeof result === "object" && !Array.isArray(result)) {
-      const resultError = mcpResultError(result as Record<string, unknown>);
-      if (resultError) throw resultError;
-    }
-    return payload;
+  }
+
+  private async mcp(
+    method: string,
+    params: Record<string, unknown>,
+    validate?: (payload: Record<string, unknown>) => void,
+  ): Promise<Record<string, unknown>> {
+    const operation = method === "tools/call" ? String(params.name ?? "tools_call") : "tools_list";
+    return this.tracked(operation, async () => {
+      let response: Response;
+      try {
+        response = await this.fetcher(MCP_URL, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.token}`,
+            accept: "application/json, text/event-stream",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
+        });
+      } catch {
+        throw new PixelLabMapTransportError();
+      }
+      if (!response.ok) throw responseError(response.status);
+      const payload = parseMcpPayload(await response.text());
+      if (payload.error) throw new PixelLabMapError("pixellab_upstream");
+      const result = payload.result;
+      if (result && typeof result === "object" && !Array.isArray(result)) {
+        const resultError = mcpResultError(result as Record<string, unknown>);
+        if (resultError) throw resultError;
+      }
+      validate?.(payload);
+      return payload;
+    }, (payload) => payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+      ? payload.result as Record<string, unknown>
+      : undefined);
   }
 
   async listTools(): Promise<PixelLabTool[]> {
-    const payload = await this.mcp("tools/list", {});
+    const payload = await this.mcp("tools/list", {}, (candidate) => {
+      const tools = (candidate.result as { tools?: unknown } | undefined)?.tools;
+      if (!Array.isArray(tools)) throw new PixelLabMapError("pixellab_invalid_response");
+    });
     const result = payload.result as { tools?: unknown } | undefined;
     if (!Array.isArray(result?.tools)) throw new PixelLabMapError("pixellab_invalid_response");
     return result.tools.filter((tool): tool is PixelLabTool =>
@@ -370,20 +533,25 @@ export class PixelLabClient {
       const payload = await this.mcp("tools/call", {
         name: capability.operation,
         arguments: arguments_,
+      }, (candidate) => {
+        const result = record(candidate.result);
+        if (!result || !providerJobId(result)) throw new PixelLabMapError("pixellab_invalid_response");
       });
       const result = payload.result;
       if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return result as Record<string, unknown>;
     }
-    const response = await this.fetcher(`${REST_URL}${capability.operation}`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
-      body: JSON.stringify(arguments_),
-    });
-    if (!response.ok) throw responseError(response.status);
-    const result = await response.json().catch(() => null);
-    if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
-    return result as Record<string, unknown>;
+    return this.tracked(restOperation(capability.operation), async () => {
+      const response = await this.fetcher(`${REST_URL}${capability.operation}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
+        body: JSON.stringify(arguments_),
+      });
+      if (!response.ok) throw responseError(response.status);
+      const result = await response.json().catch(() => null);
+      if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
+      return result as Record<string, unknown>;
+    }, (result) => result);
   }
 
   async pollJob(capability: DiscoveredCapability, jobId: string): Promise<Record<string, unknown>> {
@@ -402,17 +570,21 @@ export class PixelLabClient {
         : capability.semantic === "map_object"
           ? capability.operation === "create_image_pro" ? "job_id" : "object_id"
           : "job_id";
-      const payload = await this.mcp("tools/call", { name: operation, arguments: { [key]: jobId } });
+      const payload = await this.mcp("tools/call", { name: operation, arguments: { [key]: jobId } }, (candidate) => {
+        if (!record(candidate.result)) throw new PixelLabMapError("pixellab_invalid_response");
+      });
       if (!payload.result || typeof payload.result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return payload.result as Record<string, unknown>;
     }
-    const response = await this.fetcher(`${REST_URL}${capability.operation}/${encodeURIComponent(jobId)}`, {
-      headers: { authorization: `Bearer ${this.token}` },
-    });
-    if (!response.ok) throw responseError(response.status);
-    const result = await response.json().catch(() => null);
-    if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
-    return result as Record<string, unknown>;
+    return this.tracked(`${restOperation(capability.operation)}_poll`, async () => {
+      const response = await this.fetcher(`${REST_URL}${capability.operation}/${encodeURIComponent(jobId)}`, {
+        headers: { authorization: `Bearer ${this.token}` },
+      });
+      if (!response.ok) throw responseError(response.status);
+      const result = await response.json().catch(() => null);
+      if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
+      return result as Record<string, unknown>;
+    }, (result) => result);
   }
 
   async downloadResult(result: Record<string, unknown>): Promise<Uint8Array> {

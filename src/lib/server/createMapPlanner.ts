@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { completeLlmNonStreaming, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding } from '@/lib/ai-usage/types';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import {
   validateMapPlanV2,
@@ -41,6 +42,14 @@ export function getCreateMapPlannerLlmOptions(): Pick<StreamLlmOptions, 'model' 
     baseUrl: process.env.CREATE_MAP_LLM_API_URL || CREATE_MAP_LLM_BASE_URL,
     apiKey: process.env.CREATE_MAP_LLM_API_KEY || process.env.LLM_API_KEY || '',
   };
+}
+
+function createMapPlannerProvider(): AiProvider {
+  const provider = process.env.CREATE_MAP_LLM_PROVIDER || 'deepseek';
+  return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
+    || provider === 'pixellab' || provider === 'unknown'
+    ? provider
+    : 'unknown';
 }
 
 const point = {
@@ -533,7 +542,8 @@ export function normalizeMapPlanV2Candidate(input: unknown, grid: GridDimensions
 
 export async function createMapPlanV2(
   descriptionInput: string,
-  source?: CreateMapDocumentSource
+  source?: CreateMapDocumentSource,
+  usageBinding?: AiUsageBinding,
 ): Promise<MapPlanV2> {
   const description = descriptionInput.trim();
   if (!description) throw new CreateMapPlannerInputError();
@@ -571,6 +581,13 @@ export async function createMapPlanV2(
     try {
       raw = await completeLlmNonStreaming(messages, {
         ...getCreateMapPlannerLlmOptions(),
+        provider: createMapPlannerProvider(),
+        ...(usageBinding ? {
+          usageBinding: deriveAiUsageBinding(usageBinding, {
+            operation: attempt === 0 ? 'plan_v2' : 'plan_repair',
+            ...(attempt > 0 ? { metadata: { repairAttempt: attempt } } : {}),
+          }),
+        } : {}),
         temperature: 0,
         thinking: 'disabled',
         maxTokens: 8_000,
@@ -611,6 +628,7 @@ export async function createMapPlanV3(
   descriptionInput: string,
   source?: CreateMapDocumentSource,
   selection: DirectMapReferenceSelection = { references: [], styleReference: null },
+  usageBinding?: AiUsageBinding,
 ): Promise<MapPlanV3> {
   const description = descriptionInput.trim();
   if (!description && !source) throw new CreateMapPlannerInputError();
@@ -646,6 +664,13 @@ export async function createMapPlanV3(
     try {
       raw = await completeLlmNonStreaming(messages, {
         ...getCreateMapPlannerLlmOptions(),
+        provider: createMapPlannerProvider(),
+        ...(usageBinding ? {
+          usageBinding: deriveAiUsageBinding(usageBinding, {
+            operation: attempt === 0 ? 'plan_v3' : 'plan_repair',
+            ...(attempt > 0 ? { metadata: { repairAttempt: attempt } } : {}),
+          }),
+        } : {}),
         temperature: 0,
         thinking: 'disabled',
         maxTokens: 4_000,

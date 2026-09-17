@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AccessVerificationCache } from '@/lib/services/authorizationService';
 import type { AgentSelectionContext } from './selection-context';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 export type AgentWorkspace = 'studio' | 'script';
@@ -56,6 +57,8 @@ export interface ToolContext {
     messageId: string;
     content: string;
   };
+  /** Usage binding retained by Agent-originated tools and deferred indexing. */
+  usageBinding?: AiUsageBinding;
 }
 
 export type AgentInvalidation =
@@ -266,6 +269,8 @@ export interface AgentTurnInput {
   selectionContext?: AgentSelectionContext;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
+  usageBinding?: AiUsageBinding;
+  turnId?: string;
 }
 
 export interface ResumeInput {
@@ -274,6 +279,7 @@ export interface ResumeInput {
   signal?: AbortSignal;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
+  usageBinding?: AiUsageBinding;
   /**
    * Optional client-completed write result (e.g. generate_from_document after
    * `/api/import-script` derived import). When present, resume skips tool.execute.

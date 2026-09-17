@@ -164,6 +164,57 @@ describe('professional GDD stages', () => {
     expect(systemPrompt).toMatch(/bullet|numbered list/i);
   });
 
+  it('keeps useful design explanations readable while assigning record-level data to tables', async () => {
+    const complete = jest.fn(async () => '## Content\n\n### Jellyfish\n\nDefines movement, contact effects, feedback, and variants.');
+
+    await generateProfessionalStage(
+      { ...input, language: 'en-US' },
+      'generating_content',
+      checkpoint({ blueprint }),
+      { complete },
+    );
+
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const messages = calls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    const prompt = String(messages?.[0]?.content);
+    expect(prompt).toMatch(/player-facing design concept.*behavior.*parameters.*feedback.*variants/i);
+    expect(prompt).toMatch(/human-readable.*names.*headings.*labels/i);
+    expect(prompt).toMatch(/tables own record-level data/i);
+    expect(prompt).toMatch(/do not enumerate.*table records.*field by field/i);
+    expect(prompt).toMatch(/record template.*example records/i);
+    expect(prompt).toMatch(/do not invent.*identifier.*fields unless.*pinned table guidance requires/i);
+    expect(prompt).toMatch(/stable IDs are required.*one concise readable key/i);
+    expect(prompt).toMatch(/exactly one KECO_TABLE_REF.*planned table/i);
+  });
+
+  it('preserves the readable-content boundary during a stage repair', async () => {
+    const twoContentSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        ...blueprint.sections.slice(0, 2),
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
+        { id: 'hazards', title: 'Hazards', stage: 'content', instructions: ['Define hazards.'] },
+      ],
+    };
+    const complete = jest.fn(async () => '## Hazards\n\nReadable hazard design.')
+      .mockResolvedValueOnce('## Content\n\nOnly one section was returned.');
+
+    await generateProfessionalStage(
+      { ...input, language: 'en-US' },
+      'generating_content',
+      checkpoint({ blueprint: twoContentSections }),
+      { complete },
+    );
+
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const repairMessages = calls[1]?.[0] as Array<{ content?: unknown }> | undefined;
+    const repairPrompt = String(repairMessages?.[0]?.content);
+    expect(repairPrompt).toMatch(/player-facing design concept.*behavior.*parameters.*feedback.*variants/i);
+    expect(repairPrompt).toMatch(/tables own record-level data/i);
+    expect(repairPrompt).toMatch(/do not enumerate.*table records.*field by field/i);
+    expect(repairPrompt).toMatch(/do not invent.*identifier.*fields unless.*pinned table guidance requires/i);
+  });
+
   it('gives content stages enough completion budget to finish every planned section', async () => {
     const contentBlueprint: ProfessionalBlueprint = {
       ...blueprint,

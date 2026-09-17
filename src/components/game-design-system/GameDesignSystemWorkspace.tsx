@@ -31,6 +31,7 @@ import {
   fetchGddDialogueJobs,
   fetchProjectGddGenerationJob,
   retryGddDialogueJob,
+  retryGddResourceJob,
   startProjectGddGeneration,
   updateGameDesignSystemDraft,
 } from '@/lib/services/gameDesignSystemClient';
@@ -393,6 +394,24 @@ function ProjectsView(props: {
     },
     onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to retry dialogue.' }),
   });
+  const retryResourceMutation = useMutation({
+    mutationFn: ({ targetProjectId, gddJobId, resourceJobId }: { targetProjectId: string; gddJobId: string; resourceJobId: string }) => retryGddResourceJob(targetProjectId, gddJobId, resourceJobId),
+    onSuccess: (resource, variables) => {
+      setGddJobs((current) => {
+        const job = current[variables.targetProjectId];
+        if (!job || job.id !== variables.gddJobId) return current;
+        return {
+          ...current,
+          [variables.targetProjectId]: {
+            ...job,
+            resources: job.resources.map((candidate) => candidate.id === resource.id ? resource : candidate),
+          },
+        };
+      });
+      onFeedback({ tone: 'success', text: `${resource.kind} retry started.` });
+    },
+    onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to retry GDD resource.' }),
+  });
 
   useEffect(() => {
     if (!props.version || typeof fetchLatestProjectGddGenerationJob !== 'function') return undefined;
@@ -461,19 +480,28 @@ function ProjectsView(props: {
   }, [gddJobs, onFeedback, queryClient]);
 
   useEffect(() => {
-    const completed = Object.entries(gddJobs).filter(([targetProjectId, job]) => (
+    const completed = Object.entries(gddJobs).map(([targetProjectId, job]) => {
+      const dialogueResource = job.resources?.find((resource) => resource.kind === 'dialogue');
+      const loadKey = [
+        job.id,
+        dialogueResource?.id ?? 'none',
+        dialogueResource?.status ?? 'none',
+        dialogueResource?.completed_at ?? '',
+      ].join(':');
+      return [targetProjectId, job, loadKey] as const;
+    }).filter(([targetProjectId, job, loadKey]) => (
       (job.status === 'completed' || job.status === 'completed_with_map_failures')
-      && loadedDialogueGddJobsRef.current[targetProjectId] !== job.id
+      && loadedDialogueGddJobsRef.current[targetProjectId] !== loadKey
     ));
     if (completed.length === 0) return undefined;
-    for (const [targetProjectId, job] of completed) {
-      loadedDialogueGddJobsRef.current[targetProjectId] = job.id;
+    for (const [targetProjectId, , loadKey] of completed) {
+      loadedDialogueGddJobsRef.current[targetProjectId] = loadKey;
     }
-    void Promise.all(completed.map(async ([targetProjectId, job]) => {
+    void Promise.all(completed.map(async ([targetProjectId, job, loadKey]) => {
       try {
-        return [targetProjectId, job.id, await fetchGddDialogueJobs(targetProjectId, job.id)] as const;
+        return [targetProjectId, loadKey, await fetchGddDialogueJobs(targetProjectId, job.id)] as const;
       } catch {
-        if (loadedDialogueGddJobsRef.current[targetProjectId] === job.id) {
+        if (loadedDialogueGddJobsRef.current[targetProjectId] === loadKey) {
           delete loadedDialogueGddJobsRef.current[targetProjectId];
         }
         return null;
@@ -539,6 +567,7 @@ function ProjectsView(props: {
           const gddJob = gddJobs[project.id];
           const generating = gddHasPendingWork(gddJob);
           const projectDialogueJobs = dialogueJobs[project.id] ?? [];
+          const failedResources = gddJob?.resources?.filter((resource) => resource.status === 'failed') ?? [];
           const mapCount = gddJob?.maps?.length ?? 0;
           return (
             <article className={styles.projectRow} key={project.id}>
@@ -551,6 +580,14 @@ function ProjectsView(props: {
                 {generating ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" aria-label="Stop GDD generation" disabled={cancelGddMutation.isPending} onClick={() => cancelGddMutation.mutate({ targetProjectId: project.id, jobId: gddJob.id })}><StopOutlined /> Stop</button> : null}
                 {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending || generating} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
               </div>
+              {failedResources.length > 0 ? <div className={styles.dialogueJobList}>
+                {failedResources.map((resource) => <div className={styles.dialogueJobRow} key={resource.id}>
+                  <div><strong>{resource.kind} resource</strong><small>{resource.error || 'GDD resource generation failed.'}</small></div>
+                  <div className={styles.projectActions}>
+                    <button className={styles.iconButton} type="button" title={`Retry ${resource.kind}`} aria-label={`Retry ${resource.kind}`} disabled={retryResourceMutation.isPending} onClick={() => retryResourceMutation.mutate({ targetProjectId: project.id, gddJobId: gddJob.id, resourceJobId: resource.id })}><ReloadOutlined /></button>
+                  </div>
+                </div>)}
+              </div> : null}
               {projectDialogueJobs.length > 0 ? <div className={styles.dialogueJobList}>
                 {projectDialogueJobs.map((dialogueJob) => <div className={styles.dialogueJobRow} key={dialogueJob.id}>
                   <div><strong>{dialogueJob.title}</strong><small>{dialogueJob.status === 'completed' ? 'Script ready' : dialogueJob.status === 'failed' ? dialogueJob.last_error || 'Script generation failed' : dialogueJob.status === 'running' ? 'Building Script' : 'Queued'}</small></div>

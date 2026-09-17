@@ -25,6 +25,12 @@ const sampleUsers = [
     createdAt: '2026-01-01T00:00:00.000Z',
     lastSignInAt: '2026-09-01T00:00:00.000Z',
     status: 'active' as const,
+    creditAllocated: 100_000_000,
+    creditUsed: 7,
+    creditRemaining: 99_999_993,
+    creditOverage: 0,
+    deepseekTokens: 21,
+    creditUsageIncompleteCount: 1,
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
@@ -32,12 +38,27 @@ const sampleUsers = [
     createdAt: '2026-02-01T00:00:00.000Z',
     lastSignInAt: null,
     status: 'suspended' as const,
+    creditAllocated: 5,
+    creditUsed: 8,
+    creditRemaining: 0,
+    creditOverage: 3,
+    deepseekTokens: 24,
+    creditUsageIncompleteCount: 0,
   },
 ];
 
 function overviewBody(overrides: Record<string, unknown> = {}) {
   return {
     totalUsers: 9,
+    creditUsage: {
+      allocated: 100_000_000,
+      used: 7,
+      remaining: 99_999_993,
+      overage: 0,
+      deepseekTokens: 21,
+      incompleteCount: 1,
+      trackedFrom: '2026-09-15T00:00:00.000Z',
+    },
     refreshedAt: '2026-09-11T10:00:00.000Z',
     users: sampleUsers,
     ...overrides,
@@ -72,7 +93,7 @@ describe('Keco Admin dashboard', () => {
     cleanup();
   });
 
-  it('renders the real total and Auth user rows', async () => {
+  it('renders live account and per-user Credit data while Storage stays unavailable', async () => {
     global.fetch = jest.fn(async () => response(200, overviewBody())) as never;
 
     renderDashboard();
@@ -80,7 +101,10 @@ describe('Keco Admin dashboard', () => {
     expect((await screen.findByTestId('keco-admin-total-users')).textContent).toContain('9');
     expect(screen.getByRole('heading', { name: 'Keco Admin' })).toBeTruthy();
     expect(screen.getByText('Admin only')).toBeTruthy();
-    expect(screen.getAllByText('Not connected')).toHaveLength(2);
+    expect(screen.getByTestId('keco-admin-credit-used').textContent).toBe('7');
+    expect(screen.getByTestId('keco-admin-credit-allocated').textContent).toBe('100,000,000');
+    expect(screen.getByTestId('keco-admin-credit-remaining').textContent).toBe('99,999,993');
+    expect(screen.getAllByText('Not connected')).toHaveLength(1);
     expect(screen.queryByText('Stay duration')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Stay' })).toBeNull();
     expect(screen.getByText('Credit, Storage and account status')).toBeTruthy();
@@ -91,6 +115,10 @@ describe('Keco Admin dashboard', () => {
     expect(screen.getByText('bob@example.com')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText('Suspended')).toBeTruthy();
+    expect(screen.getByTestId(`keco-admin-credit-used-${sampleUsers[0].id}`).textContent).toBe('7');
+    expect(screen.getByTestId(`keco-admin-credit-remaining-${sampleUsers[0].id}`).textContent).toBe('99,999,993');
+    expect(screen.getAllByText('Incomplete usage')).toHaveLength(2);
+    expect(screen.getByText('Exhausted')).toBeTruthy();
     expect(screen.getByText('Showing 2 of 9 users')).toBeTruthy();
     expect(screen.queryByText('User detail data is not connected')).toBeNull();
   });
@@ -116,7 +144,9 @@ describe('Keco Admin dashboard', () => {
     renderDashboard();
 
     expect(screen.getByTestId('keco-admin-total-loading')).toBeTruthy();
+    expect(screen.getByTestId('keco-admin-credit-loading')).toBeTruthy();
     expect(screen.queryByTestId('keco-admin-total-users')).toBeNull();
+    expect(screen.queryByTestId('keco-admin-credit-used')).toBeNull();
   });
 
   it('shows a first-load error and retries on command', async () => {
@@ -134,7 +164,7 @@ describe('Keco Admin dashboard', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the last count visible when a manual refresh fails', async () => {
+  it('keeps the last account and Credit values visible when a manual refresh fails', async () => {
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(response(200, overviewBody()))
@@ -142,14 +172,17 @@ describe('Keco Admin dashboard', () => {
 
     renderDashboard();
     expect((await screen.findByTestId('keco-admin-total-users')).textContent).toContain('9');
+    expect(screen.getByTestId('keco-admin-credit-used').textContent).toBe('7');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh admin data' }),
     );
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText('Refresh failed. Showing the last synced total.')).toBeTruthy();
+    expect(await screen.findByText('Refresh failed. Showing the last synced values.')).toBeTruthy();
     expect(screen.getByTestId('keco-admin-total-users').textContent).toContain('9');
+    expect(screen.getByTestId('keco-admin-credit-used').textContent).toBe('7');
+    expect(screen.getByTestId('keco-admin-credit-remaining').textContent).toBe('99,999,993');
   });
 
   it.each([401, 403])('returns unauthorized users to projects on %i', async (status) => {

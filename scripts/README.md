@@ -1,5 +1,36 @@
 # Scripts
 
+## Initial account Credit allocation
+
+This operator command validates `KECO_ADMIN_USER_ID` against Supabase Auth and
+adds an idempotent entry to the private account Credit ledger:
+
+```bash
+npm run grant:account-credits -- --amount 100000000 --reference initial-admin-allocation-2026-09-17 --reason "Initial account allocation"
+```
+
+The command loads `.env.local` without overriding variables already present in
+the shell. It requires `NEXT_PUBLIC_SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `KECO_ADMIN_USER_ID`.
+
+> **Remote mutation:** This command inserts into the Supabase project selected
+> by `NEXT_PUBLIC_SUPABASE_URL`. Confirm the target project and Auth user UUID
+> before running it. Reusing the same reference is successful only when the
+> user, amount, and reason are identical.
+
+## Local account Credit database gate
+
+With the local Supabase stack running and migrated, run:
+
+```bash
+npm run test:account-credit-db
+```
+
+The command reads only the local Supabase development credentials from
+`supabase status`, runs the Credit migration contracts plus live RLS and
+EXPLAIN coverage, and fails instead of silently skipping when the live database
+suite is unavailable.
+
 ## Local Realtime authorization pool
 
 Private document/sidebar channels need local Realtime `db_pool=10`. After

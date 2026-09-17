@@ -264,7 +264,12 @@ function astBlocks(
     } else if (node.type === 'code') {
       blocks.push({ type: 'code', language: node.lang ?? '', text: node.value ?? '' });
     } else if (node.type === 'mdxJsxFlowElement') {
-      if (node.name === 'GddMapReference') {
+      if (node.name === 'GddTablePlaceholder') {
+        const tableName = (node.attributes ?? []).find(
+          (attribute) => attribute.name === 'tableName' && typeof attribute.value === 'string'
+        )?.value as string;
+        blocks.push({ type: 'paragraph', content: [{ type: 'text', text: tableName }] });
+      } else if (node.name === 'GddMapReference') {
         const fallbackTitle = (node.attributes ?? []).find((attribute) => attribute.name === 'fallbackTitle' && typeof attribute.value === 'string')?.value as string | undefined;
         blocks.push({ type: 'paragraph', content: [{ type: 'text', text: fallbackTitle || 'Map unavailable' }] });
       } else {

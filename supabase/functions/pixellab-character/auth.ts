@@ -7,7 +7,7 @@ function clients() {
   if (!url || !key) throw new PixelLabCharacterError("pixellab_not_configured", "Supabase is not configured", 503);
   return createClient(url, key, { auth: { persistSession: false } });
 }
-export type AuthorizedContext = { serviceClient: SupabaseClient; state: Record<string, unknown> };
+export type AuthorizedContext = { serviceClient: SupabaseClient; actorUserId: string; state: Record<string, unknown> };
 
 export async function resolveCharacterReferences(
   serviceClient: SupabaseClient,
@@ -86,7 +86,7 @@ export async function authorizeServiceRequest(request: Request, body: Record<str
   const resolvedReferences = operation === "submit" || operation === "retry"
     ? await resolveCharacterReferences(serviceClient, projectId, asset.plan as CharacterAssetPlan)
     : [];
-  return { serviceClient, state: {
+  return { serviceClient, actorUserId, state: {
     serviceClient, projectId, assetId, attemptId, generationId: String(attempt.generation_id),
     planFingerprint: String(attempt.plan_fingerprint), attemptCount: Number(attempt.attempt_count), status: attempt.status,
     lastErrorCode: attempt.last_error_code, providerJobId: attempt.provider_job_id, metadata: attempt.metadata ?? {}, plan: asset.plan,

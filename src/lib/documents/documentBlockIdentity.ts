@@ -1,20 +1,14 @@
-import {
-  $isListItemNode,
-  ListItemNode,
-} from '@lexical/list';
-import {
-  $createHeadingNode,
-  $isHeadingNode,
-  HeadingNode,
-} from '@lexical/rich-text';
-import { mergeRegister } from '@lexical/utils';
+import type { ListItemNode } from '@lexical/list';
+import type { HeadingNode, HeadingTagType } from '@lexical/rich-text';
 import type {
   LexicalExportVisitor,
   MdastImportVisitor,
 } from '@mdxeditor/editor';
 import {
+  $applyNodeReplacement,
   $createLineBreakNode,
   $createParagraphNode,
+  $getEditor,
   $getRoot,
   $getState,
   $isElementNode,
@@ -24,9 +18,10 @@ import {
   $isTextNode,
   $setState,
   createState,
-  ParagraphNode,
+  type Klass,
   type LexicalEditor,
   type LexicalNode,
+  type ParagraphNode,
 } from 'lexical';
 import type { Heading, ListItem, Paragraph, RootContent } from 'mdast';
 import type { MdxJsxTextElement } from 'mdast-util-mdx-jsx';
@@ -51,6 +46,35 @@ export type DocumentReferenceBlock = {
 type DocumentBlockNode = HeadingNode | ParagraphNode | ListItemNode;
 
 const TABLE_NODE_TYPES = new Set(['table', 'tablecell', 'tablerow']);
+
+function isHeadingNode(
+  node: LexicalNode | null | undefined
+): node is HeadingNode {
+  return node?.getType() === 'heading';
+}
+
+function isListItemNode(
+  node: LexicalNode | null | undefined
+): node is ListItemNode {
+  return node?.getType() === 'listitem';
+}
+
+function registeredNodeClass<T extends LexicalNode>(
+  editor: LexicalEditor,
+  type: string
+): Klass<T> {
+  const registered = editor._nodes.get(type);
+  if (!registered) throw new Error(`Document editor did not register ${type} nodes`);
+  return registered.klass as Klass<T>;
+}
+
+function mergeUnregisters(registrations: Array<() => void>): () => void {
+  return () => {
+    for (let index = registrations.length - 1; index >= 0; index -= 1) {
+      registrations[index]();
+    }
+  };
+}
 
 function isTableNode(node: LexicalNode): boolean {
   return TABLE_NODE_TYPES.has(node.getType());
@@ -87,7 +111,7 @@ function listItemOwnText(node: ListItemNode): string {
 }
 
 function displayText(node: DocumentBlockNode): string {
-  if ($isListItemNode(node)) return listItemOwnText(node);
+  if (isListItemNode(node)) return listItemOwnText(node);
   return node.getTextContent().replace(/\s+/g, ' ').trim();
 }
 
@@ -95,9 +119,9 @@ function documentBlocks(): DocumentBlockNode[] {
   const blocks: DocumentBlockNode[] = [];
   const visit = (node: LexicalNode) => {
     if (isTableNode(node)) return;
-    if ($isListItemNode(node)) {
+    if (isListItemNode(node)) {
       if (listItemOwnText(node)) blocks.push(node);
-    } else if ($isHeadingNode(node) || $isParagraphNode(node)) {
+    } else if (isHeadingNode(node) || $isParagraphNode(node)) {
       blocks.push(node);
     }
     if ($isElementNode(node)) {
@@ -159,7 +183,7 @@ function reconcileDocumentBlockDom(editor: LexicalEditor): void {
         }
         continue;
       }
-      const blockType = $isHeadingNode(node)
+      const blockType = isHeadingNode(node)
         ? 'heading'
         : 'paragraph';
       if (element.dataset.documentBlockId !== blockId) {
@@ -226,19 +250,31 @@ export function registerDocumentBlockIdentity(
     }
     scheduleNormalization();
   };
-  const registrations = [
+  const registrations: Array<() => void> = [
     editor.registerUpdateListener(() => reconcileDocumentBlockDom(editor)),
     editor.registerRootListener((nextRoot, previousRoot) => {
       if (previousRoot !== nextRoot) clearDocumentBlockDom(previousRoot);
       reconcileDocumentBlockDom(editor);
     }),
-    editor.registerNodeTransform(ParagraphNode, normalize),
-    editor.registerNodeTransform(HeadingNode, normalize),
+    editor.registerNodeTransform(
+      registeredNodeClass<ParagraphNode>(editor, 'paragraph'),
+      normalize
+    ),
+    editor.registerNodeTransform(
+      registeredNodeClass<HeadingNode>(editor, 'heading'),
+      normalize
+    ),
   ];
-  if (editor.hasNode(ListItemNode)) {
-    registrations.push(editor.registerNodeTransform(ListItemNode, normalize));
+  const registeredListItem = editor._nodes.get('listitem');
+  if (registeredListItem) {
+    registrations.push(
+      editor.registerNodeTransform(
+        registeredListItem.klass as Klass<ListItemNode>,
+        normalize
+      )
+    );
   }
-  const unregister = mergeRegister(...registrations);
+  const unregister = mergeUnregisters(registrations);
 
   return () => {
     disposed = true;
@@ -254,7 +290,7 @@ export function listDocumentReferenceBlocks(): DocumentReferenceBlock[] {
   for (const node of documentBlocks()) {
     const blockId = $getState(node, documentBlockIdState);
     const text = displayText(node);
-    if ($isHeadingNode(node)) {
+    if (isHeadingNode(node)) {
       if (text) nearestHeading = text;
       if (!isUuid(blockId) || !text) continue;
       blocks.push({
@@ -367,7 +403,13 @@ export const documentHeadingImportVisitor: MdastImportVisitor<Heading> = {
     if (!$isElementNode(lexicalParent)) {
       throw new Error('Document heading parent must be an element node');
     }
-    const heading = $createHeadingNode(`h${mdastNode.depth}`);
+    const HeadingClass = registeredNodeClass<HeadingNode>(
+      $getEditor(),
+      'heading'
+    ) as typeof HeadingNode;
+    const heading = $applyNodeReplacement(
+      new HeadingClass(`h${mdastNode.depth}` as HeadingTagType)
+    );
     $setState(heading, documentBlockIdState, anchor.blockId);
     lexicalParent.append(heading);
     actions.visitChildren({ ...mdastNode, children: anchor.children }, heading);
@@ -385,7 +427,7 @@ export const documentParagraphExportVisitor: LexicalExportVisitor<
     if (
       !isUuid(blockId) ||
       isInsideTable(lexicalNode) ||
-      $isListItemNode(lexicalNode.getParent())
+      isListItemNode(lexicalNode.getParent())
     ) {
       actions.nextVisitor();
       return;
@@ -409,7 +451,7 @@ export const documentHeadingExportVisitor: LexicalExportVisitor<
   HeadingNode,
   Heading
 > = {
-  testLexicalNode: $isHeadingNode,
+  testLexicalNode: isHeadingNode,
   priority: 100,
   visitLexicalNode({ lexicalNode, mdastParent, actions }) {
     const blockId = $getState(lexicalNode, documentBlockIdState);
@@ -432,7 +474,7 @@ export const documentListItemExportVisitor: LexicalExportVisitor<
   ListItemNode,
   ListItem
 > = {
-  testLexicalNode: $isListItemNode,
+  testLexicalNode: isListItemNode,
   priority: 100,
   visitLexicalNode({ lexicalNode, mdastParent, actions }) {
     const blockId = $getState(lexicalNode, documentBlockIdState);

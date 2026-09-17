@@ -6,6 +6,7 @@ import {
   materializeTableResources,
   normalizeTablePlans,
   parseTablePlanMarkerJson,
+  renderPendingTableResourceReferences,
   renderTableResourceReferences,
   type GeneratedTablePlan,
 } from './tableResources';
@@ -230,6 +231,26 @@ describe('GDD table resources', () => {
     expect(markdown).toContain('<ResourceReference kind="table-row"');
   });
 
+  it('strips an anchored Markdown heading that duplicates the projected table link', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: '\u91cc\u7a0b\u7891\u5212\u5206', purpose: 'Schedule.', fields: ['name'],
+      rows: [{ name: '**\u539f\u578b**', values: { name: '**\u539f\u578b**' } }],
+    }]));
+    const markdown = applyInlineTableResourceReferences([
+      '# GDD',
+      '',
+      '### <BlockAnchor id="heading" />\u91cc\u7a0b\u7891\u5212\u5206',
+      '',
+      '<BlockAnchor id="marker" />',
+      '\u200B<!-- KECO_TABLE_REF \u91cc\u7a0b\u7891\u5212\u5206 -->',
+    ].join('\n'), resources);
+
+    expect(markdown).not.toContain('### <BlockAnchor id="heading" />\u91cc\u7a0b\u7891\u5212\u5206');
+    expect(markdown).toContain('<ResourceReference kind="table-row"');
+    expect(markdown).toContain('fallbackLabel="\u539f\u578b"');
+    expect(markdown).not.toContain('fallbackLabel="**\u539f\u578b**"');
+  });
+
   it('assigns deterministic table, row, and field IDs from the series seed', () => {
     const plans = normalizeTablePlans([{
       table: 'Skills', purpose: 'Actions.', fields: ['name', 'cost'],
@@ -271,6 +292,25 @@ describe('GDD table resources', () => {
     expect(markdown).toContain(`libraryId="${resources[0]!.id}"`);
     expect(markdown).toContain('fallbackLabel="Basic"');
     expect(markdown).not.toContain('KECO_TABLE_REF');
+  });
+
+  it('upgrades a durable async table-name placeholder at its original position', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]));
+    const pending = renderPendingTableResourceReferences(
+      '# GDD\n\n## Systems\n<!-- KECO_TABLE_REF Skills -->\n\n## Content\nBody.',
+      resources,
+    );
+
+    expect(pending).toContain('<GddTablePlaceholder tableName="Skills" />');
+    expect(pending).not.toContain('<ResourceReference');
+
+    const completed = applyInlineTableResourceReferences(pending, resources);
+    expect(completed).toMatch(/## Systems[\s\S]*<ResourceReference[\s\S]*## Content/);
+    expect(completed).not.toContain('GddTablePlaceholder');
+    expect(completed).not.toContain('## Keco Tables');
   });
 
   it('does not append a table whose inline row references already exist', () => {

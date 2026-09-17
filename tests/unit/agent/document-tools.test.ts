@@ -46,6 +46,7 @@ import { moveDocumentTool } from '@/lib/agent/tools/move-document';
 import { deleteDocumentTool } from '@/lib/agent/tools/delete-document';
 import { MAX_TOOL_CONTENT_CHARS } from '@/lib/agent/tool-result-for-llm';
 import { escapeLiteralMdxBraces } from '@/lib/document-parser';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -59,6 +60,17 @@ const ctx = {
   currentDocumentId: DOCUMENT_ID,
   currentDocumentName: 'Guide',
 } satisfies ToolContext;
+
+const usageBinding: AiUsageBinding = {
+  context: {
+    actorUserId: ctx.userId,
+    projectId: PROJECT_ID,
+    feature: 'agent_chat',
+    operation: 'react_iteration',
+    correlationId: 'agent_turn:turn-1',
+  },
+  recorder: async () => undefined,
+};
 
 function resolvedDocument(overrides: Record<string, unknown> = {}) {
   return {
@@ -223,6 +235,21 @@ describe('Agent document tools', () => {
       folderId: undefined,
     });
     expect(initialize).toHaveBeenCalledWith(ctx.supabase, DOCUMENT_ID, '# Guide');
+  });
+
+  it('passes the Agent binding to background indexing after document creation', async () => {
+    createDocument.mockResolvedValue({ id: DOCUMENT_ID, name: 'Guide' });
+
+    await createDocumentTool.execute({ name: 'Guide', content: '# Guide' }, {
+      ...ctx,
+      usageBinding,
+    } as ToolContext);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(reindexProjectDocumentAsActor).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: DOCUMENT_ID,
+      usageBinding,
+    }));
   });
 
   it('surfaces initialization failure and cleans up the newly created row', async () => {
@@ -889,6 +916,23 @@ describe('Agent document tools', () => {
       projectId: PROJECT_ID,
       documentId: DOCUMENT_ID,
     });
+  });
+
+  it('passes the Agent binding to background indexing after a document edit', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
+    const boundCtx = { ...ctx, usageBinding } as ToolContext;
+
+    await withoutConfirmationSecrets(async () => {
+      const preview = await proposeDocumentEdit.execute(replaceAllParams(), boundCtx);
+      return proposeDocumentEdit.executeImport!(preview, replaceAllParams(), boundCtx);
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(reindexProjectDocumentAsActor).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: DOCUMENT_ID,
+      usageBinding,
+    }));
   });
 
   it('rejects proposed Markdown tampering even when its unkeyed hash is recomputed', async () => {

@@ -14,6 +14,7 @@ import type {
 import { metaForSave, resolveConversationMeta } from './conversation-meta';
 import { getMessageText } from './content-parts';
 import { triggerConversationIndexing } from './embedding-index';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 /** True when a value is a well-formed multimodal content-part array. */
 function isContentPartArray(value: unknown): value is ChatContentPart[] {
@@ -220,6 +221,7 @@ export interface SaveMessageResult {
 export interface SaveMessageIndexingContext {
   projectId: string;
   userId: string;
+  usageBinding?: AiUsageBinding;
 }
 
 /**
@@ -263,6 +265,7 @@ export async function saveMessage(
       messageText,
       messageId: data.id as string,
       messageCreatedAt: data.created_at as string,
+      usageBinding: indexingContext.usageBinding,
     });
   }
 

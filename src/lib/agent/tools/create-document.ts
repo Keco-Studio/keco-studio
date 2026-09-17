@@ -26,6 +26,7 @@ function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
         actorUserId: ctx.userId,
         projectId: ctx.projectId,
         documentId,
+        usageBinding: ctx.usageBinding,
       })
     )
     .catch((error: unknown) => {

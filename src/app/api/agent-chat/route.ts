@@ -12,6 +12,7 @@ import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-cont
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { buildDesignMessage } from '@/lib/design-message';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
@@ -209,6 +210,7 @@ export const POST = withAuth(async function POST(
       : clientMessage;
 
     const abortController = new AbortController();
+    const turnId = crypto.randomUUID();
     const generator = runAgentTurn({
       conversationId: conversation.id,
       userMessage: message,
@@ -217,6 +219,17 @@ export const POST = withAuth(async function POST(
       selectionContext,
       toolContext,
       conversationMeta: boundMeta,
+      turnId,
+      usageBinding: {
+        context: {
+          actorUserId: user.id,
+          projectId: conversation.project_id,
+          feature: 'agent_chat',
+          operation: 'react_iteration',
+          correlationId: `agent_turn:${turnId}`,
+        },
+        recorder: createAuthenticatedAiUsageRecorder(supabase),
+      },
     });
 
     const response = sseResponse(generator, { abortController });

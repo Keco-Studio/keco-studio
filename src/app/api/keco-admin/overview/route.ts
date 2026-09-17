@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
-import { isKecoAdminUser } from '@/lib/server/kecoAdminAuthorization';
+import { hasKecoAdminAccess } from '@/lib/server/kecoAdminAuthorization';
 import { readKecoAdminOverview } from '@/lib/server/kecoAdminOverview';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' };
 
-export const GET = withAuth(async function GET(_request, _context, { user }) {
-  if (!isKecoAdminUser(user.id)) {
+export const GET = withAuth(async function GET(_request, _context, { supabase, user }) {
+  if (!(await hasKecoAdminAccess(user.id, supabase))) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403, headers: NO_STORE_HEADERS },

@@ -502,6 +502,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
           actorUserId: ctx.userId,
           projectId: ctx.projectId,
           documentId: replaced.documentId,
+          usageBinding: ctx.usageBinding,
         })
       )
       .catch((error: unknown) => {

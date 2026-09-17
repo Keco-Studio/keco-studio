@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Input, Select, Checkbox, Spin } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Input, Select, Spin } from 'antd';
+import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
@@ -19,8 +19,6 @@ import {
 import {
   assetHasAnyNonEmptyDisplayValue,
   cellDisplayString,
-  getReferencePickerDisplayValue,
-  hasNonEmptyDisplayValue,
 } from '@/lib/utils/assetEmptiness';
 import styles from './AssetReferenceModal.module.css';
 
@@ -42,6 +40,21 @@ type AssetRow = {
   library_id: string;
   library_name?: string;
 };
+
+type CellPosition = {
+  rowIndex: number;
+  columnIndex: number;
+};
+
+type DragSelection = {
+  start: CellPosition;
+  baseSelections: ReferenceSelection[];
+  additive: boolean;
+  moved: boolean;
+};
+
+const selectionKey = (selection: Pick<ReferenceSelection, 'assetId' | 'fieldId'>) =>
+  `${selection.assetId}::${selection.fieldId || ''}`;
 
 interface AssetReferenceModalProps {
   open: boolean;
@@ -67,19 +80,23 @@ export function AssetReferenceModal({
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
-  const selectedAssetIdsRef = useRef(selectedAssetIds);
+  const [selectedSelections, setSelectedSelections] = useState<ReferenceSelection[]>([]);
+  const selectedSelectionsRef = useRef(selectedSelections);
+  const dragSelectionRef = useRef<DragSelection | null>(null);
+  const suppressNextClickRef = useRef(false);
 
-  const updateSelectedAssetIds = (next: string[] | ((prev: string[]) => string[])) => {
-    const valueNext = typeof next === 'function' ? next(selectedAssetIdsRef.current) : next;
-    selectedAssetIdsRef.current = valueNext;
-    setSelectedAssetIds(valueNext);
+  const updateSelectedSelections = (
+    next: ReferenceSelection[] | ((prev: ReferenceSelection[]) => ReferenceSelection[])
+  ) => {
+    const valueNext = typeof next === 'function' ? next(selectedSelectionsRef.current) : next;
+    selectedSelectionsRef.current = valueNext;
+    setSelectedSelections(valueNext);
   };
 
   useEffect(() => {
     if (!open || referenceLibraries.length === 0) return;
 
-    updateSelectedAssetIds([]);
+    updateSelectedSelections([]);
 
     const loadLibraries = async () => {
       try {
@@ -163,6 +180,10 @@ export function AssetReferenceModal({
   }, [open, selectedLibraryId, supabase, libraries]);
 
   const primaryFieldId = libraryFields[0]?.id ?? null;
+  const resolvedSelectionKey = useCallback((selection: ReferenceSelection) => selectionKey({
+    ...selection,
+    fieldId: selection.fieldId || primaryFieldId,
+  }), [primaryFieldId]);
 
   const filteredRows = useMemo(() => {
     const q = searchText.trim().toLowerCase();
@@ -174,85 +195,133 @@ export function AssetReferenceModal({
     });
   }, [assetRows, valuesByAsset, searchText]);
 
-  const allVisibleSelected =
-    filteredRows.length > 0 && filteredRows.every((row) => selectedAssetIds.includes(row.id));
-  const someVisibleSelected =
-    filteredRows.some((row) => selectedAssetIds.includes(row.id)) && !allVisibleSelected;
+  const selectedKeys = useMemo(
+    () => new Set(selectedSelections.map(resolvedSelectionKey)),
+    [resolvedSelectionKey, selectedSelections]
+  );
 
   useEffect(() => {
     if (!open) return;
     const normalizedSelections = normalizeReferenceSelections(value);
-    const validSelections = normalizedSelections.filter((s) => s.assetId);
-    const ids = [...new Set(validSelections.map((s) => s.assetId))];
-    updateSelectedAssetIds(ids);
+    updateSelectedSelections(normalizedSelections.filter((selection) => selection.assetId));
     setSearchText('');
   }, [open, value]);
 
-  const handleRowToggle = (assetId: string) => {
-    updateSelectedAssetIds((prev) =>
-      prev.includes(assetId) ? prev.filter((id) => id !== assetId) : [...prev, assetId]
-    );
-  };
-
-  const handleToggleAllVisible = () => {
-    if (allVisibleSelected) {
-      const visibleIds = new Set(filteredRows.map((r) => r.id));
-      updateSelectedAssetIds((prev) => prev.filter((id) => !visibleIds.has(id)));
+  const handleCellClick = (selection: ReferenceSelection) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
       return;
     }
-    updateSelectedAssetIds((prev) => {
-      const next = new Set(prev);
-      filteredRows.forEach((r) => next.add(r.id));
-      return [...next];
+    updateSelectedSelections((current) => {
+      const key = resolvedSelectionKey(selection);
+      return current.some((item) => resolvedSelectionKey(item) === key)
+        ? current.filter((item) => resolvedSelectionKey(item) !== key)
+        : [...current, selection];
     });
   };
+
+  const selectionAt = (rowIndex: number, columnIndex: number): ReferenceSelection | null => {
+    const row = filteredRows[rowIndex];
+    const field = libraryFields[columnIndex];
+    if (!row || !field) return null;
+    const displayValue = cellDisplayString(valuesByAsset[row.id]?.[field.id]);
+    if (displayValue.trim() === '') return null;
+    return {
+      assetId: row.id,
+      fieldId: field.id,
+      fieldLabel: field.label || 'Column',
+      displayValue,
+    };
+  };
+
+  const selectionsInRectangle = (start: CellPosition, end: CellPosition) => {
+    const rowStart = Math.min(start.rowIndex, end.rowIndex);
+    const rowEnd = Math.max(start.rowIndex, end.rowIndex);
+    const columnStart = Math.min(start.columnIndex, end.columnIndex);
+    const columnEnd = Math.max(start.columnIndex, end.columnIndex);
+    const selections: ReferenceSelection[] = [];
+
+    for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex += 1) {
+      for (let columnIndex = columnStart; columnIndex <= columnEnd; columnIndex += 1) {
+        const selection = selectionAt(rowIndex, columnIndex);
+        if (selection) selections.push(selection);
+      }
+    }
+    return selections;
+  };
+
+  const handleCellMouseDown = (
+    event: React.MouseEvent<HTMLTableCellElement>,
+    position: CellPosition
+  ) => {
+    if (event.button !== 0) return;
+    dragSelectionRef.current = {
+      start: position,
+      baseSelections: selectedSelectionsRef.current,
+      additive: event.ctrlKey || event.metaKey,
+      moved: false,
+    };
+    suppressNextClickRef.current = false;
+    event.preventDefault();
+  };
+
+  const handleCellMouseEnter = (
+    event: React.MouseEvent<HTMLTableCellElement>,
+    position: CellPosition
+  ) => {
+    const drag = dragSelectionRef.current;
+    if (!drag || event.buttons !== 1) return;
+    if (
+      position.rowIndex === drag.start.rowIndex
+      && position.columnIndex === drag.start.columnIndex
+    ) return;
+
+    drag.moved = true;
+    const rectangleSelections = selectionsInRectangle(drag.start, position);
+    if (!drag.additive) {
+      updateSelectedSelections(rectangleSelections);
+      return;
+    }
+
+    const merged = new Map(
+      drag.baseSelections.map((selection) => [resolvedSelectionKey(selection), selection])
+    );
+    rectangleSelections.forEach((selection) => {
+      merged.set(resolvedSelectionKey(selection), selection);
+    });
+    updateSelectedSelections([...merged.values()]);
+  };
+
+  const handleCellMouseUp = (hasClickHandler: boolean) => {
+    if (dragSelectionRef.current?.moved && hasClickHandler) {
+      suppressNextClickRef.current = true;
+    }
+    dragSelectionRef.current = null;
+  };
+
+  useEffect(() => {
+    const finishDrag = () => {
+      dragSelectionRef.current = null;
+    };
+    document.addEventListener('mouseup', finishDrag);
+    return () => document.removeEventListener('mouseup', finishDrag);
+  }, []);
 
   const handleApply = () => {
-    const ids = selectedAssetIdsRef.current;
-    if (!primaryFieldId || ids.length === 0) {
-      onApply(null);
-      onClose();
-      return;
-    }
+    const currentSelections = selectedSelectionsRef.current.map((selection) => {
+      const fieldId = selection.fieldId || primaryFieldId;
+      const field = libraryFields.find((candidate) => candidate.id === fieldId);
+      const values = valuesByAsset[selection.assetId];
+      if (!fieldId || !field || !values) return selection;
 
-    const fieldDef = libraryFields.find((f) => f.id === primaryFieldId);
-    const fieldLabel = fieldDef?.label || 'Column';
-    const allSelections: ReferenceSelection[] = [];
-
-    ids.forEach((assetId) => {
-      const vals = valuesByAsset[assetId] || {};
-      let displayValue = getReferencePickerDisplayValue(vals, primaryFieldId);
-      let fieldId = primaryFieldId;
-      let label = fieldLabel;
-
-      // Match table UI: if the primary field is empty, fall back to the first
-      // non-empty field, then the asset name.
-      if (!hasNonEmptyDisplayValue(displayValue)) {
-        for (const field of libraryFields) {
-          const candidate = getReferencePickerDisplayValue(vals, field.id);
-          if (hasNonEmptyDisplayValue(candidate)) {
-            displayValue = candidate;
-            fieldId = field.id;
-            label = field.label || 'Column';
-            break;
-          }
-        }
-      }
-      if (!hasNonEmptyDisplayValue(displayValue)) {
-        const assetName = assetRows.find((row) => row.id === assetId)?.name?.trim();
-        if (!assetName) return;
-        displayValue = assetName;
-      }
-
-      allSelections.push({
-        assetId,
+      return {
+        ...selection,
         fieldId,
-        fieldLabel: label,
-        displayValue,
-      });
+        fieldLabel: field.label || 'Column',
+        displayValue: cellDisplayString(values[fieldId]),
+      };
     });
-
-    onApply(referenceSelectionsToValue(allSelections));
+    onApply(referenceSelectionsToValue(currentSelections));
     onClose();
   };
 
@@ -268,12 +337,21 @@ export function AssetReferenceModal({
         <div ref={modalRef} className={styles.modal}>
           <div className={styles.header}>
             <div className={styles.title}>Apply Reference</div>
+            <button
+              type="button"
+              className={styles.closeButton}
+              aria-label="Close reference picker"
+              onClick={handleCancel}
+            >
+              <CloseOutlined />
+            </button>
           </div>
 
           <div className={styles.content}>
             <Input
               prefix={<SearchOutlined />}
               placeholder="Search"
+              aria-label="Search reference cells"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className={styles.searchInput}
@@ -299,6 +377,8 @@ export function AssetReferenceModal({
               ))}
             </Select>
 
+            <p className={styles.selectionHint}>Select cells by clicking or dragging.</p>
+
             <div className={styles.tableWrap}>
               {loading ? (
                 <div className={styles.loading}>
@@ -307,58 +387,58 @@ export function AssetReferenceModal({
               ) : filteredRows.length === 0 ? (
                 <div className={styles.emptyMessage}>No assets found</div>
               ) : (
-                <table className={styles.refTable}>
+                <table className={styles.refTable} role="grid" aria-label="Reference cells">
                   <thead>
                     <tr>
-                      <th className={styles.checkCol}>
-                        <Checkbox
-                          checked={allVisibleSelected}
-                          indeterminate={someVisibleSelected}
-                          onChange={handleToggleAllVisible}
-                        />
-                      </th>
                       {libraryFields.map((field) => (
-                        <th key={field.id} className={styles.fieldCol}>
+                        <th key={field.id} className={styles.fieldCol} scope="col">
                           <span className={styles.fieldHeaderLabel}>{field.label}</span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row) => {
-                      const selected = selectedAssetIds.includes(row.id);
+                    {filteredRows.map((row, rowIndex) => {
                       const vals = valuesByAsset[row.id] || {};
+                      const rowLabel = primaryFieldId
+                        ? cellDisplayString(vals[primaryFieldId]) || row.name
+                        : row.name;
                       return (
-                        <tr
-                          key={row.id}
-                          className={selected ? styles.rowSelected : undefined}
-                          onClick={() => handleRowToggle(row.id)}
-                        >
-                          <td className={styles.checkCol} onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selected}
-                              onChange={() => handleRowToggle(row.id)}
-                            />
-                          </td>
+                        <tr key={row.id}>
                           {libraryFields.map((field, fieldIndex) => {
                             const text = cellDisplayString(vals[field.id]);
-                            const isPrimary = fieldIndex === 0;
+                            const selection: ReferenceSelection = {
+                              assetId: row.id,
+                              fieldId: field.id,
+                              fieldLabel: field.label || 'Column',
+                              displayValue: text,
+                            };
+                            const selected = selectedKeys.has(selectionKey(selection));
+                            const selectable = text.trim() !== '';
                             return (
-                              <td key={field.id} className={styles.fieldCol}>
-                                {isPrimary ? (
-                                  <span className={styles.nameCell}>
-                                    <span className={styles.refBadge} aria-hidden>
-                                      R
-                                    </span>
-                                    <span className={styles.nameText} title={text || row.name}>
-                                      {text || row.name || '—'}
-                                    </span>
-                                  </span>
-                                ) : (
-                                  <span className={styles.cellText} title={text}>
-                                    {text || '—'}
-                                  </span>
-                                )}
+                              <td
+                                key={field.id}
+                                role="gridcell"
+                                aria-label={`${rowLabel}, ${field.label}: ${text || 'Empty'}`}
+                                aria-selected={selected}
+                                aria-disabled={!selectable}
+                                className={`${styles.fieldCol} ${selected ? styles.cellSelected : ''} ${!selectable ? styles.cellDisabled : ''}`}
+                                onClick={selectable ? () => handleCellClick(selection) : undefined}
+                                onMouseDown={selectable
+                                  ? (event) => handleCellMouseDown(event, {
+                                    rowIndex,
+                                    columnIndex: fieldIndex,
+                                  })
+                                  : undefined}
+                                onMouseEnter={(event) => handleCellMouseEnter(event, {
+                                  rowIndex,
+                                  columnIndex: fieldIndex,
+                                })}
+                                onMouseUp={() => handleCellMouseUp(selectable)}
+                              >
+                                <span className={styles.cellText} title={text || row.name}>
+                                  {text || '—'}
+                                </span>
                               </td>
                             );
                           })}

@@ -58,7 +58,7 @@ describe('TableReferenceProjection', () => {
       values: {
         id: 'MP_01',
         summary: '12345678901234567890',
-        fragments: Array.from({ length: 12 }, (_, index) => `FR_01_${index + 1}`).join(', '),
+        fragments: Array.from({ length: 12 }, (_, index) => `FR_01_${index + 1}`),
       },
     };
     render(
@@ -79,5 +79,24 @@ describe('TableReferenceProjection', () => {
     );
 
     expect(screen.getByRole('table').style.gridTemplateColumns).toBe('96px 168px 320px');
+    expect(screen.getByText(/FR_01_1 \u00b7 FR_01_2/)).not.toBeNull();
+  });
+
+  it('renders Markdown emphasis in projected table cells', () => {
+    const fields = [{ id: 'name', label: '\u9636\u6bb5' }];
+    const row = { assetId: 'row-1', name: '**\u539f\u578b**', values: { name: '**\u539f\u578b**' } };
+    render(
+      <TableReferenceProjection
+        schema={{ libraryId: 'library-1', name: '\u91cc\u7a0b\u7891\u5212\u5206', href: '/project-1/library-1', fields, row }}
+        references={[{
+          key: 'table-row:library-1:row-1:name', status: 'available', label: '**\u539f\u578b**',
+          href: '/project-1/library-1?asset=row-1',
+          table: { libraryId: 'library-1', name: '\u91cc\u7a0b\u7891\u5212\u5206', href: '/project-1/library-1', fields, row },
+        }]}
+      />,
+    );
+
+    expect(screen.getByText('\u539f\u578b').tagName).toBe('STRONG');
+    expect(screen.queryByText('**\u539f\u578b**')).toBeNull();
   });
 });

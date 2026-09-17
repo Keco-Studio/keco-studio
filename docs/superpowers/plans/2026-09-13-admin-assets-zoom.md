@@ -54,4 +54,3 @@
 - [x] **Step 1:** Add browser assertions for controls, modified wheel behavior, page zoom stability, and detail opening.
 - [x] **Step 2:** Run focused unit tests. The browser fixture requires the `project_game_assets` migration in the target Supabase database; local remote schema currently lacks that table.
 - [x] **Step 3:** Run lint, typecheck, and production build.
-

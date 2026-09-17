@@ -5,9 +5,9 @@ import {
   validateCheckoutInput,
 } from '@/lib/payment-domain';
 import {
-  applyCheckoutAmountOverride,
   formatPlanPrice,
   getStudioPlanById,
+  listCreditPacks,
   listStudioPlans,
 } from '@/lib/studio-plans';
 
@@ -16,19 +16,19 @@ describe('payment-domain', () => {
     expect(
       validateCheckoutInput({
         projectId: '11111111-1111-4111-8111-111111111111',
-        planId: 'credits-1000',
+        planId: 'plan-pro',
         customerEmail: 'payer@example.com',
       })
     ).toEqual({
       projectId: '11111111-1111-4111-8111-111111111111',
-      planId: 'credits-1000',
+      planId: 'plan-pro',
       customerEmail: 'payer@example.com',
     });
 
     expect(() =>
       validateCheckoutInput({
         projectId: 'not-a-uuid',
-        planId: 'credits-1000',
+        planId: 'plan-pro',
         customerEmail: 'payer@example.com',
       })
     ).toThrow(/valid project id/i);
@@ -36,7 +36,7 @@ describe('payment-domain', () => {
     expect(() =>
       validateCheckoutInput({
         projectId: '11111111-1111-4111-8111-111111111111',
-        planId: 'credits-1000',
+        planId: 'plan-pro',
         customerEmail: 'bad',
       })
     ).toThrow(/valid customer email/i);
@@ -58,22 +58,15 @@ describe('studio-plans', () => {
   it('exposes catalog plans with formatted prices', () => {
     const plans = listStudioPlans();
     expect(plans.length).toBeGreaterThan(0);
-    expect(getStudioPlanById('credits-1000')?.label).toBe('1,000 credits');
-    expect(getStudioPlanById('plan-pro')?.popular).toBe(true);
-    expect(formatPlanPrice(getStudioPlanById('credits-1000')!)).toMatch(/\$/);
-  });
-
-  it('applies amount override only to credits-1000', () => {
-    const previous = process.env.STRIPE_CHECKOUT_AMOUNT_CENTS;
-    process.env.STRIPE_CHECKOUT_AMOUNT_CENTS = '500';
-    try {
-      const credit = getStudioPlanById('credits-1000')!;
-      const pro = getStudioPlanById('plan-pro')!;
-      expect(applyCheckoutAmountOverride(credit).amountCents).toBe(500);
-      expect(applyCheckoutAmountOverride(pro).amountCents).toBe(pro.amountCents);
-    } finally {
-      if (previous == null) delete process.env.STRIPE_CHECKOUT_AMOUNT_CENTS;
-      else process.env.STRIPE_CHECKOUT_AMOUNT_CENTS = previous;
-    }
+    expect(listCreditPacks()).toEqual([]);
+    expect(getStudioPlanById('credits-1000')).toBeNull();
+    expect(getStudioPlanById('credits-5000')).toBeNull();
+    expect(getStudioPlanById('plan-pro')).toMatchObject({
+      popular: true,
+      creditsLabel: '10,000 agent credits included',
+    });
+    expect(getStudioPlanById('plan-studio')?.creditsLabel)
+      .toBe('50,000 agent credits included');
+    expect(formatPlanPrice(getStudioPlanById('plan-pro')!)).toMatch(/\$/);
   });
 });

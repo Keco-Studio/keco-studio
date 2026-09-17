@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { withAuth } from '@/lib/auth/route-auth';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { suggestSimulationFieldMappings } from '@/lib/server/simulationFieldMappingService';
 import type { StudioColumnDefinition } from '@/lib/simulation/types';
 
@@ -29,7 +30,7 @@ function mappingErrorCode(error: unknown): string {
   return 'llm_error';
 }
 
-export const POST = withAuth(async function POST(request) {
+export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const body = Body.safeParse(await request.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json({ error: 'Invalid field mapping request' }, { status: 400 });
@@ -41,7 +42,15 @@ export const POST = withAuth(async function POST(request) {
       label: column.label!,
       valueType: column.valueType,
     }));
-    const mappings = await suggestSimulationFieldMappings(body.data.role!, columns);
+    const mappings = await suggestSimulationFieldMappings(body.data.role!, columns, {
+      context: {
+        actorUserId: user.id,
+        feature: 'simulation',
+        operation: 'field_mapping',
+        correlationId: `simulation_field_mapping:${crypto.randomUUID()}`,
+      },
+      recorder: createAuthenticatedAiUsageRecorder(supabase),
+    });
     return NextResponse.json({ mappings });
   } catch (error) {
     const code = mappingErrorCode(error);

@@ -93,6 +93,16 @@ Deno.test("maps provider authentication HTTP failures separately from outages", 
   assertEquals(error.code, "pixellab_not_configured");
 });
 
+Deno.test("accepts PixelLab's human-readable id response for character creation", async () => {
+  const client = new PixelLabCharacterClient("token", async () => mcpResponse({
+    content: [{ type: "text", text: "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44\nstatus: processing" }],
+  }));
+
+  assertEquals(await client.callTool("create_character", { description: "Scout" }), {
+    content: [{ type: "text", text: "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44\nstatus: processing" }],
+  });
+});
+
 Deno.test("retries transient background-job failures with backoff", async () => {
   let calls = 0;
   const delays: number[] = [];

@@ -25,6 +25,14 @@ describe('toScriptImportPlainText', () => {
     ).toBe('See Ada.');
   });
 
+  it('replaces pending GDD table placeholders with the table name', () => {
+    expect(
+      toScriptImportPlainText(
+        'Tables\n\n<GddTablePlaceholder tableName="Court &amp; Offices" />'
+      )
+    ).toBe('Tables\n\nCourt & Offices');
+  });
+
   it('normalizes escaped Markdown screenplay lines into importable text', () => {
     const input = [
       '\\### 【Opening dialogue】',

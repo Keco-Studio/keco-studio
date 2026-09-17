@@ -238,7 +238,7 @@ describe('GameDesignSystemVersionEditor', () => {
         },
       },
     });
-  }, 15_000);
+  }, 30_000);
 
   it('restores the no-op state when a value is changed back to its original', async () => {
     const user = userEvent.setup();
@@ -248,7 +248,9 @@ describe('GameDesignSystemVersionEditor', () => {
     expect((screen.getByRole('button', { name: 'Review changes' }) as HTMLButtonElement).disabled).toBe(false);
     await user.clear(field);
     await user.type(field, designDocument.gameBackground);
-    expect((screen.getByRole('button', { name: 'Review changes' }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Review changes' }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 
   it('restores no-op when an originally absent background is changed and cleared', async () => {

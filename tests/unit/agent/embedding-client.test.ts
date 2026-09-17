@@ -7,6 +7,7 @@ jest.mock('undici', () => ({
 }));
 
 import { embedTexts, EmbeddingError } from '../../../src/lib/agent/embedding-client';
+import type { AiUsageAttempt, AiUsageBinding } from '../../../src/lib/ai-usage/types';
 
 describe('embedTexts', () => {
   const originalFetch = global.fetch;
@@ -48,6 +49,47 @@ describe('embedTexts', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('records reported OpenAI embedding usage without a pricing version', async () => {
+    const attempts: AiUsageAttempt[] = [];
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: 'user-1',
+        projectId: 'project-1',
+        feature: 'agent_chat',
+        operation: 'index_batch',
+        correlationId: 'agent_turn:turn-1',
+      },
+      recorder: async (attempt) => {
+        attempts.push(attempt);
+      },
+    };
+    global.fetch = jest.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
+          usage: { prompt_tokens: 8, total_tokens: 8 },
+        }),
+        { status: 200 }
+      )
+    ) as typeof fetch;
+
+    await embedTexts(['index this'], usageBinding);
+
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      requestKind: 'embedding',
+      provider: 'openai',
+      outcome: 'succeeded',
+      usage: { inputTokens: 8, outputTokens: 0, totalTokens: 8 },
+      metadata: {
+        batchSize: 1,
+        inputCharacters: 10,
+        embeddingType: 'index_batch',
+      },
+    });
+    expect((attempts[0] as Record<string, unknown>).pricingRuleVersion).toBeUndefined();
+  });
+
   it('retries once on transient failure', async () => {
     let calls = 0;
     global.fetch = jest.fn(async () => {
@@ -64,6 +106,37 @@ describe('embedTexts', () => {
     const vectors = await embedTexts(['retry me']);
     expect(vectors[0]).toEqual([1, 0, 0]);
     expect(calls).toBe(2);
+  });
+
+  it('records a distinct bound usage event for each retry attempt', async () => {
+    const attempts: AiUsageAttempt[] = [];
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: 'user-1',
+        projectId: 'project-1',
+        feature: 'agent_chat',
+        operation: 'index_batch',
+        correlationId: 'agent_turn:turn-1',
+      },
+      recorder: async (attempt) => {
+        attempts.push(attempt);
+      },
+    };
+    let calls = 0;
+    global.fetch = jest.fn(async () => {
+      calls += 1;
+      if (calls === 1) return new Response('server error', { status: 500 });
+      return new Response(
+        JSON.stringify({ data: [{ embedding: [1, 0, 0], index: 0 }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    await expect(embedTexts(['retry me'], usageBinding)).resolves.toEqual([[1, 0, 0]]);
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts.map((attempt) => attempt.attempt)).toEqual([1, 2]);
+    expect(new Set(attempts.map((attempt) => attempt.eventKey)).size).toBe(2);
   });
 
   it('throws EmbeddingError when API key missing', async () => {
@@ -95,6 +168,53 @@ describe('embedTexts', () => {
 
     const vectors = await embedTexts(['index me']);
     expect(vectors[0]).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it('records unknown MiniMax usage with only bounded embedding metadata', async () => {
+    const attempts: AiUsageAttempt[] = [];
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: 'user-1',
+        projectId: 'project-1',
+        feature: 'agent_chat',
+        operation: 'index_batch',
+        correlationId: 'agent_turn:turn-1',
+      },
+      recorder: async (attempt) => {
+        attempts.push(attempt);
+      },
+    };
+    process.env.EMBEDDING_PROVIDER = 'minimax';
+    process.env.EMBEDDING_MODEL = 'embo-01';
+    global.fetch = jest.fn(async () =>
+      new Response(
+        JSON.stringify({
+          vectors: [[0.1, 0.2, 0.3]],
+          base_resp: { status_code: 0, status_msg: 'success' },
+        }),
+        { status: 200 }
+      )
+    ) as typeof fetch;
+
+    await embedTexts(['index me'], usageBinding);
+
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      requestKind: 'embedding',
+      provider: 'minimax',
+      outcome: 'succeeded',
+      usage: null,
+      metadata: {
+        batchSize: 1,
+        inputCharacters: 8,
+        embeddingType: 'index_batch',
+      },
+    });
+    expect(Object.keys(attempts[0].metadata ?? {}).sort()).toEqual([
+      'batchSize',
+      'embeddingType',
+      'inputCharacters',
+    ]);
   });
 
   it('uses type=query for embedQuery on MiniMax', async () => {

@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { DocumentAccessError } from '@/lib/documents/documentStateTypes';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import type { ResolvedStory } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
@@ -47,11 +50,25 @@ export type DialogueWorkerDependencies = {
   read: typeof documentStateGateway.read;
   resolve: typeof resolveStoryForImport;
   importStory: typeof importStoryDocument;
-  resolveOwner: (serviceClient: SupabaseClient, job: DialogueGenerationJob) => Promise<string>;
+  resolveOwner: (serviceClient: SupabaseClient, job: DialogueGenerationJob) => Promise<{ ownerId: string; projectId: string }>;
   findExistingScript: (serviceClient: SupabaseClient, job: DialogueGenerationJob, sourceState: { epoch: number; revision: number; updateIds: string[] }) => Promise<string | null>;
   updateReference: (serviceClient: SupabaseClient, job: DialogueGenerationJob, scriptLibraryId: string) => Promise<void>;
   updateSnapshot: (serviceClient: SupabaseClient, job: DialogueGenerationJob, resolved: Pick<ResolvedStory, 'document' | 'plotPlan'>, scriptLibraryId: string) => Promise<void>;
 };
+
+export async function resolveGddDialogueParentIdentity(
+  client: SupabaseClient,
+  job: Pick<DialogueGenerationJob, 'gdd_generation_job_id' | 'project_id'>,
+): Promise<{ ownerId: string; projectId: string }> {
+  const { data, error } = await client.from('gdd_generation_jobs')
+    .select('owner_id,project_id')
+    .eq('id', job.gdd_generation_job_id)
+    .eq('project_id', job.project_id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.owner_id || !data.project_id) throw new Error('Dialogue source GDD identity is not available.');
+  return { ownerId: data.owner_id, projectId: data.project_id };
+}
 
 const defaultDependencies: DialogueWorkerDependencies = {
   claim: claimDialogueGenerationJob,
@@ -68,16 +85,7 @@ const defaultDependencies: DialogueWorkerDependencies = {
   read: documentStateGateway.read,
   resolve: resolveStoryForImport,
   importStory: importStoryDocument,
-  resolveOwner: async (client, job) => {
-    const { data, error } = await client.from('gdd_generation_jobs')
-      .select('owner_id')
-      .eq('id', job.gdd_generation_job_id)
-      .eq('project_id', job.project_id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data?.owner_id) throw new Error('Dialogue source GDD owner is not available.');
-    return data.owner_id;
-  },
+  resolveOwner: resolveGddDialogueParentIdentity,
   findExistingScript: async (client, job, sourceState) => {
     const { data, error } = await client.from('libraries')
       .select('id,dialogue_generation_ready,dialogue_generation_source_epoch,dialogue_generation_source_revision,dialogue_generation_source_update_ids')
@@ -147,6 +155,7 @@ const defaultDependencies: DialogueWorkerDependencies = {
       projectId: job.project_id,
       documentId: data.output_document_id,
       dialogueJobId: job.id,
+      dialogueDocumentId: job.document_id,
       scriptLibraryId,
     });
   },
@@ -173,6 +182,7 @@ const defaultDependencies: DialogueWorkerDependencies = {
       projectId: job.project_id,
       documentId: data.output_document_id,
       dialogueJobId: job.id,
+      dialogueDocumentId: job.document_id,
       chapterKey: job.chapter_key,
       chapterTitle: job.title,
       snapshotMarkdown,
@@ -188,6 +198,25 @@ export function shouldWakeDialogueGenerationJob(
   return job.status === 'running'
     && Boolean(job.lease_expires_at)
     && Date.parse(job.lease_expires_at as string) <= now;
+}
+
+function dialogueUsageBinding(
+  serviceClient: SupabaseClient,
+  job: DialogueGenerationJob,
+  parent: { ownerId: string; projectId: string },
+): AiUsageBinding {
+  return {
+    context: {
+      actorUserId: parent.ownerId,
+      projectId: parent.projectId,
+      feature: 'gdd_dialogue',
+      operation: 'convert_script',
+      correlationId: job.gdd_generation_job_id,
+      jobId: job.gdd_generation_job_id,
+      artifactId: job.id,
+    },
+    recorder: createServiceAiUsageRecorder(serviceClient as never),
+  };
 }
 
 async function runWithLeaseHeartbeat<T>(
@@ -221,13 +250,16 @@ export async function processClaimedDialogueJob(
   try {
     await dependencies.heartbeat(serviceClient, job.id, workerId, 90);
     const source = await dependencies.read(serviceClient, job.document_id);
-    const content = source.markdown.trim();
+    const content = toScriptImportPlainText(source.markdown);
     if (!content) throw new Error('Source dialogue Document is empty.');
     const sourceState = {
       epoch: source.token?.epoch ?? 0,
       revision: source.token?.revision ?? 0,
       updateIds: (source.updateTail ?? []).map((update) => update.id).sort(),
     };
+    const parentIdentity = await dependencies.resolveOwner(serviceClient, job);
+    const ownerId = parentIdentity.ownerId;
+    const usageBinding = dialogueUsageBinding(serviceClient, job, parentIdentity);
     const existingScriptId = await dependencies.findExistingScript(serviceClient, job, sourceState);
     if (existingScriptId) {
       const completion = await dependencies.complete(serviceClient, job.id, workerId, existingScriptId);
@@ -244,6 +276,8 @@ export async function processClaimedDialogueJob(
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
+          usageBinding,
+          fallbackToLinearOnBranchFailure: true,
         });
         await dependencies.updateSnapshot(serviceClient, job, resolved, existingScriptId);
       } catch (error) {
@@ -264,8 +298,9 @@ export async function processClaimedDialogueJob(
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
+          usageBinding,
+          fallbackToLinearOnBranchFailure: true,
         });
-        const ownerId = await dependencies.resolveOwner(serviceClient, job);
         const result = await dependencies.importStory(serviceClient, {
           userId: ownerId,
           projectId: job.project_id,

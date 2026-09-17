@@ -1,6 +1,8 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { generateGameDesignSystemOutput, RuleSetGenerationValidationError, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
 import {
   claimGameDesignSystemGenerationJob,
@@ -91,7 +93,13 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
 }
 
 async function generateWithLeaseHeartbeat(
-  input: { serviceClient: SupabaseClient; workerId: string; jobId: string; generationInput: ResolvedGameDesignGenerationInput },
+  input: {
+    serviceClient: SupabaseClient;
+    workerId: string;
+    jobId: string;
+    generationInput: ResolvedGameDesignGenerationInput;
+    usageBinding: AiUsageBinding;
+  },
   dependencies: Pick<WorkerDependencies, 'heartbeat' | 'generate'>,
 ) {
   let heartbeatFailure: unknown;
@@ -102,7 +110,7 @@ async function generateWithLeaseHeartbeat(
       .catch((error) => { heartbeatFailure = error; });
   }, 30_000);
   try {
-    const rules = await dependencies.generate(input.generationInput);
+    const rules = await dependencies.generate(input.generationInput, undefined, input.usageBinding);
     await pendingHeartbeat;
     if (heartbeatFailure) throw heartbeatFailure;
     return rules;
@@ -128,11 +136,22 @@ export async function processClaimedGameDesignSystemJob(
     }
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
     const generationInput = job.input as unknown as ResolvedGameDesignGenerationInput;
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: job.owner_id,
+        feature: 'game_design_system',
+        operation: 'generate',
+        correlationId: job.id,
+        jobId: job.id,
+      },
+      recorder: createServiceAiUsageRecorder(serviceClient as never),
+    };
     const generated = await generateWithLeaseHeartbeat({
       serviceClient,
       workerId,
       jobId: job.id,
       generationInput,
+      usageBinding,
     }, dependencies);
     const { document, rules } = generated;
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');

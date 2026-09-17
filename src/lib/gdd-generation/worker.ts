@@ -1,6 +1,8 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { coerceGeneratedSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
@@ -8,12 +10,14 @@ import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   applyInlineTableResourceReferences,
   materializeTableResources,
+  renderPendingTableResourceReferences,
   sanitizeTableResourcesForPersistence,
 } from '@/lib/gdd-generation/tableResources';
 import { loadSeriesTableLibraryIds } from '@/lib/gdd-generation/seriesTableIds';
 import {
   materializeDialogueResources,
   renderDialogueReferences,
+  renderPendingDialogueReferences,
   type DialoguePlan,
 } from '@/lib/gdd-generation/dialogueResources';
 import {
@@ -24,10 +28,12 @@ import {
   hashGddGenerationInput,
 } from '@/lib/gddGeneration';
 import { compileGddMapBriefs } from './maps/compiler';
+import { gddFeatureUsage, gddUsage } from './usage';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import type { ResourceChangeSummary } from './resourceEvolution';
 import {
   generateGddMarkdownV2,
+  hasNarrativeIntent,
   reviewGddMarkdownV2,
   GddV2GenerationValidationError,
   GddV2ResourceRecoveryError,
@@ -299,6 +305,7 @@ export async function persistGeneratedGddV2Document(
   review: unknown,
   tablePlans: Parameters<typeof materializeTableResources>[1] = [],
   dialoguePlans: DialoguePlan[] = [],
+  usageBinding?: AiUsageBinding,
 ): Promise<PersistedGddGeneration> {
   const input = job.input as GddGenerationRequestV2;
   const existingLibraryIds = await loadSeriesTableLibraryIds(
@@ -313,11 +320,13 @@ export async function persistGeneratedGddV2Document(
   const asyncResources = job.resource_mode === 'async' || (input as { resourceMode?: string }).resourceMode === 'async';
   const persistedTableResources = asyncResources ? [] : tableResources;
   const persistedDialogueResources = asyncResources ? [] : dialogueResources;
-  // Async table writes reuse deterministic IDs, so references can occupy their
-  // authored body positions before the background worker creates the rows.
-  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
-  const withDialogue = persistedDialogueResources.length > 0
-    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
+  const withTableRefs = asyncResources
+    ? renderPendingTableResourceReferences(markdown, tableResources)
+    : applyInlineTableResourceReferences(markdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${asyncResources
+      ? renderPendingDialogueReferences(dialogueResources)
+      : renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
     : withTableRefs;
   const documentMarkdown = withDialogue;
 
@@ -326,7 +335,11 @@ export async function persistGeneratedGddV2Document(
   let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
   if (!asyncResources) {
     try {
-      briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
+      briefs = await compileGddMapBriefs({
+        markdown: withDialogue,
+        artStyle: input.artStyle ?? null,
+        ...(usageBinding ? { usageBinding: gddFeatureUsage(usageBinding, 'gdd_map', 'inline_map') } : {}),
+      });
     } catch (error) {
       mapCompilationFailed = true;
       mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
@@ -408,8 +421,11 @@ export async function persistGeneratedGddV2Document(
           ...(input.rules.tableGuidance.length > 0 || tableResources.length > 0
             ? [{ kind: 'tables' as const, payload: { input, resources: tableResources, markdown: documentMarkdown } }]
             : []),
-          ...(dialoguePlans.length > 0
-            ? [{ kind: 'dialogue' as const, payload: { dialoguePlans } }]
+          ...(dialoguePlans.length > 0 || hasNarrativeIntent(input, { markdown, tablePlans })
+            ? [{
+                kind: 'dialogue' as const,
+                payload: { dialoguePlans, input, markdown, tablePlans },
+              }]
             : []),
           { kind: 'maps' as const, payload: { markdown: documentMarkdown, artStyle: input.artStyle ?? null } },
         ],
@@ -622,6 +638,7 @@ function readProfessionalReviewReport(value: unknown): ProfessionalReviewReport 
 async function processProfessionalGddPhase(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob & { input: GddGenerationRequestV2 } },
   dependencies: WorkerDependencies,
+  usageBinding: AiUsageBinding,
 ): Promise<GddJobStatus> {
   const { serviceClient, workerId, job } = input;
   const checkpoint = dependencies.checkpoint ?? checkpointGddGenerationJob;
@@ -657,6 +674,7 @@ async function processProfessionalGddPhase(
         report.review,
         report.tablePlans,
         report.dialoguePlans,
+        usageBinding,
       ),
       {
         heartbeatPhase: 'saving',
@@ -673,7 +691,9 @@ async function processProfessionalGddPhase(
       input,
       dependencies.heartbeat,
       professionalStageDeadlineMs(job),
-      (signal) => dependencies.reviewV2!(job.input, markdown, {}, { signal }),
+      (signal) => dependencies.reviewV2!(job.input, markdown, {
+        usageBinding: gddUsage(usageBinding, 'review'),
+      }, { signal }),
       {
         heartbeatPhase: 'reviewing',
         deadlineMessage: `Professional GDD stage reviewing exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
@@ -699,7 +719,7 @@ async function processProfessionalGddPhase(
     input,
     dependencies.heartbeat,
     professionalStageDeadlineMs(job),
-    (signal) => dependencies.generateProfessionalStage!(job.input, stage, current, {}, signal),
+    (signal) => dependencies.generateProfessionalStage!(job.input, stage, current, { usageBinding }, signal),
     {
       heartbeatPhase: job.phase,
       deadlineMessage: `Professional GDD stage ${job.phase} exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
@@ -723,6 +743,17 @@ export async function processClaimedGddJob(
   dependencies: WorkerDependencies = defaultDependencies,
 ): Promise<GddJobStatus> {
   const { serviceClient, workerId, job } = input;
+  const usageBinding: AiUsageBinding = {
+    context: {
+      actorUserId: job.owner_id,
+      projectId: job.project_id,
+      feature: 'gdd',
+      operation: 'generate',
+      correlationId: job.id,
+      jobId: job.id,
+    },
+    recorder: createServiceAiUsageRecorder(serviceClient as never),
+  };
   try {
     await dependencies.heartbeat(
       serviceClient,
@@ -736,12 +767,12 @@ export async function processClaimedGddJob(
         serviceClient,
         workerId,
         job,
-      }, dependencies);
+      }, dependencies, usageBinding);
     }
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
       const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, gddGenerationDeadlineMs(job), (signal) => (
-        dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
+        dependencies.generateV2!(job.input as GddGenerationRequestV2, { usageBinding }, { signal })
       ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       const normalizedV2Markdown = coerceGeneratedSanctionedMdx(generatedV2.markdown);
@@ -755,6 +786,7 @@ export async function processClaimedGddJob(
         generatedV2.review,
         generatedV2.tablePlans,
         generatedV2.dialoguePlans ?? [],
+        usageBinding,
       );
       return persisted.status ?? 'completed';
     }
@@ -762,7 +794,7 @@ export async function processClaimedGddJob(
       input,
       dependencies.heartbeat,
       gddGenerationDeadlineMs(job),
-      () => dependencies.generate(job.input),
+      () => dependencies.generate(job.input, { usageBinding }),
     );
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     const tableResources = materializeTableResources(tableSeriesSeed(job), generated.productionTables);

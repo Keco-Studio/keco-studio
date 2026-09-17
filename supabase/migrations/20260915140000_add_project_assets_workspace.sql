@@ -1,6 +1,5 @@
 alter table public.projects
   add column if not exists assets_workspace_enabled boolean not null default false;
-
 update public.projects as project
 set assets_workspace_enabled = true
 where exists (

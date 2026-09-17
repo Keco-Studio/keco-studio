@@ -20,4 +20,3 @@ The existing shared presentation helpers remain the source of truth for bounded 
 - Unit coverage verifies the target row-height mapping and bounded wheel-size transitions.
 - Browser coverage verifies ordinary scrolling, `Ctrl/Cmd + wheel` without page zoom, the size controls, image aspect-ratio preservation, selection, and detail opening on `/admin/assets`.
 - Run the focused unit tests, lint, typecheck, build, and the focused Playwright flow before handoff.
-

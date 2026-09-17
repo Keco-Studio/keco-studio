@@ -7,6 +7,10 @@ export function toScriptImportPlainText(markdown: string): string {
   return markdown
     .replace(/<BlockAnchor\b[^>]*\/?>/gi, '')
     .replace(
+      /<GddTablePlaceholder\b[^>]*\btableName="([^"]*)"[^>]*\/?>/gi,
+      '$1'
+    )
+    .replace(
       /<ResourceReference\b[^>]*\bfallbackLabel="([^"]*)"[^>]*\/?>/gi,
       '$1'
     )
@@ -16,6 +20,10 @@ export function toScriptImportPlainText(markdown: string): string {
       '$1'
     )
     .replace(/<GddMapReference\b[^>]*\/?>/gi, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
       String.fromCharCode(Number.parseInt(hex, 16))
     )

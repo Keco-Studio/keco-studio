@@ -830,6 +830,55 @@ export function tryParseLinearScreenplay(
   };
 }
 
+/**
+ * Preserve player-visible source text when generated branch notation is too
+ * ambiguous to form a valid graph. This intentionally discards branch edges;
+ * callers must opt in when a readable linear Script is preferable to failure.
+ */
+export function tryBuildLinearStoryFallback(
+  source: SegmentedStorySource
+): StoryRelationshipPlan | null {
+  const nodes: PlannedNode[] = [];
+
+  for (const unit of source.units) {
+    const segments = unitSegments(source, unit.id);
+    const contentSegments = segments.filter((segment) => segment.display);
+    const commandIds = source.commands
+      .filter((command) => segmentUnitId(source, command.segmentId) === unit.id)
+      .map((command) => command.id);
+    if (contentSegments.length === 0) {
+      if (commandIds.length > 0) return null;
+      continue;
+    }
+
+    const speaker = segments.find((segment) => segment.kind === 'speaker');
+    const hasDialogue = contentSegments.some((segment) => segment.kind === 'dialogue');
+    const node: PlannedNode = {
+      id: `Node${nodes.length + 1}`,
+      type: speaker && hasDialogue
+        ? 'dialogue'
+        : contentSegments.some((segment) => segment.kind === 'scene_heading')
+          ? 'scene'
+          : 'narration',
+      speakerSegmentId: speaker && hasDialogue ? speaker.id : '',
+      contentSegmentIds: contentSegments.map((segment) => segment.id),
+      commandIds,
+      nextNodeId: '',
+    };
+    const previous = nodes.at(-1);
+    if (previous) previous.nextNodeId = node.id;
+    nodes.push(node);
+  }
+
+  if (nodes.length === 0) return null;
+  return {
+    version: 2,
+    entryNodeId: nodes[0].id,
+    nodes,
+    choices: [],
+  };
+}
+
 function parseChineseBranchOrdinal(line: string): number | null {
   const value = CHINESE_BRANCH_PATTERN.exec(line)?.[1];
   return value ? parseOrdinal(value) : null;

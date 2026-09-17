@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { withAuth } from '@/lib/auth/route-auth';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { AuthorizationError } from '@/lib/services/authorizationService';
 import {
   CreateMapDocumentSourceError,
@@ -136,6 +137,16 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
         body.data.referenceUsage,
         body.data.styleCopy,
       ),
+      {
+        context: {
+          actorUserId: user.id,
+          ...(body.data.projectId ? { projectId: body.data.projectId } : {}),
+          feature: 'create_map',
+          operation: 'plan_v3',
+          correlationId: `create_map:${crypto.randomUUID()}`,
+        },
+        recorder: createAuthenticatedAiUsageRecorder(supabase),
+      },
     );
     return NextResponse.json({
       sourceToken: source ? {

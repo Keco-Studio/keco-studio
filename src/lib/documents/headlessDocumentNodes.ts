@@ -101,10 +101,7 @@ export async function waitForLexicalCommit(): Promise<void> {
 }
 
 export async function createHeadlessDocumentEditor(): Promise<HeadlessDocumentEditor> {
-  const lexicalRuntime: typeof import('lexical') =
-    process.env.DOCUMENT_CODEC_COMMONJS === '1'
-      ? require('lexical')
-      : await import('lexical');
+  const lexicalRuntime = mdxEditorRuntime.lexical as typeof import('lexical');
   const { $createParagraphNode, $getRoot } = lexicalRuntime;
   const realm = new Realm();
   const plugins = documentPlugins();

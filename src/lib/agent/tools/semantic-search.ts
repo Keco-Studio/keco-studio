@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { embedQuery } from '../embedding-client';
 import { semanticSearchChunks } from '../embedding-retrieval';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { deriveAiUsageBinding } from '@/lib/ai-usage/types';
 
 const ParamsSchema = z.object({
   query: z.string().min(1),
@@ -21,7 +22,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   try {
-    const queryEmbedding = await embedQuery(parsed.data.query);
+    const queryEmbedding = await embedQuery(
+      parsed.data.query,
+      ctx.usageBinding
+        ? deriveAiUsageBinding(ctx.usageBinding, { operation: 'retrieval_query' })
+        : undefined,
+    );
     const results = await semanticSearchChunks({
       supabase: ctx.supabase,
       queryEmbedding,

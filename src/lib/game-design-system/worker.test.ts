@@ -88,7 +88,7 @@ describe('leased Game Design System worker', () => {
   it('heartbeats phases and completes only with the claimed lease', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const findGenerationOutput = jest.fn(async () => null);
-    const generate = jest.fn(async () => generated);
+    const generate = jest.fn(async (..._args: unknown[]) => generated);
     const complete = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _output: unknown) => undefined);
     const createSystem = jest.fn(async (_client: unknown, _ownerId: string, _input: unknown) => (
       { id: 'system-1', current_version_id: 'version-1' } as never
@@ -105,8 +105,42 @@ describe('leased Game Design System worker', () => {
     expect(result).toBe('completed');
     expect(findGenerationOutput.mock.invocationCallOrder[0]).toBeLessThan(generate.mock.invocationCallOrder[0]);
     expect(heartbeat.mock.calls.map((call) => call[3])).toEqual(['generating', 'validating', 'saving']);
+    expect(generate).toHaveBeenCalledWith(expect.anything(), undefined, expect.objectContaining({
+      context: expect.objectContaining({
+        actorUserId: 'user-1',
+        feature: 'game_design_system',
+        operation: 'generate',
+        correlationId: 'job-1',
+        jobId: 'job-1',
+      }),
+    }));
     expect(createSystem).toHaveBeenCalledWith(expect.anything(), 'user-1', expect.objectContaining({ document, rules, artStyle }));
     expect(complete).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', { systemId: 'system-1', versionId: 'version-1' });
+  });
+
+  it('does not attribute a project from untrusted generation input', async () => {
+    const generate = jest.fn(async (..._args: unknown[]) => generated);
+    const jobWithUntrustedProject = {
+      ...job,
+      input: { ...job.input, projectId: '22222222-2222-4222-8222-222222222222' },
+    };
+
+    await processClaimedGameDesignSystemJob({
+      serviceClient: {} as never,
+      workerId: 'worker-1',
+      job: jobWithUntrustedProject,
+    }, {
+      findGenerationOutput: jest.fn(async () => null),
+      heartbeat: jest.fn(async () => undefined),
+      generate,
+      createSystem: jest.fn(async () => ({ id: 'system-1', current_version_id: 'version-1' } as never)),
+      complete: jest.fn(async () => undefined),
+      retry: jest.fn(async () => 'queued' as const),
+      fail: jest.fn(async () => undefined),
+    } as never);
+
+    const binding = generate.mock.calls[0][2] as { context: { projectId?: string } };
+    expect(binding.context.projectId).toBeUndefined();
   });
 
   it('completes an existing generation output before any model or persistence call', async () => {

@@ -742,6 +742,36 @@ async function expectWithin(locator: Locator, container: Locator): Promise<void>
 test.describe('Create Map V3 mocked workflow', () => {
   test.describe.configure({ mode: 'serial', timeout: 45_000 });
 
+  test('aligns the source panel chrome with the Libraries sidebar', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const backend = new CreateMapV3MockBackend();
+    await loginAndOpen(page, backend);
+
+    const sourcePanel = page.getByRole('complementary', { name: 'Map source and references' });
+    const projectSelector = sourcePanel.getByRole('button', { name: 'Project' });
+    const search = sourcePanel.getByRole('searchbox', { name: 'Search saved maps' });
+    const topBar = page.locator('header').first();
+    const [sourceBox, projectBox, searchBox, topBarBox] = await Promise.all([
+      sourcePanel.boundingBox(),
+      projectSelector.boundingBox(),
+      search.boundingBox(),
+      topBar.boundingBox(),
+    ]);
+
+    expect(sourceBox).not.toBeNull();
+    expect(projectBox).not.toBeNull();
+    expect(searchBox).not.toBeNull();
+    expect(topBarBox).not.toBeNull();
+    expect(sourceBox?.y).toBe(0);
+    expect(sourceBox?.height).toBe(900);
+    expect(topBarBox?.x).toBe(sourceBox!.x + sourceBox!.width);
+    expect(projectBox?.width).toBe(searchBox?.width);
+    expect(searchBox?.height).toBe(30);
+    await expect(search).toHaveCSS('border-top-width', '0px');
+    await expect(search).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(search.locator('..')).toHaveCSS('background-color', 'rgb(241, 245, 249)');
+  });
+
   test('creates a description-only V3 Plan in the required Project', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);

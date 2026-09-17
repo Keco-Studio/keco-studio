@@ -8,11 +8,9 @@ CREATE TABLE IF NOT EXISTS public.mcp_asset_upload_preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (session_id, project_id)
 );
-
 ALTER TABLE public.mcp_asset_upload_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mcp_asset_upload_preferences FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.mcp_asset_upload_preferences FROM PUBLIC, anon, authenticated, service_role;
-
 CREATE OR REPLACE FUNCTION public.mcp_get_asset_upload_auto_execute(p_project_id UUID)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -55,7 +53,6 @@ BEGIN
   RETURN v_value;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mcp_set_asset_upload_auto_execute(
   p_project_id UUID,
   p_enabled BOOLEAN
@@ -100,7 +97,6 @@ BEGIN
   RETURN TRUE;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.mcp_get_asset_upload_auto_execute(UUID) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.mcp_get_asset_upload_auto_execute(UUID) TO authenticated;
 REVOKE ALL ON FUNCTION public.mcp_set_asset_upload_auto_execute(UUID, BOOLEAN) FROM PUBLIC, anon, authenticated, service_role;

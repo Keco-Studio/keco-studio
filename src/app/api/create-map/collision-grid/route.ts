@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 
 import { withAuth } from '@/lib/auth/route-auth';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { AuthorizationError, getUserProjectRole } from '@/lib/services/authorizationService';
 import {
   CreateMapCollisionAnalyzerError,
@@ -127,6 +128,16 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       imageSha256: sha256,
       width: asset.width,
       height: asset.height,
+    }, {
+      context: {
+        actorUserId: user.id,
+        projectId: body.data.projectId,
+        feature: 'map_collision',
+        operation: 'classify_region',
+        correlationId: `map_collision:${crypto.randomUUID()}`,
+        artifactId: body.data.revisionId,
+      },
+      recorder: createAuthenticatedAiUsageRecorder(supabase),
     });
     return json({ collisionGrid });
   } catch (error) {

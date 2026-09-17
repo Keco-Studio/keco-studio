@@ -11,6 +11,9 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 export function cellDisplayString(raw: unknown): string {
   if (raw === null || raw === undefined) return '';
   if (typeof raw === 'boolean') return raw ? 'true' : 'false';
+  if (Array.isArray(raw)) {
+    return raw.map(cellDisplayString).filter(Boolean).join(' \u00b7 ');
+  }
   if (typeof raw === 'object') {
     return JSON.stringify(raw);
   }

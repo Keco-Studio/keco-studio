@@ -21,6 +21,9 @@ import {
   markEmbeddingRateLimited,
 } from './embedding-throttle';
 import { outboundFetch } from './outbound-http';
+import { randomUUID } from 'node:crypto';
+import { normalizeTokenUsage } from '@/lib/ai-usage/normalize';
+import type { AiProvider, AiUsageBinding, AiUsageOutcome } from '@/lib/ai-usage/types';
 
 export class EmbeddingError extends Error {
   constructor(message: string) {
@@ -33,13 +36,17 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface OpenAIEmbeddingResponse {
   data?: Array<{ embedding: number[]; index: number }>;
+  usage?: unknown;
   error?: { message?: string };
 }
 
 interface MiniMaxEmbeddingResponse {
   vectors?: number[][] | null;
+  usage?: unknown;
   base_resp?: { status_code?: number; status_msg?: string };
 }
+
+type EmbeddingResponse = { vectors: number[][]; usage?: unknown };
 
 function buildEmbeddingsUrl(provider: EmbeddingProvider): string {
   const base = `${getEmbeddingApiUrl()}/v1/embeddings`;
@@ -50,7 +57,7 @@ function buildEmbeddingsUrl(provider: EmbeddingProvider): string {
   return base;
 }
 
-async function requestOpenAIEmbeddings(texts: string[]): Promise<number[][]> {
+async function requestOpenAIEmbeddings(texts: string[]): Promise<EmbeddingResponse> {
   const apiKey = getEmbeddingApiKey();
   if (!apiKey) {
     throw new EmbeddingError('EMBEDDING_API_KEY (or LLM_API_KEY) is not configured.');
@@ -83,13 +90,13 @@ async function requestOpenAIEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   const sorted = [...json.data].sort((a, b) => a.index - b.index);
-  return sorted.map((row) => row.embedding);
+  return { vectors: sorted.map((row) => row.embedding), usage: json.usage };
 }
 
 async function requestMiniMaxEmbeddings(
   texts: string[],
   type: 'db' | 'query'
-): Promise<number[][]> {
+): Promise<EmbeddingResponse> {
   const apiKey = getEmbeddingApiKey();
   if (!apiKey) {
     throw new EmbeddingError('EMBEDDING_API_KEY (or LLM_API_KEY) is not configured.');
@@ -126,13 +133,13 @@ async function requestMiniMaxEmbeddings(
     throw new EmbeddingError('Embedding API returned no vectors.');
   }
 
-  return json.vectors;
+  return { vectors: json.vectors, usage: json.usage };
 }
 
 async function requestEmbeddings(
   texts: string[],
   type: 'db' | 'query'
-): Promise<number[][]> {
+): Promise<{ provider: AiProvider; response: EmbeddingResponse }> {
   if (isEmbeddingInCooldown()) {
     throw new EmbeddingError('Embedding API is in rate-limit cooldown.');
   }
@@ -142,9 +149,9 @@ async function requestEmbeddings(
   const provider = resolveEmbeddingProvider();
   try {
     if (provider === 'minimax') {
-      return await requestMiniMaxEmbeddings(texts, type);
+      return { provider, response: await requestMiniMaxEmbeddings(texts, type) };
     }
-    return await requestOpenAIEmbeddings(texts);
+    return { provider: 'openai', response: await requestOpenAIEmbeddings(texts) };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (isRateLimitError(message)) {
@@ -154,11 +161,53 @@ async function requestEmbeddings(
   }
 }
 
+function embeddingOutcome(error: unknown): AiUsageOutcome {
+  if (error instanceof DOMException && error.name === 'AbortError') return 'aborted';
+  return error instanceof EmbeddingError ? 'provider_error' : 'transport_error';
+}
+
+async function recordEmbeddingAttempt(
+  usageBinding: AiUsageBinding | undefined,
+  batch: string[],
+  type: 'db' | 'query',
+  provider: AiProvider,
+  attempt: number,
+  startedAt: string,
+  outcome: AiUsageOutcome,
+  usage: unknown,
+): Promise<void> {
+  if (!usageBinding) return;
+  try {
+    await usageBinding.recorder({
+      eventKey: randomUUID(),
+      context: usageBinding.context,
+      requestKind: 'embedding',
+      provider,
+      model: getEmbeddingModel(),
+      attempt,
+      outcome,
+      usage: normalizeTokenUsage(usage, 'embedding'),
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      metadata: {
+        batchSize: batch.length,
+        inputCharacters: batch.reduce((total, text) => total + text.length, 0),
+        embeddingType: type === 'query' ? 'query' : 'index_batch',
+      },
+    });
+  } catch {
+    // Accounting must not alter embedding availability or retry behavior.
+  }
+}
+
 /**
  * Embed one or more text strings for storage/indexing (MiniMax type=db).
  * Batches automatically. Retries once on transient failure.
  */
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(
+  texts: string[],
+  usageBinding?: AiUsageBinding,
+): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const results: number[][] = [];
@@ -166,12 +215,20 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     const batch = texts.slice(i, i + EMBEDDING_BATCH_SIZE);
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
+      const startedAt = new Date().toISOString();
       try {
-        const vectors = await requestEmbeddings(batch, 'db');
-        results.push(...vectors);
+        const { provider, response } = await requestEmbeddings(batch, 'db');
+        await recordEmbeddingAttempt(
+          usageBinding, batch, 'db', provider, attempt + 1, startedAt, 'succeeded', response.usage,
+        );
+        results.push(...response.vectors);
         lastError = null;
         break;
       } catch (e) {
+        await recordEmbeddingAttempt(
+          usageBinding, batch, 'db', resolveEmbeddingProvider(), attempt + 1, startedAt,
+          embeddingOutcome(e), null,
+        );
         lastError = e;
         const message = e instanceof Error ? e.message : String(e);
         if (isRateLimitError(message) || isEmbeddingInCooldown()) {
@@ -191,13 +248,22 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 /** Embed a search query (MiniMax type=query). */
-export async function embedQuery(text: string): Promise<number[]> {
+export async function embedQuery(text: string, usageBinding?: AiUsageBinding): Promise<number[]> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const startedAt = new Date().toISOString();
     try {
-      const [vector] = await requestEmbeddings([text], 'query');
+      const { provider, response } = await requestEmbeddings([text], 'query');
+      await recordEmbeddingAttempt(
+        usageBinding, [text], 'query', provider, attempt + 1, startedAt, 'succeeded', response.usage,
+      );
+      const [vector] = response.vectors;
       return vector;
     } catch (e) {
+      await recordEmbeddingAttempt(
+        usageBinding, [text], 'query', resolveEmbeddingProvider(), attempt + 1, startedAt,
+        embeddingOutcome(e), null,
+      );
       lastError = e;
       const message = e instanceof Error ? e.message : String(e);
       if (isRateLimitError(message) || isEmbeddingInCooldown()) {
