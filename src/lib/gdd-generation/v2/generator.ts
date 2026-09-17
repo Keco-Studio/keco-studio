@@ -61,6 +61,15 @@ export class GddV2ResourceRecoveryError extends Error {
   }
 }
 
+export const GDD_READABLE_CONTENT_RULES = [
+  'Explain each useful player-facing design concept under a human-readable name when detail helps implementation; behavior, parameters, feedback, edge cases, and variants belong in prose.',
+  'Use human-readable game-facing names in prose, headings, and labels. Do not use internal IDs, schema field names, JSON, or backticked codes as a substitute for design explanation.',
+  'Tables own record-level data. Do not enumerate or restate table records field by field in the GDD body. Do not create "record template", "entry template", or "N example records" subsections.',
+  'For table plans, use a human-readable row name. Do not invent identifier, ID, code, or reference fields unless the pinned table guidance requires them. When stable IDs are required, use one concise readable key per entity and avoid redundant ID columns or opaque long alphanumeric values.',
+  'Emit exactly one KECO_TABLE_REF for each planned table. Do not repeat the table name, a label, or a Markdown link immediately before the placeholder.',
+  'Do not wrap ordinary names, labels, or IDs in inline code unless they are literal syntax the reader must type.',
+] as const;
+
 export async function reviewGddMarkdownV2(
   input: GddGenerationRequestV2,
   markdown: string,
@@ -253,6 +262,7 @@ function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
       'Do not return JSON. Do not wrap the answer in a Markdown code fence. Do not add commentary before or after the document.',
       ...modeRules,
       'Start with one H1 title. Use Markdown headings, lists, blockquotes, and fenced formula or flow examples only when they improve readability.',
+      ...GDD_READABLE_CONTENT_RULES,
       'Do not render Markdown tables in the GDD body. Represent every tabular structure as an independent Keco table plan so the worker can create and reference the table resource.',
       'For supermarket, management, RPG, or any data-driven game, you MUST emit at least one KECO_TABLE_PLAN with concrete rows for the core entities the GDD discusses (for example products, staff, customers, upgrades). Emitting KECO_TABLE_REF without a matching plan is invalid.',
       'Where a table belongs in the prose, emit exactly one HTML comment placeholder using the table name: <!-- KECO_TABLE_REF Skills -->. Do not write the table name, a "TableName:" label, or any Markdown link on the line before the placeholder — the editor already shows the linked table title. Do not put table rows in the GDD body.',
@@ -354,6 +364,21 @@ function escapeNumericLessThanInProse(markdown: string): string {
   }).join('\n');
 }
 
+function removeStandaloneEscapeLines(markdown: string): string {
+  let fence: { marker: string; length: number } | null = null;
+  return markdown.split(/\r?\n/).filter((line) => {
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0];
+      const length = fenceMatch[1].length;
+      if (!fence) fence = { marker, length };
+      else if (fence.marker === marker && length >= fence.length) fence = null;
+      return true;
+    }
+    return fence !== null || !/^\\+$/.test(line.trim());
+  }).join('\n');
+}
+
 function coerceBareTableMarkers(markdown: string): string {
   const lines = markdown.split(/\r?\n/);
   const output: string[] = [];
@@ -409,7 +434,9 @@ function normalizeGeneratedMarkdown(
 } {
   const extracted = extractTablePlanMarker(coerceBareTableMarkers(raw));
   const markdown = escapeNumericLessThanInProse(
-    removeProvenanceSections(unwrapMarkdownCodeFence(extracted.markdown)),
+    removeStandaloneEscapeLines(
+      removeProvenanceSections(unwrapMarkdownCodeFence(extracted.markdown)),
+    ),
   );
   if (!markdown) throw new GddV2GenerationValidationError('Model returned an empty GDD.');
   if (/^#{1,6}[ \t]+.+$/.test(markdown.split(/\r?\n/).at(-1) ?? '')) {
@@ -442,6 +469,8 @@ async function repairMissingTablePlans(
         'Include exactly one plan for the required table, matching its spelling and casing.',
         'Preserve the supplied purpose and fields exactly and in the same field order.',
         'Every table must contain at least one concrete row drawn from entities named in the GDD.',
+        'Give every row a human-readable row name instead of using an internal code as its display name.',
+        'Do not invent identifier fields. When stable IDs are required by the supplied fields, use one concise readable key per entity and avoid redundant ID columns or opaque long alphanumeric values.',
         'Do not invent another table name. Do not return Markdown prose.',
       ].join('\n'),
     }, {

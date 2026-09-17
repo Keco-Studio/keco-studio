@@ -155,6 +155,9 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(messages[0].content).toContain('KECO_TABLE_REF');
     expect(messages[0].content).toContain('follow it exactly');
     expect(messages[0].content).toContain('every concrete entity');
+    expect(messages[0].content).toMatch(/player-facing design concept.*behavior.*parameters.*feedback.*variants/i);
+    expect(messages[0].content).toMatch(/tables own record-level data/i);
+    expect(messages[0].content).toMatch(/do not invent.*identifier.*fields unless.*pinned table guidance requires/i);
     expect(messages[1].content).toContain('"fields":["Private Field"]');
     expect(messages[1].content).toContain(withSource.creativeBrief!);
     expect(messages[1].content).toContain('"gameBackground":"A rainy city corner."');
@@ -293,6 +296,10 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlanWarning).toBeNull();
     expect(result.markdown).toContain('KECO_TABLE_REF Products');
     expect(result.review.repairRound).toBe(1);
+    const repairMessages = (complete.mock.calls[1] as unknown as [ChatMessage[]])[0];
+    expect(repairMessages[0]?.content).toMatch(/human-readable row name/i);
+    expect(repairMessages[0]?.content).toMatch(/stable IDs are required.*one concise readable key/i);
+    expect(repairMessages[0]?.content).toMatch(/avoid redundant ID columns.*opaque long alphanumeric values/i);
   });
 
   it('converts guided Markdown tables into resource plans without a repair call', async () => {
@@ -993,5 +1000,25 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.markdown).toContain('Restock when inventory &lt;5.');
     expect(result.markdown).toContain('`inventory <5`');
     expect(result.markdown).toContain('```text\ninventory <5\n```');
+  });
+
+  it('removes standalone escape lines outside fenced code', async () => {
+    const result = await reviewGddMarkdownV2(input, [
+      '# GDD',
+      '',
+      '<!-- KECO_TABLE_REF MapPuzzles -->',
+      '',
+      '\\',
+      '',
+      '<!-- KECO_TABLE_REF Clues -->',
+      '',
+      '```text',
+      '\\',
+      '```',
+      '<!-- KECO_TABLE_PLAN [{"table":"MapPuzzles","purpose":"Puzzles.","fields":["name"],"rows":[{"name":"Coast","values":{"name":"Coast"}}]},{"table":"Clues","purpose":"Clues.","fields":["name"],"rows":[{"name":"East light","values":{"name":"East light"}}]}] -->',
+    ].join('\n'));
+
+    expect(result.markdown).not.toContain('<!-- KECO_TABLE_REF MapPuzzles -->\n\n\\\n\n<!-- KECO_TABLE_REF Clues -->');
+    expect(result.markdown).toContain('```text\n\\\n```');
   });
 });
