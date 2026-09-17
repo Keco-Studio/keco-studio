@@ -139,6 +139,36 @@ begin
 end;
 $$;
 
+-- RLS policies call this SECURITY DEFINER predicate because raw reservation
+-- rows are intentionally not readable by authenticated callers.
+create function public.storage_has_pending_upload_reservation(p_bucket_id text, p_object_path text)
+returns boolean
+language sql
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.storage_upload_reservations reservation
+    join public.projects project on project.id = reservation.project_id
+    where reservation.requested_by = auth.uid()
+      and reservation.bucket_id = p_bucket_id
+      and reservation.object_path = p_object_path
+      and reservation.status = 'pending'
+      and reservation.expires_at > clock_timestamp()
+      and (
+        project.owner_id = auth.uid()
+        or exists (
+          select 1 from public.project_collaborators collaborator
+          where collaborator.project_id = project.id
+            and collaborator.user_id = auth.uid()
+            and collaborator.accepted_at is not null
+            and collaborator.role in ('admin', 'editor')
+        )
+      )
+  );
+$$;
+
 create function public.storage_reserve_project_storage_upload(
   p_actor_user_id uuid,
   p_project_id uuid,
@@ -159,6 +189,7 @@ declare
   v_owner_id uuid;
   v_quota public.account_storage_quotas%rowtype;
   v_reservation public.storage_upload_reservations%rowtype;
+  v_expired_reservation_id uuid;
 begin
   v_owner_id := public.storage_require_writer(p_project_id, p_actor_user_id);
 
@@ -188,11 +219,19 @@ begin
     and reservation.object_path = p_object_path
   for update;
 
-  if found then
-    if v_reservation.status = 'pending' and v_reservation.expires_at <= clock_timestamp() then
-      raise exception 'Storage reservation expired'
-        using errcode = 'P0001', detail = 'STORAGE_RESERVATION_EXPIRED';
-    end if;
+  if found and v_reservation.status = 'pending' and v_reservation.expires_at <= clock_timestamp() then
+    update public.account_storage_quotas
+    set reserved_bytes = reserved_bytes - v_reservation.expected_bytes,
+        updated_at = clock_timestamp()
+    where owner_id = v_owner_id;
+    update public.storage_upload_reservations
+    set status = 'expired', updated_at = clock_timestamp()
+    where id = v_reservation.id;
+    v_expired_reservation_id := v_reservation.id;
+    v_reservation.id := null;
+  end if;
+
+  if v_reservation.id is not null then
     if v_reservation.status = 'pending'
        and v_reservation.owner_id = v_owner_id
        and v_reservation.project_id = p_project_id
@@ -216,6 +255,25 @@ begin
   if p_expected_bytes > v_quota.quota_bytes - v_quota.used_bytes - v_quota.reserved_bytes then
     raise exception 'Project storage quota exceeded'
       using errcode = 'P0001', detail = 'STORAGE_QUOTA_EXCEEDED';
+  end if;
+
+  if v_expired_reservation_id is not null then
+    update public.storage_upload_reservations
+    set owner_id = v_owner_id, project_id = p_project_id, requested_by = p_actor_user_id,
+        display_name = p_display_name, mime_type = p_mime_type, source_kind = p_source_kind,
+        source_entity_id = p_source_entity_id, expected_bytes = p_expected_bytes,
+        actual_bytes = null, status = 'pending', file_id = null,
+        expires_at = clock_timestamp() + interval '2 hours', updated_at = clock_timestamp()
+    where id = v_expired_reservation_id
+    returning * into v_reservation;
+    update public.account_storage_quotas
+    set reserved_bytes = reserved_bytes + p_expected_bytes,
+        updated_at = clock_timestamp()
+    where owner_id = v_owner_id;
+    return jsonb_build_object(
+      'reservationId', v_reservation.id, 'ownerId', v_owner_id,
+      'projectId', p_project_id, 'expectedBytes', p_expected_bytes, 'reused', false
+    );
   end if;
 
   insert into public.storage_upload_reservations (
@@ -254,6 +312,8 @@ declare
   v_reservation public.storage_upload_reservations%rowtype;
   v_quota public.account_storage_quotas%rowtype;
   v_file public.project_storage_files%rowtype;
+  v_storage_size text;
+  v_verified_bytes bigint;
 begin
   select * into v_reservation
   from public.storage_upload_reservations reservation
@@ -300,7 +360,26 @@ begin
       using errcode = 'P0001', detail = 'STORAGE_RESERVATION_EXPIRED';
   end if;
 
-  if p_actual_bytes > v_quota.quota_bytes - v_quota.used_bytes - (v_quota.reserved_bytes - v_reservation.expected_bytes) then
+  select object.metadata ->> 'size' into v_storage_size
+  from storage.objects as object
+  where object.bucket_id = v_reservation.bucket_id
+    and object.name = v_reservation.object_path;
+  if not found or v_storage_size is null or v_storage_size !~ '^[0-9]+$' then
+    raise exception 'Storage object metadata does not match the reservation'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+  begin
+    v_verified_bytes := v_storage_size::bigint;
+  exception when numeric_value_out_of_range then
+    raise exception 'Storage object metadata does not match the reservation'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end;
+  if v_verified_bytes <= 0 or p_actual_bytes is distinct from v_verified_bytes then
+    raise exception 'Storage object metadata does not match the reservation'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  if v_verified_bytes > v_quota.quota_bytes - v_quota.used_bytes - (v_quota.reserved_bytes - v_reservation.expected_bytes) then
     raise exception 'Project storage quota exceeded'
       using errcode = 'P0001', detail = 'STORAGE_QUOTA_EXCEEDED';
   end if;
@@ -311,7 +390,7 @@ begin
   ) values (
     v_reservation.project_id, v_reservation.owner_id, v_reservation.bucket_id,
     v_reservation.object_path, v_reservation.display_name, v_reservation.mime_type,
-    p_actual_bytes, v_reservation.source_kind, p_source_entity_id,
+    v_verified_bytes, v_reservation.source_kind, p_source_entity_id,
     v_reservation.requested_by, p_object_created_at
   ) on conflict (bucket_id, object_path) do nothing
   returning * into v_file;
@@ -324,7 +403,7 @@ begin
        or v_file.owner_id is distinct from v_reservation.owner_id
        or v_file.display_name is distinct from v_reservation.display_name
        or v_file.mime_type is distinct from v_reservation.mime_type
-       or v_file.size_bytes is distinct from p_actual_bytes
+       or v_file.size_bytes is distinct from v_verified_bytes
        or v_file.source_kind is distinct from v_reservation.source_kind
        or v_file.source_entity_id is distinct from p_source_entity_id
        or v_file.object_created_at is distinct from p_object_created_at then
@@ -341,13 +420,13 @@ begin
   ) on conflict (file_id, project_id, source_kind, source_entity_id) do nothing;
 
   update public.account_storage_quotas
-  set used_bytes = used_bytes + p_actual_bytes,
+  set used_bytes = used_bytes + v_verified_bytes,
       reserved_bytes = reserved_bytes - v_reservation.expected_bytes,
       updated_at = clock_timestamp()
   where owner_id = v_reservation.owner_id;
 
   update public.storage_upload_reservations
-  set status = 'finalized', actual_bytes = p_actual_bytes, file_id = v_file.id,
+  set status = 'finalized', actual_bytes = v_verified_bytes, file_id = v_file.id,
       source_entity_id = p_source_entity_id, updated_at = clock_timestamp()
   where id = v_reservation.id;
 
@@ -576,7 +655,7 @@ declare
   v_items jsonb;
 begin
   perform public.storage_require_reader(p_project_id, v_actor);
-  if p_sort not in ('size_desc', 'size_asc', 'newest', 'oldest', 'name_asc') then
+  if p_sort not in ('name_asc', 'name_desc', 'size_asc', 'size_desc', 'created_asc', 'created_desc') then
     p_sort := 'size_desc';
   end if;
 
@@ -602,9 +681,10 @@ begin
     order by
       case when p_sort = 'size_desc' then file.size_bytes end desc,
       case when p_sort = 'size_asc' then file.size_bytes end asc,
-      case when p_sort = 'newest' then file.created_at end desc,
-      case when p_sort = 'oldest' then file.created_at end asc,
+      case when p_sort = 'created_desc' then file.created_at end desc,
+      case when p_sort = 'created_asc' then file.created_at end asc,
       case when p_sort = 'name_asc' then lower(file.display_name) end asc,
+      case when p_sort = 'name_desc' then lower(file.display_name) end desc,
       file.id
     limit v_limit offset v_offset
   ) listed;
@@ -654,20 +734,17 @@ $$;
 -- delete policies remain for existing legacy user-only paths.
 drop policy if exists "Authenticated users can upload their own files" on storage.objects;
 drop policy if exists "Users can update their own files" on storage.objects;
+drop policy if exists project_assets_storage_insert on storage.objects;
+drop policy if exists project_assets_storage_update on storage.objects;
+drop policy if exists "Authenticated uploads to tiptap-images" on storage.objects;
 create policy library_media_files_project_insert
   on storage.objects for insert to authenticated
   with check (
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (
-      select 1 from public.projects project
-      where project.id::text = (storage.foldername(name))[2]
-        and (
-          project.owner_id = (select auth.uid())
-          or public.is_editor_or_admin_collaborator(project.id, (select auth.uid()))
-        )
-    )
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
   );
 create policy library_media_files_project_update
   on storage.objects for update to authenticated
@@ -675,23 +752,66 @@ create policy library_media_files_project_update
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
   )
   with check (
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (
-      select 1 from public.projects project
-      where project.id::text = (storage.foldername(name))[2]
-        and (
-          project.owner_id = (select auth.uid())
-          or public.is_editor_or_admin_collaborator(project.id, (select auth.uid()))
-        )
-    )
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
+  );
+
+create policy project_assets_storage_insert
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'project-assets'
+    and array_length(storage.foldername(name), 1) = 2
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
+  );
+create policy project_assets_storage_update
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'project-assets'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+  )
+  with check (
+    bucket_id = 'project-assets'
+    and array_length(storage.foldername(name), 1) = 2
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
+  );
+create policy tiptap_images_project_insert
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'tiptap-images'
+    and array_length(storage.foldername(name), 1) >= 2
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
+  );
+create policy tiptap_images_project_update
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'tiptap-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+  )
+  with check (
+    bucket_id = 'tiptap-images'
+    and array_length(storage.foldername(name), 1) >= 2
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.storage_has_pending_upload_reservation(bucket_id, name)
+    and true
   );
 
 revoke all on function public.storage_require_writer(uuid, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.storage_require_reader(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.storage_has_pending_upload_reservation(text, text) from public, anon, authenticated, service_role;
 revoke all on function public.storage_reserve_project_storage_upload(uuid, uuid, text, text, bigint, text, text, text, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.storage_finalize_project_storage_upload(uuid, uuid, bigint, uuid, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.storage_release_project_storage_upload(uuid, uuid) from public, anon, authenticated, service_role;
@@ -710,6 +830,7 @@ grant execute on function public.finalize_project_storage_upload(uuid, bigint, u
 grant execute on function public.release_project_storage_upload(uuid) to authenticated;
 grant execute on function public.account_storage_summary() to authenticated;
 grant execute on function public.account_storage_project_files(uuid, text, text, integer, integer) to authenticated;
+grant execute on function public.storage_has_pending_upload_reservation(text, text) to authenticated;
 grant execute on function public.service_reserve_project_storage_upload(uuid, uuid, text, text, bigint, text, text, text, uuid) to service_role;
 grant execute on function public.service_finalize_project_storage_upload(uuid, uuid, bigint, uuid, timestamptz) to service_role;
 grant execute on function public.service_release_project_storage_upload(uuid, uuid) to service_role;

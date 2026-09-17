@@ -31,4 +31,17 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/used_bytes\s*\+\s*reserved_bytes\s*\+\s*p_expected_bytes\s*>\s*quota_bytes/i);
     expect(sql).toMatch(/STORAGE_QUOTA_EXCEEDED/i);
   });
+
+  it('gates accounted bucket writes and verifies storage metadata before settlement', () => {
+    expect(sql).toMatch(/function public\.storage_has_pending_upload_reservation\(/i);
+    expect(sql).toMatch(/reservation\.requested_by\s*=\s*auth\.uid\(\)/i);
+    expect(sql).toMatch(/reservation\.status\s*=\s*'pending'/i);
+    expect(sql).toMatch(/reservation\.expires_at\s*>\s*clock_timestamp\(\)/i);
+    expect(sql).toMatch(/public\.storage_has_pending_upload_reservation\(bucket_id,\s*name\)/i);
+    expect(sql).toMatch(/from storage\.objects as object/i);
+    expect(sql).toMatch(/object\.metadata\s*->>\s*'size'/i);
+    expect(sql).toMatch(/p_actual_bytes\s+is distinct from\s+v_verified_bytes/i);
+    expect(sql).toMatch(/v_quota\.quota_bytes\s*-\s*v_quota\.used_bytes\s*-\s*v_quota\.reserved_bytes/i);
+    expect(sql).toMatch(/'name_asc',\s*'name_desc',\s*'size_asc',\s*'size_desc',\s*'created_asc',\s*'created_desc'/i);
+  });
 });

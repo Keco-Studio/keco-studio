@@ -89,7 +89,7 @@ describeDb('account project storage real Postgres behavior', () => {
 
   async function reserve(
     actor: RlsUser,
-    expectedBytes: number,
+    expectedBytes: number | string,
     objectPath = pathFor(actor),
     projectId = fx.projectId,
   ) {
@@ -131,6 +131,15 @@ describeDb('account project storage real Postgres behavior', () => {
     return result.data as Record<string, unknown>;
   }
 
+  async function upload(actor: RlsUser, objectPath: string, size: number) {
+    const result = await actor.client.storage.from('project-assets').upload(
+      objectPath,
+      new Uint8Array(size),
+      { contentType: 'image/png', upsert: false },
+    );
+    return result.error;
+  }
+
   it('enforces a quota boundary and serializes concurrent reservations', async () => {
     await expect(reserve(fx.owner, QUOTA_BYTES)).resolves.toMatchObject({ expectedBytes: QUOTA_BYTES });
     await expect(reserve(fx.owner, 1)).rejects.toMatchObject({ code: 'STORAGE_QUOTA_EXCEEDED' });
@@ -153,7 +162,9 @@ describeDb('account project storage real Postgres behavior', () => {
   });
 
   it('makes finalize and release replays idempotent', async () => {
-    const finalizedReservation = await reserve(fx.owner, 16);
+    const finalizedPath = pathFor(fx.owner);
+    const finalizedReservation = await reserve(fx.owner, 16, finalizedPath);
+    expect(await upload(fx.owner, finalizedPath, 16)).toBeNull();
     const objectCreatedAt = '2030-01-01T00:00:00.000Z';
     const firstFinalize = await finalize(
       fx.owner, finalizedReservation.reservationId as string, 16, objectCreatedAt,
@@ -185,16 +196,43 @@ describeDb('account project storage real Postgres behavior', () => {
     await fx.svc.from('storage_upload_reservations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('account_storage_quotas').update({ used_bytes: 0, reserved_bytes: 0 })
       .eq('owner_id', fx.owner.id);
-    const full = await reserve(fx.owner, QUOTA_BYTES);
+    const fullPath = pathFor(fx.owner);
+    const full = await reserve(fx.owner, QUOTA_BYTES, fullPath);
+    expect(await upload(fx.owner, fullPath, QUOTA_BYTES + 1)).toBeNull();
     await expect(finalize(fx.owner, full.reservationId as string, QUOTA_BYTES + 1))
       .rejects.toMatchObject({ code: 'STORAGE_QUOTA_EXCEEDED' });
 
-    await fx.svc.from('storage_upload_reservations').delete().eq('project_id', fx.projectId);
-    await fx.svc.from('account_storage_quotas').update({ used_bytes: 1, reserved_bytes: 0 })
-      .eq('owner_id', fx.owner.id);
-    const maximal = await reserve(fx.owner, 1);
-    await expect(finalize(fx.owner, maximal.reservationId as string, '9223372036854775807'))
+    await expect(reserve(fx.owner, '9223372036854775807'))
       .rejects.toMatchObject({ code: 'STORAGE_QUOTA_EXCEEDED' });
+  });
+
+  it('requires a pending reservation for direct bucket writes and settles verified object bytes only', async () => {
+    const objectPath = pathFor(fx.owner);
+    expect(await upload(fx.owner, objectPath, 3)).not.toBeNull();
+
+    const reservation = await reserve(fx.owner, 3, objectPath);
+    const gate = await fx.owner.client.rpc('storage_has_pending_upload_reservation', {
+      p_bucket_id: 'project-assets', p_object_path: objectPath,
+    });
+    expect(gate.error).toBeNull();
+    expect(gate.data).toBe(true);
+    expect(await upload(fx.owner, objectPath, 3)).toBeNull();
+    await expect(finalize(fx.owner, reservation.reservationId as string, 4))
+      .rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
+    await expect(finalize(fx.owner, reservation.reservationId as string, 3))
+      .resolves.toMatchObject({ sizeBytes: 3 });
+  });
+
+  it('releases expired reservations before retrying the same object path', async () => {
+    const objectPath = pathFor(fx.owner);
+    const expired = await reserve(fx.owner, 16, objectPath);
+    const expiration = await fx.svc.from('storage_upload_reservations').update({
+      expires_at: new Date(Date.now() - 60_000).toISOString(),
+    }).eq('id', expired.reservationId as string);
+    if (expiration.error) throw new Error(`expire retry reservation failed: ${expiration.error.message}`);
+
+    await expect(reserve(fx.owner, 16, objectPath))
+      .resolves.toMatchObject({ reused: false, expectedBytes: 16 });
   });
 
   it('keeps shared project usage out of the collaborator account counters', async () => {
@@ -205,13 +243,10 @@ describeDb('account project storage real Postgres behavior', () => {
       reserved_bytes: 0,
     });
     if (quota.error) throw new Error(`reset second-owner quota failed: ${quota.error.message}`);
-    const reservation = await reserve(
-      secondOwner,
-      16,
-      pathFor(secondOwner, randomUUID(), sharedProjectId),
-      sharedProjectId,
-    );
-    await finalize(secondOwner, reservation.reservationId as string, 16);
+    const sharedPath = pathFor(secondOwner, randomUUID(), sharedProjectId);
+    const sharedReservation = await reserve(secondOwner, 16, sharedPath, sharedProjectId);
+    expect(await upload(secondOwner, sharedPath, 16)).toBeNull();
+    await finalize(secondOwner, sharedReservation.reservationId as string, 16);
 
     const result = await fx.editor.client.rpc('account_storage_summary');
     if (result.error) throw new Error(result.error.message);
@@ -221,7 +256,9 @@ describeDb('account project storage real Postgres behavior', () => {
   });
 
   it('rejects unrelated users from project file listings', async () => {
-    const reservation = await reserve(fx.owner, 16);
+    const objectPath = pathFor(fx.owner);
+    const reservation = await reserve(fx.owner, 16, objectPath);
+    expect(await upload(fx.owner, objectPath, 16)).toBeNull();
     await finalize(fx.owner, reservation.reservationId as string, 16);
 
     const result = await fx.outsider.client.rpc('account_storage_project_files', {
