@@ -63,6 +63,7 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     ctaLabel: 'Choose Pro',
     popular: true,
     checkoutEnabled: true,
+    creditAmount: 10_000,
   },
   {
     id: 'plan-studio',
@@ -81,6 +82,7 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     ],
     ctaLabel: 'Choose Studio',
     checkoutEnabled: true,
+    creditAmount: 50_000,
   },
   {
     id: 'plan-enterprise',
