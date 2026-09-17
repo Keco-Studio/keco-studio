@@ -73,6 +73,7 @@ function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRo
   const ownerIds = row.storage_file_owner_ids;
   const bytes = row.storage_file_bytes;
   const legacySnapshot = fileIds == null && ownerIds == null && bytes == null;
+  const validatedOwnerIds = legacySnapshot ? [] : ownerIds as unknown[];
   if (
     row.id !== expectedId
     || typeof row.project_id !== 'string'
@@ -94,7 +95,7 @@ function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRo
     || paths.some((path, index) => !isCleanupPathForProject({
       bucketId: row.bucket_id as AccountedStorageBucket,
       projectId: row.project_id as string,
-      ownerId: legacySnapshot ? '' : ownerIds[index] as string,
+      ownerId: legacySnapshot ? '' : validatedOwnerIds[index] as string,
       path,
     }))
   ) {
