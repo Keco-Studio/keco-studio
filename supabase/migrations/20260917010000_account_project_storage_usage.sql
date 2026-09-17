@@ -79,6 +79,33 @@ revoke all on table public.project_storage_files from public, anon, authenticate
 revoke all on table public.project_storage_file_locations from public, anon, authenticated;
 revoke all on table public.storage_upload_reservations from public, anon, authenticated;
 
+create schema if not exists private;
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated;
+
+create function private.storage_has_pending_upload_reservation(p_bucket_id text, p_object_path text)
+returns boolean
+language sql
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.storage_upload_reservations reservation
+    join public.projects project on project.id = reservation.project_id
+    where reservation.requested_by = auth.uid()
+      and reservation.bucket_id = p_bucket_id
+      and reservation.object_path = p_object_path
+      and reservation.status = 'pending'
+      and reservation.expires_at > clock_timestamp()
+      and (project.owner_id = auth.uid() or exists (
+        select 1 from public.project_collaborators collaborator
+        where collaborator.project_id = project.id and collaborator.user_id = auth.uid()
+          and collaborator.accepted_at is not null and collaborator.role in ('admin', 'editor')
+      ))
+  );
+$$;
+
 -- SECURITY DEFINER helper deliberately has no authenticated grant. It returns
 -- the billing owner only after accepting owners and accepted admin/editors.
 create function public.storage_require_writer(p_project_id uuid, p_actor_id uuid)
@@ -713,7 +740,7 @@ create policy library_media_files_project_insert
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 create policy library_media_files_project_update
   on storage.objects for update to authenticated
@@ -721,13 +748,13 @@ create policy library_media_files_project_update
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   )
   with check (
     bucket_id = 'library-media-files'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 
 create policy project_assets_storage_insert
@@ -736,20 +763,20 @@ create policy project_assets_storage_insert
     bucket_id = 'project-assets'
     and array_length(storage.foldername(name), 1) = 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 create policy project_assets_storage_update
   on storage.objects for update to authenticated
   using (
     bucket_id = 'project-assets'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   )
   with check (
     bucket_id = 'project-assets'
     and array_length(storage.foldername(name), 1) = 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 create policy tiptap_images_project_insert
   on storage.objects for insert to authenticated
@@ -757,14 +784,14 @@ create policy tiptap_images_project_insert
     bucket_id = 'tiptap-images'
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
 create policy tiptap_images_project_update
   on storage.objects for update to authenticated
   using (
     bucket_id = 'tiptap-images'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and exists (select 1 from public.storage_upload_reservations reservation where reservation.requested_by = (select auth.uid()) and reservation.bucket_id = bucket_id and reservation.object_path = name and reservation.status = 'pending' and reservation.expires_at > clock_timestamp())
+    and private.storage_has_pending_upload_reservation(bucket_id, name)
   )
   with check (
     bucket_id = 'tiptap-images'
@@ -787,12 +814,14 @@ revoke all on function public.service_reserve_project_storage_upload(uuid, uuid,
 revoke all on function public.service_finalize_project_storage_upload(uuid, uuid, bigint, uuid, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.service_release_project_storage_upload(uuid, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.reconcile_expired_project_storage_reservations() from public, anon, authenticated, service_role;
+revoke all on function private.storage_has_pending_upload_reservation(text, text) from public, anon, authenticated, service_role;
 
 grant execute on function public.reserve_project_storage_upload(uuid, text, text, bigint, text, text, text, uuid) to authenticated;
 grant execute on function public.finalize_project_storage_upload(uuid, bigint, uuid, timestamptz) to authenticated;
 grant execute on function public.release_project_storage_upload(uuid) to authenticated;
 grant execute on function public.account_storage_summary() to authenticated;
 grant execute on function public.account_storage_project_files(uuid, text, text, integer, integer) to authenticated;
+grant execute on function private.storage_has_pending_upload_reservation(text, text) to authenticated;
 grant execute on function public.service_reserve_project_storage_upload(uuid, uuid, text, text, bigint, text, text, text, uuid) to service_role;
 grant execute on function public.service_finalize_project_storage_upload(uuid, uuid, bigint, uuid, timestamptz) to service_role;
 grant execute on function public.service_release_project_storage_upload(uuid, uuid) to service_role;
