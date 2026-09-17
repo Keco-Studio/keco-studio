@@ -1092,14 +1092,14 @@ begin
         and file.lifecycle_status = 'pending_cleanup'
       group by file.bucket_id
     )
-    insert into public.project_storage_cleanup_jobs (
+    insert into public.project_storage_cleanup_jobs as cleanup (
       project_id, bucket_id, storage_paths,
       storage_file_ids, storage_file_owner_ids, storage_file_bytes
     )
     select p_project_id, grouped.bucket_id, grouped.paths,
       grouped.file_ids, grouped.owner_ids, grouped.file_bytes
     from grouped
-    returning id, bucket_id, storage_paths
+    returning cleanup.id, cleanup.bucket_id, cleanup.storage_paths
   loop
     cleanup_job_id := v_job.id;
     bucket_id := v_job.bucket_id;

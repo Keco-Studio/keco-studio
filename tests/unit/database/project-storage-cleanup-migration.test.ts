@@ -33,6 +33,7 @@ describe('project storage cleanup outbox migration', () => {
     expect(sql).toMatch(/storage_file_owner_ids uuid\[\]/i);
     expect(sql).toMatch(/storage_file_bytes bigint\[\]/i);
     expect(sql).toMatch(/insert into public\.project_storage_cleanup_jobs[\s\S]+delete from public\.projects/i);
+    expect(sql).toMatch(/insert into public\.project_storage_cleanup_jobs as cleanup[\s\S]+returning cleanup\.id, cleanup\.bucket_id, cleanup\.storage_paths/i);
     for (const bucket of ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images']) {
       expect(sql).toContain(`'${bucket}'`);
     }
