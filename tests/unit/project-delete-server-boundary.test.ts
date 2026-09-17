@@ -58,7 +58,7 @@ function createServiceClient(
   calls: string[],
   references: Array<{ storage_path: string }> = [],
   removeError: QueryError | null = null,
-  bucketId: 'library-media-files' | 'project-assets' | 'map-assets' | 'character-assets' = 'map-assets',
+  bucketId: 'library-media-files' | 'project-assets' | 'map-assets' | 'character-assets' | 'tiptap-images' = 'map-assets',
 ): SupabaseClient {
   let activeTable = '';
   const builder: QueryBuilder = {

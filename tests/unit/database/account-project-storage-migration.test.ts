@@ -56,6 +56,7 @@ describe('account project storage migration', () => {
     ]) {
       expect(sql).toMatch(new RegExp(`create policy ${policy}[\\s\\S]*private\\.storage_has_pending_upload_reservation\\(bucket_id, name\\)`, 'i'));
     }
+    expect(sql).toMatch(/create policy tiptap_images_project_delete[\s\S]*collaborator\.role in \('admin', 'editor'\)/i);
     expect(sql).toMatch(/grant usage on schema private to authenticated/i);
     expect(sql).toMatch(/grant execute on function private\.storage_has_pending_upload_reservation\(text, text\) to authenticated/i);
     expect(sql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);

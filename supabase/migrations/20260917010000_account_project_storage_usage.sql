@@ -196,11 +196,36 @@ begin
   if p_expected_bytes is null or p_expected_bytes <= 0
      or p_bucket_id not in ('library-media-files','project-assets','map-assets','character-assets','tiptap-images')
      or p_object_path is null or p_object_path <> btrim(p_object_path) or p_object_path = '' or p_object_path like '%..%'
-     or p_object_path not like p_actor_user_id::text || '/' || p_project_id::text || '/%'
      or char_length(btrim(coalesce(p_display_name, ''))) not between 1 and 255
      or char_length(btrim(coalesce(p_mime_type, ''))) not between 1 and 200
      or p_source_kind not in ('project_asset','library_media','document_image','map_reference','map_asset','character_asset') then
     raise exception 'Storage object metadata does not match the reservation'
+     using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  -- Storage layouts are part of the accounting contract. Browser uploads are
+  -- actor/project scoped; service-generated map and character assets are not.
+  if not (
+    (p_bucket_id = 'library-media-files'
+      and p_source_kind in ('library_media', 'document_image')
+      and p_object_path like p_actor_user_id::text || '/' || p_project_id::text || '/%')
+    or (p_bucket_id = 'project-assets'
+      and p_source_kind = 'project_asset'
+      and p_object_path like p_actor_user_id::text || '/' || p_project_id::text || '/%')
+    or (p_bucket_id = 'tiptap-images'
+      and p_source_kind = 'document_image'
+      and p_object_path like p_actor_user_id::text || '/' || p_project_id::text || '/%')
+    or (p_bucket_id = 'map-assets'
+      and p_source_kind = 'map_reference'
+      and p_object_path like 'references/' || p_project_id::text || '/%')
+    or (p_bucket_id = 'map-assets'
+      and p_source_kind = 'map_asset'
+      and p_object_path like p_project_id::text || '/%')
+    or (p_bucket_id = 'character-assets'
+      and p_source_kind = 'character_asset'
+      and p_object_path like p_project_id::text || '/%')
+  ) then
+    raise exception 'Storage object path does not match its bucket and source'
       using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
   end if;
 
@@ -946,6 +971,29 @@ create policy tiptap_images_project_update
     and (storage.foldername(name))[1] = (select auth.uid())::text
     and private.storage_has_pending_upload_reservation(bucket_id, name)
   );
+create policy tiptap_images_project_delete
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'tiptap-images'
+    and array_length(storage.foldername(storage.objects.name), 1) = 2
+    and (storage.foldername(storage.objects.name))[1] = (select auth.uid())::text
+    and exists (
+      select 1
+      from public.projects project
+      where project.id::text = (storage.foldername(storage.objects.name))[2]
+        and (
+          project.owner_id = (select auth.uid())
+          or exists (
+            select 1
+            from public.project_collaborators collaborator
+            where collaborator.project_id = project.id
+              and collaborator.user_id = (select auth.uid())
+              and collaborator.accepted_at is not null
+              and collaborator.role in ('admin', 'editor')
+          )
+        )
+    )
+  );
 
 revoke all on function public.storage_require_writer(uuid, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.storage_require_reader(uuid, uuid) from public, anon, authenticated, service_role;
@@ -985,7 +1033,7 @@ alter table public.project_storage_cleanup_jobs
   drop constraint if exists project_storage_cleanup_jobs_bucket_id_check;
 alter table public.project_storage_cleanup_jobs
   add constraint project_storage_cleanup_jobs_bucket_id_check
-  check (bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets'));
+  check (bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images'));
 alter table public.project_storage_cleanup_jobs
   add column if not exists storage_file_ids uuid[];
 alter table public.project_storage_cleanup_jobs
@@ -1027,7 +1075,7 @@ begin
   update public.project_storage_files file
   set lifecycle_status = 'pending_cleanup', updated_at = clock_timestamp()
   where file.project_id = p_project_id
-    and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+    and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images')
     and file.lifecycle_status = 'active';
 
   for v_job in
@@ -1040,7 +1088,7 @@ begin
         array_agg(file.size_bytes order by file.object_path) as file_bytes
       from public.project_storage_files file
       where file.project_id = p_project_id
-        and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+        and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images')
         and file.lifecycle_status = 'pending_cleanup'
       group by file.bucket_id
     )
@@ -1084,7 +1132,7 @@ begin
     pg_catalog.hashtextextended('account-project-storage-accounting', 0)
   );
 
-  if p_bucket_id not in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+  if p_bucket_id not in ('library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images')
      or p_object_path is null or p_object_path <> btrim(p_object_path) or p_object_path = ''
      or p_object_path like '%..%' then
     raise exception 'Storage object metadata does not match the deletion'

@@ -54,21 +54,27 @@ describe('account storage reconciliation', () => {
     expect(client.calls).toEqual({ expire: 0, rebuild: 0 });
   });
 
-  it('only expires reservations and rebuilds cached totals when apply is explicit', async () => {
+  it('fails closed without any mutation when inventory parity is not clean', async () => {
     const client = clientFixture();
-    await expect(reconcileAccountStorage(client, { applySafeRepairs: true })).resolves.toMatchObject({ repairedReservations: 1, repairedQuotas: 1 });
-    expect(client.calls).toEqual({ expire: 1, rebuild: 1 });
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: true }))
+      .rejects.toThrow('Storage reconciliation aborted: inventory parity must be clean before repairs');
+    expect(client.calls).toEqual({ expire: 0, rebuild: 0 });
   });
 
-  it('accepts the JSON result returned by the service rebuild RPC', async () => {
+  it('repairs only a clean inventory and accepts the JSON quota result', async () => {
     const client = clientFixture();
+    client.listPhysicalStorageObjects = async () => [{ bucketId: 'project-assets', objectPath: 'present.png', sizeBytes: 100 }];
+    client.listRegisteredStorageFiles = async () => [{ id: 'one', bucketId: 'project-assets', objectPath: 'present.png', ownerId: 'owner-a', sizeBytes: 100, lifecycleStatus: 'active' as const }];
+    client.listStorageReservations = async () => [];
+    client.listStorageQuotas = async () => [{ ownerId: 'owner-a', usedBytes: 0, reservedBytes: 0 }];
+    client.listAmbiguousStorageObjects = async () => [];
     delete (client as { rebuildStorageQuotaTotals?: () => Promise<number> }).rebuildStorageQuotaTotals;
     const rpc = jest.fn(async (name: string) => name === 'service_rebuild_account_storage_quota_totals'
       ? { data: { rebuiltAccounts: 3 }, error: null }
       : { data: 1, error: null });
 
     await expect(reconcileAccountStorage({ ...client, rpc }, { applySafeRepairs: true }))
-      .resolves.toMatchObject({ repairedReservations: 1, repairedQuotas: 3 });
+      .resolves.toMatchObject({ repairedReservations: 0, repairedQuotas: 3 });
   });
 
   it('fails closed when registry state cannot be queried', async () => {

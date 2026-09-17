@@ -21,7 +21,7 @@ describe('project storage cleanup outbox migration', () => {
     expect(sql).toMatch(/storage_file_owner_ids uuid\[\]/i);
     expect(sql).toMatch(/storage_file_bytes bigint\[\]/i);
     expect(sql).toMatch(/insert into public\.project_storage_cleanup_jobs[\s\S]+delete from public\.projects/i);
-    for (const bucket of ['library-media-files', 'project-assets', 'map-assets', 'character-assets']) {
+    for (const bucket of ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images']) {
       expect(sql).toContain(`'${bucket}'`);
     }
   });
@@ -52,5 +52,7 @@ describe('project storage cleanup outbox migration', () => {
     expect(sql).toMatch(/create policy library_media_files_owner_delete/i);
     expect(sql).toMatch(/collaborator\.accepted_at is not null/i);
     expect(sql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);
+    expect(sql).toMatch(/create policy tiptap_images_project_delete/i);
+    expect(sql).toMatch(/bucket_id = 'tiptap-images'/i);
   });
 });

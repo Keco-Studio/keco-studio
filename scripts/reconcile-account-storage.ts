@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import path from 'node:path';
 
-const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets'] as const;
+const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images'] as const;
 const HELP = `Usage:\n  npm run storage:reconcile -- [--apply]\n\nReport mode is the default. --apply expires abandoned reservations and repairs cached totals only.\n\nRequired environment variables:\n  NEXT_PUBLIC_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY`;
 
 export type RegisteredStorageFile = { id: string; bucketId: string; objectPath: string; ownerId: string; sizeBytes: number; lifecycleStatus: 'active' | 'pending_cleanup' };
@@ -152,6 +152,10 @@ export async function reconcileAccountStorage(client: ReconciliationClient, { ap
     return !actual || actual.usedBytes !== wanted.usedBytes || actual.reservedBytes !== wanted.reservedBytes;
   }).length;
   let repairedReservations = 0; let repairedQuotas = 0;
+  const parityFailure = missingObjects > 0 || unexpectedObjects > 0 || sizeMismatches > 0 || ambiguous.length > 0;
+  if (applySafeRepairs && parityFailure) {
+    throw new Error('Storage reconciliation aborted: inventory parity must be clean before repairs');
+  }
   if (applySafeRepairs) {
     if (expiredReservations.length > 0) repairedReservations = await applyExpiredReservations(client);
     if (quotaMismatches > 0) repairedQuotas = await applyQuotaRebuild(client);

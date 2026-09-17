@@ -13,7 +13,6 @@ import {
 } from '@/lib/services/projectAssetUploadContract';
 import { projectAssetContentMatches } from '@/lib/services/projectAssetContent';
 import {
-  finalizeProjectStorage,
   releaseProjectStorage,
   reserveProjectStorage,
   StorageQuotaError,
@@ -32,26 +31,27 @@ function json(data: unknown, status = 200) {
 function storageErrorResponse(error: unknown): Response | null {
   if (!(error instanceof StorageQuotaError)) return null;
   if (error.code === 'STORAGE_QUOTA_EXCEEDED') {
-    return json({ error: 'Storage quota exceeded', code: error.code }, 409);
+    return json({ error: 'Storage quota exceeded' }, 409);
   }
   if (error.code === 'STORAGE_PROJECT_FORBIDDEN') {
-    return json({ error: 'Forbidden', code: error.code }, 403);
+    return json({ error: 'Forbidden' }, 403);
   }
-  return json({ error: 'Storage is temporarily unavailable', code: error.code }, 503);
+  return json({ error: 'Storage is temporarily unavailable' }, 503);
 }
 
 async function bestEffortRelease(supabase: Parameters<typeof reserveProjectStorage>[0], reservationId: string) {
   try { await releaseProjectStorage(supabase, reservationId); } catch { /* best effort */ }
 }
 
-async function bestEffortRollbackAsset(
-  supabase: Parameters<typeof reserveProjectStorage>[0],
-  projectId: string,
-  assetId: string,
-) {
-  try {
-    await supabase.from('project_game_assets').delete().eq('id', assetId).eq('project_id', projectId);
-  } catch { /* best effort */ }
+function storageCompletionError(error: unknown): Error {
+  const detail = error && typeof error === 'object'
+    ? (error as Record<string, unknown>).details ?? (error as Record<string, unknown>).message
+    : null;
+  if (detail === 'STORAGE_QUOTA_EXCEEDED' || detail === 'STORAGE_PROJECT_FORBIDDEN'
+    || detail === 'STORAGE_RESERVATION_EXPIRED' || detail === 'STORAGE_OBJECT_MISMATCH') {
+    return new StorageQuotaError(detail);
+  }
+  return new Error('Asset registration failed');
 }
 
 function mimeFromName(name: string): string | null {
@@ -181,15 +181,22 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
     let completionStorageError: unknown = null;
     for (const [index, input] of completed.data.items.entries()) {
       let removeObjectOnFailure = false;
-      let registeredNewAssetId: string | null = null;
-      let registeredAssetReused = false;
+      let reservationBindingConfirmed = false;
       try {
-        const file = validatedMetadata(input);
         const prefix = `${user.id}/${projectId}/`;
         const relativePath = input.path.startsWith(prefix) ? input.path.slice(prefix.length) : '';
         if (!relativePath || relativePath.includes('/')) throw new Error('Invalid project asset path');
-        const bucket = supabase.storage.from(PROJECT_ASSET_BUCKET);
+        const { error: bindingError } = await supabase.rpc('resolve_project_storage_upload_reservation', {
+          p_project_id: projectId,
+          p_bucket_id: PROJECT_ASSET_BUCKET,
+          p_object_path: input.path,
+          p_reservation_id: input.reservationId,
+        });
+        if (bindingError) throw storageCompletionError(bindingError);
+        reservationBindingConfirmed = true;
         removeObjectOnFailure = true;
+        const file = validatedMetadata(input);
+        const bucket = supabase.storage.from(PROJECT_ASSET_BUCKET);
         const { data: rawInfo, error: infoError } = await bucket.info(input.path);
         if (infoError || !rawInfo) throw new Error('Uploaded asset was not found');
         const info = rawInfo as unknown as Record<string, unknown>;
@@ -217,36 +224,38 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
           height = metadata.height ?? null;
           hasTransparency = metadata.hasAlpha ?? null;
         }
-        const { data, error } = await supabase.rpc('mcp_register_project_game_asset', {
+        const objectCreatedAt = typeof info.created_at === 'string'
+          ? info.created_at
+          : typeof info.createdAt === 'string'
+            ? info.createdAt
+            : null;
+        // This RPC validates the reservation binding, registers the asset, and
+        // finalizes physical bytes in one database transaction.
+        const { data, error } = await supabase.rpc('complete_project_game_asset_storage_upload', {
+          p_reservation_id: input.reservationId,
           p_project_id: projectId,
           p_name: file.fileName,
           p_category: 'media',
           p_mime_type: file.fileType,
+          p_storage_bucket: PROJECT_ASSET_BUCKET,
           p_storage_path: input.path,
           p_sha256: sha256,
           p_width: width,
           p_height: height,
           p_has_transparency: hasTransparency,
           p_file_size: file.fileSize,
+          p_object_created_at: objectCreatedAt,
         });
-        if (error) throw new Error('Asset registration failed');
+        if (error) throw storageCompletionError(error);
         const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
         if (!row || typeof row.id !== 'string') throw new Error('Asset registration returned invalid data');
-        registeredAssetReused = row.reused === true;
-        if (!registeredAssetReused) registeredNewAssetId = row.id;
-        await finalizeProjectStorage(supabase, {
-          reservationId: input.reservationId,
-          actualBytes: actualSize,
-          sourceEntityId: row.id,
-        });
         removeObjectOnFailure = false;
         items.push({ ok: true as const, index, name: file.fileName, id: row.id, sha256, reused: row.reused === true });
       } catch (error) {
-        if (removeObjectOnFailure && !registeredAssetReused) {
+        if (removeObjectOnFailure) {
           try { await supabase.storage.from(PROJECT_ASSET_BUCKET).remove([input.path]); } catch { /* best effort */ }
         }
-        if (registeredNewAssetId) await bestEffortRollbackAsset(supabase, projectId, registeredNewAssetId);
-        await bestEffortRelease(supabase, input.reservationId);
+        if (reservationBindingConfirmed) await bestEffortRelease(supabase, input.reservationId);
         if (!completionStorageError && error instanceof StorageQuotaError) completionStorageError = error;
         items.push({ ok: false as const, index, name: input.fileName, error: 'Upload failed' });
       }

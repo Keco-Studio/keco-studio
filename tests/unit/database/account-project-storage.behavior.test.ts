@@ -93,6 +93,7 @@ describeDb('account project storage real Postgres behavior', () => {
     objectPath = pathFor(actor),
     projectId = fx.projectId,
     bucketId = 'project-assets',
+    sourceKind = 'project_asset',
   ) {
     const result = await actor.client.rpc('reserve_project_storage_upload', {
       p_project_id: projectId,
@@ -101,7 +102,7 @@ describeDb('account project storage real Postgres behavior', () => {
       p_expected_bytes: expectedBytes,
       p_display_name: `storage-${fx.suffix}.bin`,
       p_mime_type: 'application/octet-stream',
-      p_source_kind: 'project_asset',
+      p_source_kind: sourceKind,
       p_source_entity_id: null,
     });
     if (result.error) storageError(result.error);
@@ -160,6 +161,39 @@ describeDb('account project storage real Postgres behavior', () => {
     await expect(reserve(fx.editor, 16)).resolves.toMatchObject({ ownerId: fx.owner.id });
     await expect(reserve(fx.viewer, 16)).rejects.toMatchObject({ code: 'STORAGE_PROJECT_FORBIDDEN' });
     await expect(reserve(pendingCollaborator, 16)).rejects.toMatchObject({ code: 'STORAGE_PROJECT_FORBIDDEN' });
+  });
+
+  it('accepts each generated storage layout and rejects bucket, source, actor, and project mismatches', async () => {
+    const mapId = randomUUID();
+    const characterId = randomUUID();
+    await expect(reserve(
+      fx.owner, 3, `references/${fx.projectId}/${mapId}/reference.png`, fx.projectId, 'map-assets', 'map_reference',
+    )).resolves.toMatchObject({ projectId: fx.projectId });
+    await expect(reserve(
+      fx.owner, 3, `${fx.projectId}/${mapId}/revision/asset.png`, fx.projectId, 'map-assets', 'map_asset',
+    )).resolves.toMatchObject({ projectId: fx.projectId });
+    await expect(reserve(
+      fx.owner, 3, `${fx.projectId}/${characterId}/generation/asset.png`, fx.projectId, 'character-assets', 'character_asset',
+    )).resolves.toMatchObject({ projectId: fx.projectId });
+    await expect(reserve(
+      fx.editor, 3, `${fx.editor.id}/${fx.projectId}/document.png`, fx.projectId, 'tiptap-images', 'document_image',
+    )).resolves.toMatchObject({ ownerId: fx.owner.id });
+
+    await expect(reserve(
+      fx.owner, 3, `${fx.owner.id}/${fx.projectId}/wrong.png`, fx.projectId, 'map-assets', 'map_asset',
+    )).rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
+    await expect(reserve(
+      fx.owner, 3, `references/${fx.projectId}/wrong.png`, fx.projectId, 'map-assets', 'map_asset',
+    )).rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
+    await expect(reserve(
+      fx.owner, 3, `${fx.owner.id}/${fx.projectId}/wrong.png`, fx.projectId, 'project-assets', 'document_image',
+    )).rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
+    await expect(reserve(
+      fx.owner, 3, `${fx.editor.id}/${fx.projectId}/wrong.png`, fx.projectId, 'project-assets', 'project_asset',
+    )).rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
+    await expect(reserve(
+      fx.editor, 3, `${fx.owner.id}/${sharedProjectId}/wrong-project.png`, sharedProjectId, 'project-assets', 'project_asset',
+    )).rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
   });
 
   it('makes finalize and release replays idempotent', async () => {
@@ -248,6 +282,40 @@ describeDb('account project storage real Postgres behavior', () => {
     await release(fx.owner, reservation.reservationId as string);
   });
 
+  it('rejects mismatched game-asset completion bindings before registering any asset', async () => {
+    const objectPath = pathFor(fx.owner);
+    const reservation = await reserve(fx.owner, 3, objectPath);
+    expect(await upload(fx.owner, objectPath, 3)).toBeNull();
+
+    for (const [projectId, storagePath] of [
+      [sharedProjectId, objectPath],
+      [fx.projectId, `${objectPath}-other`],
+    ]) {
+      const completion = await fx.owner.client.rpc('complete_project_game_asset_storage_upload', {
+        p_reservation_id: reservation.reservationId,
+        p_project_id: projectId,
+        p_name: 'mismatch.png',
+        p_category: 'media',
+        p_mime_type: 'image/png',
+        p_storage_bucket: 'project-assets',
+        p_storage_path: storagePath,
+        p_sha256: '0'.repeat(64),
+        p_width: 1,
+        p_height: 1,
+        p_has_transparency: false,
+        p_file_size: 3,
+        p_object_created_at: null,
+      });
+      expect(completion.error?.details ?? completion.error?.code).toBe('STORAGE_OBJECT_MISMATCH');
+    }
+    const assets = await fx.svc.from('project_game_assets').select('id').eq('storage_path', objectPath);
+    expect(assets.error).toBeNull();
+    expect(assets.data).toEqual([]);
+
+    await fx.svc.storage.from('project-assets').remove([objectPath]);
+    await release(fx.owner, reservation.reservationId as string);
+  });
+
   it('requires a pending reservation for direct bucket writes and settles verified object bytes only', async () => {
     const objectPath = pathFor(fx.owner);
     expect(await upload(fx.owner, objectPath, 3)).not.toBeNull();
@@ -268,6 +336,7 @@ describeDb('account project storage real Postgres behavior', () => {
       objectPath,
       fx.projectId,
       'library-media-files',
+      'library_media',
     );
     expect(await upload(fx.editor, objectPath, 16, 'library-media-files')).toBeNull();
     await finalize(fx.editor, reservation.reservationId as string, 16);
@@ -302,7 +371,7 @@ describeDb('account project storage real Postgres behavior', () => {
 
   it('prevents a removed collaborator from deleting a project-scoped media object', async () => {
     const objectPath = pathFor(fx.editor);
-    await reserve(fx.editor, 3, objectPath, fx.projectId, 'library-media-files');
+    await reserve(fx.editor, 3, objectPath, fx.projectId, 'library-media-files', 'library_media');
     expect(await upload(fx.editor, objectPath, 3, 'library-media-files')).toBeNull();
 
     const removed = await fx.svc.from('project_collaborators').delete()
@@ -328,7 +397,7 @@ describeDb('account project storage real Postgres behavior', () => {
 
   it('rechecks current membership on update policies after an editor reservation', async () => {
     const objectPath = pathFor(fx.editor);
-    const reservation = await reserve(fx.editor, 3, objectPath, fx.projectId, 'tiptap-images');
+    const reservation = await reserve(fx.editor, 3, objectPath, fx.projectId, 'tiptap-images', 'document_image');
     expect(await upload(fx.editor, objectPath, 3, 'tiptap-images')).toBeNull();
 
     const removed = await fx.svc.from('project_collaborators').delete()

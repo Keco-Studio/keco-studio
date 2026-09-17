@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets'];
+const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images'];
 const WRITE_OPERATIONS = ['upload', 'update', 'remove', 'move', 'copy'];
 const DEFAULT_ALLOWLIST = new Set([
   'src/lib/services/mediaFileUploadService.ts',

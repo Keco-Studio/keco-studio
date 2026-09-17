@@ -12,4 +12,9 @@ describe('MediaFileUpload validation feedback', () => {
     expect(source).toContain('className={styles.errorMessage} role="alert"');
     expect(source).toMatch(/role="alert"[\s\S]*\{error\}/);
   });
+
+  it('uses the shared owner-aware quota message instead of rendering quota error codes', () => {
+    expect(source).toContain('storageQuotaMessage(roleQuery.data?.isOwner === true)');
+    expect(source).not.toContain("message.error('STORAGE_QUOTA_EXCEEDED')");
+  });
 });

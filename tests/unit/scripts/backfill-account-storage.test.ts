@@ -78,19 +78,16 @@ describe('account storage backfill', () => {
     });
     expect(inserts).toHaveLength(0);
 
-    await backfillAccountStorage(client, { apply: true });
-    expect(inserts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ objectPath: 'uploader-a/project-a/path.png', projectId: 'project-a', ownerId: 'owner-a' }),
-      expect.objectContaining({ objectPath: 'legacy/same-owner.png', projectId: 'project-b', ownerId: 'owner-a' }),
-      expect.objectContaining({ objectPath: 'legacy/unassigned.png', projectId: null, ownerId: 'uploader-a' }),
-    ]));
-    expect(inserts).toHaveLength(6);
-    expect(inserts.some(input => input.objectPath === 'legacy/ambiguous.png')).toBe(false);
-    expect(rebuilds()).toBe(1);
+    await expect(backfillAccountStorage(client, { apply: true }))
+      .rejects.toThrow('Storage backfill aborted: 1 ambiguous object(s) require attribution');
+    expect(inserts).toHaveLength(0);
+    expect(rebuilds()).toBe(0);
   });
 
-  it('is idempotent when the service import RPC reports existing bucket/path records', async () => {
+  it('imports only after a full conflict-free scan and is idempotent', async () => {
     const { client, inserts } = clientFixture();
+    client.listAccountedStorageObjects = async (bucketId: string) => bucketId === 'project-assets'
+      ? objects.filter(object => object.objectPath !== 'legacy/ambiguous.png') : [];
     await expect(backfillAccountStorage(client, { apply: true })).resolves.toMatchObject({ insertedFiles: 6 });
     await expect(backfillAccountStorage(client, { apply: true })).resolves.toMatchObject({ insertedFiles: 0 });
     expect(inserts).toHaveLength(6);
@@ -98,12 +95,37 @@ describe('account storage backfill', () => {
 
   it('uses the service rebuild RPC and accepts its JSON result', async () => {
     const { client } = clientFixture();
+    client.listAccountedStorageObjects = async (bucketId: string) => bucketId === 'project-assets'
+      ? objects.filter(object => object.objectPath !== 'legacy/ambiguous.png') : [];
     delete (client as { rebuildAccountStorageTotals?: () => Promise<void> }).rebuildAccountStorageTotals;
     const rpc = jest.fn().mockResolvedValue({ data: { rebuiltAccounts: 2 }, error: null });
 
     await expect(backfillAccountStorage({ ...client, rpc }, { apply: true }))
       .resolves.toMatchObject({ insertedFiles: 6 });
     expect(rpc).toHaveBeenCalledWith('service_rebuild_account_storage_quota_totals');
+  });
+
+  it('includes TipTap images as document-image files in an otherwise safe apply plan', async () => {
+    const { client } = clientFixture();
+    const importStorageFile = jest.fn().mockResolvedValue({ inserted: true });
+    client.listAccountedStorageObjects = async (bucketId: string) => bucketId === 'tiptap-images'
+      ? [{ bucketId: 'tiptap-images', objectPath: 'uploader-a/project-a/image.png', sizeBytes: 64, uploaderId: 'uploader-a' }]
+      : [];
+    await expect(backfillAccountStorage({ ...client, importStorageFile }, { apply: true }))
+      .resolves.toMatchObject({ scannedObjects: 1, attributableObjects: 1, insertedFiles: 1 });
+    expect(importStorageFile).toHaveBeenCalledWith(expect.objectContaining({
+      bucketId: 'tiptap-images', sourceKind: 'document_image', projectId: 'project-a', ownerId: 'owner-a',
+    }));
+  });
+
+  it('does not mutate when inventory contains an object that cannot be attributed safely', async () => {
+    const { client, inserts, rebuilds } = clientFixture();
+    client.listAccountedStorageObjects = async (bucketId: string) => bucketId === 'project-assets'
+      ? [{ bucketId: 'project-assets', objectPath: '', sizeBytes: 64, uploaderId: 'uploader-a' }] : [];
+    await expect(backfillAccountStorage(client, { apply: true }))
+      .rejects.toThrow('Storage backfill aborted: 1 ambiguous object(s) require attribution');
+    expect(inserts).toHaveLength(0);
+    expect(rebuilds()).toBe(0);
   });
 
   it('fails closed when project attribution cannot be queried', async () => {

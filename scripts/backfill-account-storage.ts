@@ -7,6 +7,7 @@ const ACCOUNTED_BUCKETS = [
   'project-assets',
   'map-assets',
   'character-assets',
+  'tiptap-images',
 ] as const;
 const PAGE_SIZE = 100;
 
@@ -65,7 +66,7 @@ function pathProjectId(bucketId: AccountedStorageBucket, objectPath: string, pro
   const segments = objectPath.split('/').filter(Boolean);
   const candidate = bucketId === 'map-assets' && segments[0] === 'references'
     ? segments[1]
-    : bucketId === 'library-media-files' || bucketId === 'project-assets'
+    : bucketId === 'library-media-files' || bucketId === 'project-assets' || bucketId === 'tiptap-images'
       ? segments[1]
       : bucketId === 'map-assets' || bucketId === 'character-assets'
         ? segments[0]
@@ -185,7 +186,13 @@ function sourceFromObject(object: StorageObject, projectId: string | null): Stor
   return {
     projectId,
     ownerId: object.uploaderId ?? '',
-    sourceKind: projectId ? 'project_asset' : 'legacy_unassigned',
+    sourceKind: projectId
+      ? object.bucketId === 'library-media-files' ? 'library_media'
+        : object.bucketId === 'tiptap-images' ? 'document_image'
+          : object.bucketId === 'map-assets' ? (object.objectPath.startsWith('references/') ? 'map_reference' : 'map_asset')
+            : object.bucketId === 'character-assets' ? 'character_asset'
+              : 'project_asset'
+      : 'legacy_unassigned',
     sourceEntityId: null,
     displayName: objectName(object.objectPath),
     mimeType: object.mimeType ?? 'application/octet-stream',
@@ -255,9 +262,14 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
   const projects = await knownProjects(client);
   const nativeReferences = client.findStorageAttributions ? null : await nativeAttributions(client, projects);
   const report: BackfillReport = { scannedObjects: 0, attributableObjects: 0, unassignedObjects: 0, conflicts: 0, insertedFiles: 0, totalBytes: 0 };
+  const plannedImports: Array<StorageObject & StorageAttribution> = [];
   for (const bucketId of ACCOUNTED_BUCKETS) {
     for (const object of await listObjects(client, bucketId)) {
-      if (!isBucket(object.bucketId) || !object.objectPath || safeSize(object.sizeBytes) === null) continue;
+      if (!isBucket(object.bucketId) || !object.objectPath || safeSize(object.sizeBytes) === null) {
+        report.scannedObjects += 1;
+        report.conflicts += 1;
+        continue;
+      }
       report.scannedObjects += 1;
       const candidates = client.findStorageAttributions
         ? await client.findStorageAttributions(object)
@@ -270,10 +282,16 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
       if (resolution.status === 'unassigned') report.unassignedObjects += 1;
       else report.attributableObjects += 1;
       report.totalBytes += object.sizeBytes;
-      if (apply) report.insertedFiles += (await importFile(client, { ...object, ...resolution.attribution })) ? 1 : 0;
+      plannedImports.push({ ...object, ...resolution.attribution });
     }
   }
-  if (apply) await rebuildAccountStorageTotals(client);
+  if (apply && report.conflicts > 0) {
+    throw new Error(`Storage backfill aborted: ${report.conflicts} ambiguous object(s) require attribution`);
+  }
+  if (apply) {
+    for (const input of plannedImports) report.insertedFiles += (await importFile(client, input)) ? 1 : 0;
+    await rebuildAccountStorageTotals(client);
+  }
   return report;
 }
 

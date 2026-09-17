@@ -22,6 +22,7 @@ import {
 import { projectAssetMimeFromName } from '@/lib/services/projectAssetUploadContract';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { isStorageQuotaResponse, storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import styles from './GameAssetsPage.module.css';
 
 type ApiResponse = { assets: ProjectGameAsset[]; warnings: Array<{ source: string; message: string }> };
@@ -240,7 +241,6 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
       });
       const prepared = await prepareResponse.json() as {
         error?: string;
-        code?: string;
         failedCount?: number;
         items?: Array<{
           index: number;
@@ -252,10 +252,8 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
         }>;
       };
       if (!prepareResponse.ok || !prepared.items) {
-        if (prepared.code === 'STORAGE_QUOTA_EXCEEDED') {
-          throw new Error(roleQuery.data?.isOwner
-            ? 'Your account has reached its storage quota'
-            : 'This project cannot accept more files right now. Contact the project owner.');
+        if (isStorageQuotaResponse(prepareResponse, prepared)) {
+          throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
         }
         throw new Error(prepared.error ?? 'Upload preparation failed');
       }
@@ -284,13 +282,11 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
           body: JSON.stringify({ action: 'complete', items: completionItems }),
         });
         const completed = await completeResponse.json() as {
-          completedCount?: number; failedCount?: number; error?: string; code?: string;
+          completedCount?: number; failedCount?: number; error?: string;
         };
         if (!completeResponse.ok) {
-          if (completed.code === 'STORAGE_QUOTA_EXCEEDED') {
-            throw new Error(roleQuery.data?.isOwner
-              ? 'Your account has reached its storage quota'
-              : 'This project cannot accept more files right now. Contact the project owner.');
+          if (isStorageQuotaResponse(completeResponse, completed)) {
+            throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
           }
           throw new Error(completed.error ?? 'Upload completion failed');
         }

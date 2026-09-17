@@ -36,6 +36,7 @@ const ACCOUNTED_STORAGE_BUCKETS = [
   'project-assets',
   'map-assets',
   'character-assets',
+  'tiptap-images',
 ] as const;
 
 type AccountedStorageBucket = typeof ACCOUNTED_STORAGE_BUCKETS[number];
@@ -61,6 +62,7 @@ function isCleanupPathForProject({
     return path.startsWith(`references/${projectId}/`) || path.startsWith(`${projectId}/`);
   }
   if (bucketId === 'character-assets') return path.startsWith(`${projectId}/`);
+  if (bucketId === 'tiptap-images') return path.startsWith(`${ownerId}/${projectId}/`);
   return path.startsWith(`${ownerId}/${projectId}/`);
 }
 

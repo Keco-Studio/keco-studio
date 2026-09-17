@@ -7,6 +7,8 @@ import { Tooltip, App } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import {
   uploadMediaFile,
   deleteMediaFile,
@@ -50,7 +52,8 @@ export function MediaFileUpload({
   const params = useParams<{ projectId?: string }>();
   const projectId = projectIdProp ?? params?.projectId;
   const supabase = useSupabase();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, userProfile } = useAuth();
+  const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
@@ -177,7 +180,9 @@ export function MediaFileUpload({
         onBlur?.();
       }, 2000);
     } catch (e: any) {
-      const msg = e?.message || 'Upload failed';
+      const msg = e?.message === 'STORAGE_QUOTA_EXCEEDED'
+        ? storageQuotaMessage(roleQuery.data?.isOwner === true)
+        : e?.message || 'Upload failed';
       setError(msg);
       if (onShowToast) {
         onShowToast(msg, 'error');

@@ -7,7 +7,6 @@ const RESERVATION_ID = '44444444-4444-4444-8444-444444444444';
 const SECOND_RESERVATION_ID = '55555555-5555-4555-8555-555555555555';
 const getUserProjectRole = jest.fn();
 const reserveProjectStorage = jest.fn();
-const finalizeProjectStorage = jest.fn();
 const releaseProjectStorage = jest.fn();
 class mockStorageQuotaError extends Error {
   constructor(public readonly code: string) {
@@ -32,7 +31,6 @@ jest.mock('@/lib/services/authorizationService', () => ({
 jest.mock('@/lib/server/storageQuota', () => ({
   StorageQuotaError: mockStorageQuotaError,
   reserveProjectStorage: (...args: unknown[]) => reserveProjectStorage(...args),
-  finalizeProjectStorage: (...args: unknown[]) => finalizeProjectStorage(...args),
   releaseProjectStorage: (...args: unknown[]) => releaseProjectStorage(...args),
 }));
 
@@ -58,14 +56,6 @@ describe('project game asset upload route', () => {
       ownerId: USER_ID,
       projectId: PROJECT_ID,
       expectedBytes: 8,
-      reused: false,
-    });
-    finalizeProjectStorage.mockReset().mockResolvedValue({
-      fileId: '66666666-6666-4666-8666-666666666666',
-      ownerId: USER_ID,
-      projectId: PROJECT_ID,
-      sizeBytes: 8,
-      reservationId: RESERVATION_ID,
       reused: false,
     });
     releaseProjectStorage.mockReset().mockResolvedValue({ reservationId: RESERVATION_ID, reused: false });
@@ -139,18 +129,14 @@ describe('project game asset upload route', () => {
     expect(result).toMatchObject({ completedCount: 1, failedCount: 0 });
     expect(from).toHaveBeenCalledWith('project-assets');
     expect(bucket.remove).not.toHaveBeenCalled();
-    expect(rpc).toHaveBeenCalledWith('mcp_register_project_game_asset', expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload', expect.objectContaining({
+      p_reservation_id: RESERVATION_ID,
       p_project_id: PROJECT_ID,
       p_name: 'guide.pdf',
       p_mime_type: 'application/pdf',
       p_storage_path: path,
       p_file_size: bytes.byteLength,
     }));
-    expect(finalizeProjectStorage).toHaveBeenCalledWith(expect.anything(), {
-      reservationId: RESERVATION_ID,
-      actualBytes: bytes.byteLength,
-      sourceEntityId: ASSET_ID,
-    });
   });
 
   it('rejects viewers before preparing or completing storage work', async () => {
@@ -191,7 +177,7 @@ describe('project game asset upload route', () => {
       download: jest.fn().mockResolvedValue({ data: new Blob([bytes]), error: null }),
       remove: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
-    const rpc = jest.fn();
+    const rpc = jest.fn().mockResolvedValue({ data: RESERVATION_ID, error: null });
     supabase = { storage: { from: jest.fn(() => bucket) }, rpc };
 
     const response = await post({
@@ -202,7 +188,7 @@ describe('project game asset upload route', () => {
 
     expect(result).toMatchObject({ completedCount: 0, failedCount: 1 });
     expect(bucket.remove).toHaveBeenCalledWith([path]);
-    expect(rpc).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('resolve_project_storage_upload_reservation', expect.anything());
     expect(releaseProjectStorage).toHaveBeenCalledWith(expect.anything(), RESERVATION_ID);
   });
 
@@ -219,7 +205,9 @@ describe('project game asset upload route', () => {
     };
     supabase = {
       storage: { from: jest.fn(() => bucket) },
-      rpc: jest.fn().mockResolvedValue({ data: null, error: { message: 'database unavailable' } }),
+      rpc: jest.fn((name: string) => Promise.resolve(name === 'resolve_project_storage_upload_reservation'
+        ? { data: RESERVATION_ID, error: null }
+        : { data: null, error: { message: 'database unavailable' } })),
     };
 
     const response = await post({
@@ -239,7 +227,7 @@ describe('project game asset upload route', () => {
       info: jest.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
       remove: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
-    supabase = { storage: { from: jest.fn(() => bucket) }, rpc: jest.fn() };
+    supabase = { storage: { from: jest.fn(() => bucket) }, rpc: jest.fn().mockResolvedValue({ data: RESERVATION_ID, error: null }) };
 
     const response = await post({
       action: 'complete',
@@ -252,7 +240,7 @@ describe('project game asset upload route', () => {
     expect(releaseProjectStorage).toHaveBeenCalledWith(expect.anything(), RESERVATION_ID);
   });
 
-  it('removes a newly registered object and rolls back its row when finalization fails', async () => {
+  it('removes the physical object when atomic completion rejects the reservation', async () => {
     const bytes = new TextEncoder().encode('%PDF-1.7');
     const path = `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-guide.pdf`;
     const bucket = {
@@ -260,14 +248,11 @@ describe('project game asset upload route', () => {
       download: jest.fn().mockResolvedValue({ data: new Blob([bytes]), error: null }),
       remove: jest.fn().mockResolvedValue({ data: [], error: null }),
     };
-    const eqProject = jest.fn().mockResolvedValue({ error: null });
-    const eqId = jest.fn(() => ({ eq: eqProject }));
-    const removeRow = jest.fn(() => ({ eq: eqId }));
-    finalizeProjectStorage.mockRejectedValue(new mockStorageQuotaError('STORAGE_RESERVATION_EXPIRED'));
     supabase = {
       storage: { from: jest.fn(() => bucket) },
-      rpc: jest.fn().mockResolvedValue({ data: [{ id: ASSET_ID, reused: false }], error: null }),
-      from: jest.fn(() => ({ delete: removeRow })),
+      rpc: jest.fn((name: string) => Promise.resolve(name === 'resolve_project_storage_upload_reservation'
+        ? { data: RESERVATION_ID, error: null }
+        : { data: null, error: { details: 'STORAGE_RESERVATION_EXPIRED' } })),
     };
 
     const response = await post({
@@ -277,12 +262,9 @@ describe('project game asset upload route', () => {
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: 'Storage is temporarily unavailable', code: 'STORAGE_RESERVATION_EXPIRED',
+      error: 'Storage is temporarily unavailable',
     });
     expect(bucket.remove).toHaveBeenCalledWith([path]);
-    expect(removeRow).toHaveBeenCalledWith();
-    expect(eqId).toHaveBeenCalledWith('id', ASSET_ID);
-    expect(eqProject).toHaveBeenCalledWith('project_id', PROJECT_ID);
     expect(releaseProjectStorage).toHaveBeenCalledWith(expect.anything(), RESERVATION_ID);
   });
 
@@ -298,7 +280,7 @@ describe('project game asset upload route', () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: 'Storage quota exceeded', code: 'STORAGE_QUOTA_EXCEEDED',
+      error: 'Storage quota exceeded',
     });
     expect(createSignedUploadUrl).not.toHaveBeenCalled();
   });
@@ -335,12 +317,9 @@ describe('project game asset upload route', () => {
       download: jest.fn().mockResolvedValue({ data: new Blob([bytes]), error: null }),
       remove: jest.fn(),
     };
-    const rpc = jest.fn()
-      .mockResolvedValueOnce({ data: [{ id: ASSET_ID, reused: false }], error: null })
-      .mockResolvedValueOnce({ data: [{ id: ASSET_ID, reused: true }], error: null });
-    finalizeProjectStorage
-      .mockResolvedValueOnce({ fileId: '66666666-6666-4666-8666-666666666666', ownerId: USER_ID, projectId: PROJECT_ID, sizeBytes: bytes.byteLength, reservationId: RESERVATION_ID, reused: false })
-      .mockResolvedValueOnce({ fileId: '66666666-6666-4666-8666-666666666666', ownerId: USER_ID, projectId: PROJECT_ID, sizeBytes: bytes.byteLength, reservationId: RESERVATION_ID, reused: true });
+    const rpc = jest.fn((name: string) => Promise.resolve(name === 'resolve_project_storage_upload_reservation'
+      ? { data: RESERVATION_ID, error: null }
+      : { data: [{ id: ASSET_ID, reused: true }], error: null }));
     supabase = { storage: { from: jest.fn(() => bucket) }, rpc };
     const body = { action: 'complete', items: [{ path, reservationId: RESERVATION_ID, fileName: 'guide.pdf', fileType: 'application/pdf', fileSize: bytes.byteLength }] };
 
@@ -350,6 +329,55 @@ describe('project game asset upload route', () => {
     expect(first.status).toBe(201);
     expect(replay.status).toBe(201);
     expect(await replay.json()).toMatchObject({ completedCount: 1, failedCount: 0 });
+    expect(bucket.remove).not.toHaveBeenCalled();
+    expect(releaseProjectStorage).not.toHaveBeenCalled();
+  });
+
+  it('does not register an asset when atomic completion rejects a mismatched reservation binding', async () => {
+    const bytes = new TextEncoder().encode('%PDF-1.7');
+    const path = `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-guide.pdf`;
+    const bucket = {
+      info: jest.fn().mockResolvedValue({ data: { size: bytes.byteLength, contentType: 'application/pdf' }, error: null }),
+      download: jest.fn().mockResolvedValue({ data: new Blob([bytes]), error: null }),
+      remove: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const rpc = jest.fn((name: string) => Promise.resolve(name === 'resolve_project_storage_upload_reservation'
+      ? { data: RESERVATION_ID, error: null }
+      : { data: null, error: { details: 'STORAGE_OBJECT_MISMATCH' } }));
+    supabase = { storage: { from: jest.fn(() => bucket) }, rpc };
+
+    const response = await post({
+      action: 'complete',
+      items: [{ path, reservationId: RESERVATION_ID, fileName: 'guide.pdf', fileType: 'application/pdf', fileSize: bytes.byteLength }],
+    });
+
+    expect(response.status).toBe(503);
+    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload', expect.objectContaining({
+      p_reservation_id: RESERVATION_ID,
+      p_project_id: PROJECT_ID,
+      p_storage_path: path,
+      p_storage_bucket: 'project-assets',
+    }));
+    expect(rpc).not.toHaveBeenCalledWith('mcp_register_project_game_asset', expect.anything());
+    expect(bucket.remove).toHaveBeenCalledWith([path]);
+  });
+
+  it('preserves objects and reservations when the path does not bind to the submitted reservation', async () => {
+    const path = `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-guide.pdf`;
+    const bucket = { info: jest.fn(), download: jest.fn(), remove: jest.fn() };
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { details: 'STORAGE_OBJECT_MISMATCH' } });
+    supabase = { storage: { from: jest.fn(() => bucket) }, rpc };
+
+    const response = await post({
+      action: 'complete',
+      items: [{ path, reservationId: RESERVATION_ID, fileName: 'guide.pdf', fileType: 'application/pdf', fileSize: 8 }],
+    });
+
+    expect(response.status).toBe(503);
+    expect(rpc).toHaveBeenCalledWith('resolve_project_storage_upload_reservation', expect.objectContaining({
+      p_project_id: PROJECT_ID, p_object_path: path, p_reservation_id: RESERVATION_ID,
+    }));
+    expect(bucket.info).not.toHaveBeenCalled();
     expect(bucket.remove).not.toHaveBeenCalled();
     expect(releaseProjectStorage).not.toHaveBeenCalled();
   });
