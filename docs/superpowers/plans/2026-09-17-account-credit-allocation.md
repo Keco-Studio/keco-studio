@@ -106,9 +106,7 @@ Use `SET search_path = ''`, schema-qualified identifiers, explicit function revo
 
 ```bash
 npx supabase migration up
-RUN_SUPABASE_RLS_TESTS=1 npx jest --runInBand \
-  tests/unit/database/account-credit-ledger-migration.test.ts \
-  tests/unit/database/account-credit-ledger.behavior.test.ts
+npm run test:account-credit-db
 ```
 
 Expected: all contract and real Postgres tests pass.
@@ -447,9 +445,7 @@ Expected: every command exits zero.
 
 ```bash
 npx supabase migration up
-RUN_SUPABASE_RLS_TESTS=1 npx jest --runInBand \
-  tests/unit/database/ai-usage-accounting.behavior.test.ts \
-  tests/unit/database/account-credit-ledger.behavior.test.ts
+npm run test:account-credit-db
 ```
 
 Expected: real Postgres behavior tests pass.

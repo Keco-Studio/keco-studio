@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
@@ -31,10 +31,21 @@ function response(status: number, body: unknown): FetchResult {
   };
 }
 
-function renderCredits() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+function createCreditsClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        staleTime: 2 * 60 * 1000,
+        gcTime: 5 * 60 * 1000,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+      },
+    },
   });
+}
+
+function renderCredits(client = createCreditsClient()) {
 
   const result = render(
     <QueryClientProvider client={client}>
@@ -50,7 +61,10 @@ describe('AccountCreditsSection', () => {
     jest.clearAllMocks();
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    cleanup();
+  });
 
   it('shows the account Credit ledger with formatted values', async () => {
     global.fetch = jest.fn(async () => response(200, summary)) as never;
@@ -85,6 +99,66 @@ describe('AccountCreditsSection', () => {
     expect(
       await screen.findByText('2 usage records are awaiting final Credit totals and are not included in Used.'),
     ).toBeTruthy();
+  });
+
+  it('uses singular grammar for one incomplete usage record', async () => {
+    global.fetch = jest.fn(async () => response(200, {
+      ...summary,
+      incompleteCount: 1,
+    })) as never;
+
+    renderCredits();
+
+    expect(
+      await screen.findByText('1 usage record is awaiting final Credit totals and is not included in Used.'),
+    ).toBeTruthy();
+  });
+
+  it('loads a fresh balance when the section is revisited with cached data', async () => {
+    const refreshedSummary = {
+      ...summary,
+      allocated: 200_000_000,
+      remaining: 199_999_993,
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, summary))
+      .mockResolvedValueOnce(response(200, refreshedSummary)) as never;
+    const client = createCreditsClient();
+
+    const firstVisit = renderCredits(client);
+    expect((await screen.findByTestId('account-credits-allocated')).textContent).toBe('100,000,000');
+    firstVisit.unmount();
+
+    renderCredits(client);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('account-credits-allocated').textContent).toBe('200,000,000');
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads a fresh balance when the window regains focus', async () => {
+    const refreshedSummary = {
+      ...summary,
+      used: 10,
+      remaining: 99_999_990,
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, summary))
+      .mockResolvedValueOnce(response(200, refreshedSummary)) as never;
+    focusManager.setFocused(false);
+
+    renderCredits();
+    expect((await screen.findByTestId('account-credits-used')).textContent).toBe('7');
+
+    act(() => focusManager.setFocused(true));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('account-credits-used').textContent).toBe('10');
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('marks exhausted overage without hiding actual usage', async () => {

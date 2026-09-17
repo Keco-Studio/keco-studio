@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   anonClient,
+  enforceRlsDbTestRun,
   RLS_DB_TESTS_ENABLED,
   buildProjectFixture,
   teardownProjectFixture,
@@ -11,12 +12,13 @@ import {
 
 jest.setTimeout(120_000);
 
+enforceRlsDbTestRun(process.env.REQUIRE_RLS_DB_TESTS === '1', RLS_DB_TESTS_ENABLED);
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 
 type Usage = { inputTokens: number; outputTokens: number; totalTokens: number } | null;
 
-function queryJson(sql: string): Record<string, unknown> | null {
+function queryJson<T = Record<string, unknown>>(sql: string): T | null {
   const args = [postgresUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-At', '-c', sql];
   let result = spawnSync('psql', args, { encoding: 'utf8' });
   if (result.error?.code === 'ENOENT') {
@@ -35,7 +37,17 @@ function queryJson(sql: string): Record<string, unknown> | null {
     throw new Error(`psql failed: ${(result.stderr ?? result.error?.message ?? '').trim()}`);
   }
   const output = (result.stdout ?? '').trim();
-  return output ? JSON.parse(output) as Record<string, unknown> : null;
+  return output ? JSON.parse(output) as T : null;
+}
+
+type ExplainNode = {
+  'Node Type'?: string;
+  'Index Name'?: string;
+  Plans?: ExplainNode[];
+};
+
+function flattenPlan(node: ExplainNode): ExplainNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(flattenPlan)];
 }
 
 describeDb('account credit ledger real Postgres behavior', () => {
@@ -196,6 +208,7 @@ describeDb('account credit ledger real Postgres behavior', () => {
   });
 
   it('isolates own-user summaries while including grant and usage identities in admin totals', async () => {
+    const before = await adminSummary();
     expect((await grant(fx.owner.id, 100)).error).toBeNull();
     expect((await grant(fx.outsider.id, 200)).error).toBeNull();
     expect((await record(fx.owner.client, event())).error).toBeNull();
@@ -214,13 +227,16 @@ describeDb('account credit ledger real Postgres behavior', () => {
       deepseekTokens: 21,
       incompleteCount: 0,
     }));
-    expect(await adminSummary()).toEqual(expect.objectContaining({
-      allocated: 300,
-      used: 12,
-      remaining: 288,
-      overage: 0,
-      deepseekTokens: 36,
-      incompleteCount: 0,
+    const after = await adminSummary();
+    const allocated = Number(before.allocated) + 300;
+    const used = Number(before.used) + 12;
+    expect(after).toEqual(expect.objectContaining({
+      allocated,
+      used,
+      remaining: Math.max(allocated - used, 0),
+      overage: Math.max(used - allocated, 0),
+      deepseekTokens: Number(before.deepseekTokens) + 36,
+      incompleteCount: before.incompleteCount,
       users: expect.objectContaining({
         [fx.owner.id]: expect.objectContaining({ allocated: 100, used: 7 }),
         [fx.outsider.id]: expect.objectContaining({ allocated: 200, used: 5 }),
@@ -272,5 +288,94 @@ describeDb('account credit ledger real Postgres behavior', () => {
       authenticatedAdminSummary: false,
       serviceAdminSummary: true,
     });
+  });
+
+  it('uses user-scoped indexes for Credit inputs at representative scale', () => {
+    const marker = `credit_index_${randomUUID().replaceAll('-', '')}`;
+    try {
+      queryJson(`
+        insert into public.ai_usage_events (
+          event_key, user_id, feature, operation, request_kind, provider,
+          correlation_id, attempt, outcome, usage_status, input_tokens,
+          output_tokens, total_tokens, pricing_rule_version, started_at,
+          finished_at, metadata
+        )
+        select
+          gen_random_uuid(),
+          case when sample = 1 then '${fx.owner.id}'::uuid else null end,
+          '${marker}',
+          'explain_credit_summary',
+          'chat_completion',
+          'deepseek',
+          '${marker}-' || sample,
+          1,
+          'succeeded',
+          case when sample % 2 = 0 then 'unknown' else 'reported' end,
+          case when sample % 2 = 0 then null else 1 end,
+          case when sample % 2 = 0 then null else 1 end,
+          case when sample % 2 = 0 then null else 2 end,
+          case when sample % 2 = 0 then null else 1 end,
+          '2026-09-15T00:00:00.000Z'::timestamptz,
+          '2026-09-15T00:00:01.000Z'::timestamptz,
+          '{"fixture":"account_credit_index"}'::jsonb
+        from generate_series(1, 12000) as sample
+      `);
+      queryJson(`
+        insert into public.credit_ledger_entries (
+          user_id, credit_delta, reason, reference_key
+        )
+        select
+          case when sample = 1 then '${fx.owner.id}'::uuid else '${fx.outsider.id}'::uuid end,
+          1,
+          'Credit index EXPLAIN fixture',
+          '${marker}-ledger-' || sample
+        from generate_series(1, 12000) as sample
+      `);
+      queryJson('analyze public.ai_usage_events');
+      queryJson('analyze public.credit_ledger_entries');
+
+      const usagePlan = queryJson<Array<{ Plan: ExplainNode }>>(`
+        explain (format json)
+        select
+          coalesce(sum(event.total_tokens) filter (
+            where event.pricing_rule_version = 1
+          ), 0)::bigint as deepseek_tokens,
+          count(*) filter (
+            where event.provider = 'deepseek'
+              and event.request_kind = 'chat_completion'
+              and event.usage_status = 'unknown'
+          )::bigint as incomplete_count
+        from public.ai_usage_events as event
+        where event.user_id = '${fx.owner.id}'::uuid
+          and (
+            event.pricing_rule_version = 1
+            or (
+              event.provider = 'deepseek'
+              and event.request_kind = 'chat_completion'
+              and event.usage_status = 'unknown'
+            )
+          )
+      `);
+      const ledgerPlan = queryJson<Array<{ Plan: ExplainNode }>>(`
+        explain (format json)
+        select coalesce(sum(entry.credit_delta), 0)::bigint
+        from public.credit_ledger_entries as entry
+        where entry.user_id = '${fx.owner.id}'::uuid
+      `);
+      const usageNodes = flattenPlan(usagePlan?.[0]?.Plan ?? {});
+      const ledgerNodes = flattenPlan(ledgerPlan?.[0]?.Plan ?? {});
+
+      expect(usageNodes.map(node => node['Index Name']))
+        .toContain('ai_usage_events_credit_user_idx');
+      expect(ledgerNodes.map(node => node['Index Name']))
+        .toContain('credit_ledger_entries_user_id_idx');
+      expect([...usageNodes, ...ledgerNodes].map(node => node['Node Type']))
+        .not.toContain('Seq Scan');
+    } finally {
+      queryJson(`delete from public.ai_usage_events where feature = '${marker}'`);
+      queryJson(`delete from public.credit_ledger_entries where reference_key like '${marker}-ledger-%'`);
+      queryJson('analyze public.ai_usage_events');
+      queryJson('analyze public.credit_ledger_entries');
+    }
   });
 });

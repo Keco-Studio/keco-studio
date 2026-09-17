@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   grantAccountCredits,
+  loadGrantAccountCreditsEnvironment,
   parseGrantAccountCreditsArguments,
   parseGrantAccountCreditsEnvironment,
   parsePositiveSafeInteger,
@@ -35,10 +39,14 @@ function ledgerRow(overrides: Partial<LedgerRow> = {}): LedgerRow {
 function buildClient(options: {
   entries?: LedgerRow[];
   authUserId?: string | null;
-  authError?: boolean;
+  authError?: unknown;
+  selectErrors?: unknown[];
+  insertError?: unknown;
+  concurrentEntry?: LedgerRow;
 } = {}) {
   const entries = [...(options.entries ?? [])];
   const authLookups: string[] = [];
+  const selectErrors = [...(options.selectErrors ?? [])];
 
   const client = {
     auth: {
@@ -47,7 +55,7 @@ function buildClient(options: {
           authLookups.push(userId);
           return {
             data: { user: options.authUserId === null ? null : { id: options.authUserId ?? userId } },
-            error: options.authError ? { message: 'Auth lookup failed' } : null,
+            error: options.authError ?? null,
           };
         },
       },
@@ -61,13 +69,19 @@ function buildClient(options: {
               if (column !== 'reference_key') throw new Error(`Unexpected filter: ${column}`);
               return {
                 async maybeSingle() {
-                  return { data: entries.find(entry => entry.reference_key === value) ?? null, error: null };
+                  const error = selectErrors.shift() ?? null;
+                  return {
+                    data: error ? null : entries.find(entry => entry.reference_key === value) ?? null,
+                    error,
+                  };
                 },
               };
             },
           };
         },
         async insert(input: Omit<LedgerRow, 'id' | 'created_at'>) {
+          if (options.concurrentEntry) entries.push(options.concurrentEntry);
+          if (options.insertError) return { error: options.insertError };
           entries.push(ledgerRow({
             user_id: input.user_id,
             credit_delta: input.credit_delta,
@@ -199,6 +213,62 @@ describe('grant account Credits operator command', () => {
     expect(entries).toEqual([ledgerRow()]);
   });
 
+  it('rereads a matching allocation inserted concurrently as an idempotent success', async () => {
+    const existing = ledgerRow();
+    const { client, entries } = buildClient({
+      insertError: { message: 'duplicate key' },
+      concurrentEntry: existing,
+    });
+
+    await expect(grantAccountCredits(client, grantInput)).resolves.toEqual({
+      status: 'existing',
+      entry: existing,
+    });
+    expect(entries).toEqual([existing]);
+  });
+
+  it('rejects a conflicting allocation inserted concurrently', async () => {
+    const conflicting = ledgerRow({ credit_delta: 99_999_999 });
+    const { client, entries } = buildClient({
+      insertError: { message: 'duplicate key' },
+      concurrentEntry: conflicting,
+    });
+
+    await expect(grantAccountCredits(client, grantInput)).rejects.toThrow('reference is already used');
+    expect(entries).toEqual([conflicting]);
+  });
+
+  it.each([
+    ['Auth', { authError: { message: 'service-role-secret Auth failure' } }, 'Auth user could not be confirmed'],
+    ['reference read', { selectErrors: [{ message: 'service-role-secret select failure' }] }, 'Unable to inspect the account Credit reference'],
+    ['insert', { insertError: { message: 'service-role-secret insert failure' } }, 'Unable to confirm the account Credit allocation'],
+  ])('sanitizes credential-bearing %s errors', async (_path, options, expectedMessage) => {
+    const { client } = buildClient(options);
+
+    const error = await grantAccountCredits(client, grantInput).catch(cause => cause as Error);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe(expectedMessage);
+    expect(error.message).not.toContain('service-role-secret');
+  });
+
+  it('loads .env.local without overriding an existing shell value', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'account-credit-env-'));
+    const envPath = path.join(directory, '.env.local');
+    const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    writeFileSync(envPath, 'NEXT_PUBLIC_SUPABASE_URL=https://file-project.supabase.co\n');
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://shell-project.supabase.co';
+
+    try {
+      expect(loadGrantAccountCreditsEnvironment(envPath).NEXT_PUBLIC_SUPABASE_URL)
+        .toBe('https://shell-project.supabase.co');
+    } finally {
+      if (previousUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('prints help before loading environment variables or constructing a client', async () => {
     const output: string[] = [];
 
@@ -211,10 +281,16 @@ describe('grant account Credits operator command', () => {
     expect(output.join('\n')).toContain('grant:account-credits');
   });
 
-  it('does not print the service role credential', async () => {
+  it.each([
+    ['created', []],
+    ['existing', [ledgerRow()]],
+  ] as const)('prints normalized identifiers and amount for a %s allocation without credentials', async (
+    expectedStatus,
+    entries,
+  ) => {
     const secret = 'service-role-secret-that-must-not-be-logged';
     const output: string[] = [];
-    const { client } = buildClient();
+    const { client } = buildClient({ entries: [...entries] });
 
     await runGrantAccountCreditsCommand([
       '--amount', '100000000',
@@ -224,13 +300,15 @@ describe('grant account Credits operator command', () => {
       loadEnvironment: () => ({
         NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
         SUPABASE_SERVICE_ROLE_KEY: secret,
-        KECO_ADMIN_USER_ID: USER_ID,
+        KECO_ADMIN_USER_ID: USER_ID.toUpperCase(),
       }),
       createClient: () => client,
       writeOutput: message => output.push(message),
     });
 
     expect(output.join('\n')).not.toContain(secret);
-    expect(output.join('\n')).toContain(REFERENCE);
+    expect(output).toEqual([
+      `Account Credit allocation: status=${expectedStatus} user_id=${USER_ID} amount=100000000 reference=${REFERENCE}`,
+    ]);
   });
 });

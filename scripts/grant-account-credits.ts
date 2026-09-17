@@ -224,8 +224,7 @@ export async function grantAccountCredits(
 
 const defaultRuntime: CommandRuntime = {
   loadEnvironment() {
-    dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: false, quiet: true });
-    return process.env;
+    return loadGrantAccountCreditsEnvironment();
   },
   createClient(url, serviceRoleKey) {
     return createClient(url, serviceRoleKey, {
@@ -236,6 +235,13 @@ const defaultRuntime: CommandRuntime = {
     console.info(message);
   },
 };
+
+export function loadGrantAccountCreditsEnvironment(
+  envPath = path.resolve(process.cwd(), '.env.local'),
+): Record<string, string | undefined> {
+  dotenv.config({ path: envPath, override: false, quiet: true });
+  return process.env;
+}
 
 export async function runGrantAccountCreditsCommand(
   arguments_: readonly string[],
@@ -261,8 +267,12 @@ export async function runGrantAccountCreditsCommand(
     reference: parsedArguments.reference,
     reason: parsedArguments.reason,
   });
-  const action = result.status === 'created' ? 'Created' : 'Confirmed existing';
-  runtime.writeOutput(`${action} account Credit allocation for reference "${result.entry.reference_key}".`);
+  runtime.writeOutput(
+    `Account Credit allocation: status=${result.status}`
+      + ` user_id=${result.entry.user_id.toLowerCase()}`
+      + ` amount=${result.entry.credit_delta}`
+      + ` reference=${result.entry.reference_key}`,
+  );
 }
 
 if (path.basename(process.argv[1] ?? '') === 'grant-account-credits.ts') {

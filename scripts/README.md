@@ -18,6 +18,19 @@ the shell. It requires `NEXT_PUBLIC_SUPABASE_URL`,
 > before running it. Reusing the same reference is successful only when the
 > user, amount, and reason are identical.
 
+## Local account Credit database gate
+
+With the local Supabase stack running and migrated, run:
+
+```bash
+npm run test:account-credit-db
+```
+
+The command reads only the local Supabase development credentials from
+`supabase status`, runs the Credit migration contracts plus live RLS and
+EXPLAIN coverage, and fails instead of silently skipping when the live database
+suite is unavailable.
+
 ## Local Realtime authorization pool
 
 Private document/sidebar channels need local Realtime `db_pool=10`. After

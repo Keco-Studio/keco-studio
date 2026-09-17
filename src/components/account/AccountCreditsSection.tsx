@@ -53,8 +53,10 @@ function formatTrackedFrom(value: string): string {
 }
 
 function incompleteUsageMessage(count: number): string {
-  const record = count === 1 ? 'record is' : 'records are';
-  return `${count} usage ${record} awaiting final Credit totals and are not included in Used.`;
+  if (count === 1) {
+    return '1 usage record is awaiting final Credit totals and is not included in Used.';
+  }
+  return `${count} usage records are awaiting final Credit totals and are not included in Used.`;
 }
 
 function exhaustedMessage(overage: number): string {
@@ -69,6 +71,9 @@ export function AccountCreditsSection() {
     queryKey: ['account-credits'],
     queryFn: fetchAccountCredits,
     retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const firstLoadFailed = Boolean(error && !data);
