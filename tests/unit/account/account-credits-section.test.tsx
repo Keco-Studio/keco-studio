@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { AccountCreditsSection } from '@/components/account/AccountCreditsSection';
@@ -36,11 +36,13 @@ function renderCredits() {
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
 
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <AccountCreditsSection />
     </QueryClientProvider>,
   );
+
+  return { client, ...result };
 }
 
 describe('AccountCreditsSection', () => {
@@ -66,9 +68,10 @@ describe('AccountCreditsSection', () => {
 
     renderCredits();
 
-    expect(screen.getByTestId('account-credits-loading')).toBeTruthy();
+    expect(screen.getByTestId('account-credits-loading').getAttribute('aria-busy')).toBe('true');
     expect(screen.getAllByTestId('account-credits-value-placeholder')).toHaveLength(3);
     expect(screen.queryByTestId('account-credits-remaining')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Loading Credits');
   });
 
   it('warns when incomplete usage is excluded from Used', async () => {
@@ -115,5 +118,34 @@ describe('AccountCreditsSection', () => {
 
     expect((await screen.findByTestId('account-credits-remaining')).textContent).toBe('99,999,993');
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the last Credit values visible when a refresh fails and retries', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, summary))
+      .mockResolvedValueOnce(response(503, { error: 'Unavailable' }))
+      .mockResolvedValueOnce(response(200, summary)) as never;
+
+    const { client } = renderCredits();
+    expect((await screen.findByTestId('account-credits-remaining')).textContent).toBe('99,999,993');
+
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['account-credits'] });
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('account-credits-remaining').textContent).toBe('99,999,993');
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Credit data could not be refreshed. Showing the last loaded values.',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Credit data could not be refreshed. Showing the last loaded values.')).toBeNull();
+    });
+    expect(screen.getByTestId('account-credits-remaining').textContent).toBe('99,999,993');
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 });

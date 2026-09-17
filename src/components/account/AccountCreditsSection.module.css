@@ -79,11 +79,11 @@
 }
 
 .remainingItem dt {
-  color: #1677ff;
+  color: #0958d9;
 }
 
 .ledgerItem .remainingValue {
-  color: #1677ff;
+  color: #0958d9;
   font-size: 24px;
   font-weight: 800;
 }
@@ -101,6 +101,47 @@
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.loadingAnnouncement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.refreshError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e8f0;
+  color: #9a6700;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.refreshError button {
+  height: 32px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  border: 1px solid #1677ff;
+  border-radius: 7px;
+  color: #1677ff;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.refreshError button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
 }
 
 .trackedFrom,
@@ -186,6 +227,11 @@
   }
 
   .errorState {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .refreshError {
     align-items: flex-start;
     flex-direction: column;
   }

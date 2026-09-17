@@ -72,6 +72,7 @@ export function AccountCreditsSection() {
   });
 
   const firstLoadFailed = Boolean(error && !data);
+  const refreshFailed = Boolean(error && data);
 
   return (
     <section className={styles.section} aria-labelledby="account-credits-heading">
@@ -99,6 +100,7 @@ export function AccountCreditsSection() {
         <>
           <dl
             className={styles.ledger}
+            aria-busy={isLoading}
             data-testid={isLoading ? 'account-credits-loading' : undefined}
           >
             <div className={styles.ledgerItem}>
@@ -124,8 +126,22 @@ export function AccountCreditsSection() {
             </div>
           </dl>
 
+          {isLoading ? (
+            <p className={styles.loadingAnnouncement} role="status">
+              Loading Credits
+            </p>
+          ) : null}
+
           {data ? (
             <div className={styles.statuses}>
+              {refreshFailed ? (
+                <div className={styles.refreshError} role="alert">
+                  <span>Credit data could not be refreshed. Showing the last loaded values.</span>
+                  <button type="button" onClick={() => void refetch()}>
+                    Retry
+                  </button>
+                </div>
+              ) : null}
               <p className={styles.trackedFrom}>Usage tracked since {formatTrackedFrom(data.trackedFrom)}</p>
               {data.incompleteCount > 0 ? (
                 <p className={styles.warning} role="status">
