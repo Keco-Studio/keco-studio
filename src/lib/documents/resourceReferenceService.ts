@@ -233,6 +233,9 @@ function sameSemanticTarget(
   right: ResourceReferenceTarget
 ): boolean {
   if (left.kind !== right.kind) return false;
+  if (left.kind === 'document' && right.kind === 'document') {
+    return left.documentId === right.documentId;
+  }
   if (left.kind === 'table-row' && right.kind === 'table-row') {
     return (
       left.libraryId === right.libraryId &&
@@ -557,6 +560,24 @@ async function resolveDocumentReferences(
     const document = documents.get(documentId);
     if (!document || document.project_id !== projectId) return;
 
+    const documentTargets = targetsByDocument.get(documentId) ?? [];
+    for (const target of documentTargets) {
+      if (target.kind !== 'document') continue;
+      const key = resourceReferenceKey(target);
+      resolved.set(key, {
+        key,
+        status: 'available',
+        label: document.name,
+        contextLabel: document.name,
+        href: `/${projectId}/doc/${document.id}`,
+      });
+    }
+    const contentTargets = documentTargets.filter(
+      (target): target is Exclude<typeof target, { kind: 'document' }> =>
+        target.kind !== 'document'
+    );
+    if (contentTargets.length === 0) return;
+
     try {
       const { documentStateGateway } = await import('./documentStateGateway');
       const state = await documentStateGateway.read(client, documentId);
@@ -573,7 +594,7 @@ async function resolveDocumentReferences(
           : legacyContentPreview(document.id, document.content)
         ).map((block) => [block.blockId, block])
       );
-      for (const target of targetsByDocument.get(documentId) ?? []) {
+      for (const target of contentTargets) {
         const key = resourceReferenceKey(target);
         if (target.kind === 'document-range') {
           const range = resolveDocumentRange(target, [...blocks.values()]);

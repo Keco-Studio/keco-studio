@@ -214,7 +214,7 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  padding: 8px 16px 16px;
+  padding: 8px 12px 16px;
 }
 
 .savedMapsHeadingRow {
@@ -256,20 +256,37 @@
 }
 
 .savedMapsSearch {
+  position: relative;
   display: flex;
-  min-height: 36px;
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid #d8dee6;
-  border-radius: 999px;
+  padding: 0;
+  border: 0;
+  border-radius: 88px;
   color: #94a3b8;
-  background: #f8fafc;
+  background: #f1f5f9;
+}
+
+.savedMapsSearch:focus-within {
+  background: #e8eef5;
+}
+
+.savedMapsSearch > span {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .savedMapsSearch input {
   width: 100%;
+  height: 30px;
   min-width: 0;
+  padding: 0 12px 0 36px;
   border: 0;
   outline: 0;
   color: #21272a;
@@ -742,14 +759,22 @@
 .leftPanel {
   display: flex;
   flex-direction: column;
-  width: 300px;
+  z-index: 31;
+  width: 100%;
   overflow: hidden;
-  border-right: 0.5px solid var(--create-map-line);
+  background: #fafafa;
+  border-right: 0.5px solid #11111133;
 }
 
 .rightPanel {
   overflow-y: auto;
   border-left: 1px solid var(--create-map-line);
+}
+
+.directCanvasPanel,
+.rightPanel {
+  margin-top: 4rem;
+  height: calc(100% - 4rem);
 }
 
 .canvasPanel {
@@ -2499,6 +2524,10 @@
   .leftPanel.drawerOpen,
   .rightPanel.drawerOpen {
     transform: translateX(0);
+  }
+
+  .leftPanel.drawerOpen {
+    z-index: 31;
   }
 
   .drawerScrim {

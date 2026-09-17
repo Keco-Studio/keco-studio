@@ -17,7 +17,7 @@ describe('server dialogue reference replacement', () => {
     jest.mocked(documentStateGateway.read).mockResolvedValue({
       documentId: '11111111-1111-4111-8111-111111111111',
       projectId: '22222222-2222-4222-8222-222222222222',
-      markdown: '* Arrival\n  * <BlockAnchor id="job" />GDD dialogue job: job-1\n  * <BlockAnchor id="script" />Script: Generating\n\nUser note',
+      markdown: '* <ResourceReference kind="document" documentId="55555555-5555-4555-8555-555555555555" fallbackLabel="Arrival dialogue" />\n  * <BlockAnchor id="script" />Script: Generating\n\nUser note',
       yjsStateBase64: 'head-yjs', updateTail: [{ id: '33333333-3333-4333-8333-333333333333', updateBase64: 'tail' }],
       token: { epoch: 2, revision: 4 }, mode: 'collaborative', epochReason: 'initialize', updatedAt: '',
     } as any);
@@ -26,17 +26,18 @@ describe('server dialogue reference replacement', () => {
       actorUserId: '44444444-4444-4444-8444-444444444444',
       projectId: '22222222-2222-4222-8222-222222222222',
       documentId: '11111111-1111-4111-8111-111111111111',
-      dialogueJobId: 'job-1', scriptLibraryId: 'library-1',
+      dialogueJobId: 'job-1', dialogueDocumentId: '55555555-5555-4555-8555-555555555555', scriptLibraryId: 'library-1',
     })).resolves.toBe(true);
     expect((rpc as jest.Mock)).toHaveBeenCalledWith('replace_document_with_markdown', expect.objectContaining({
       p_expected_epoch: 2, p_expected_revision: 4,
       p_included_update_ids: ['33333333-3333-4333-8333-333333333333'],
       p_current_yjs_state: 'current-yjs',
-      p_replacement_markdown: expect.stringContaining('[Script](/script-system/22222222-2222-4222-8222-222222222222/script/library-1)'),
+      p_replacement_markdown: expect.not.stringContaining('[Script]('),
     }));
     const markdown = ((rpc as jest.Mock).mock.calls[0][1] as { p_replacement_markdown: string }).p_replacement_markdown;
     expect(markdown).toContain('User note');
     expect(markdown).toContain('<BlockAnchor id="script" />Script: Completed');
+    expect(markdown).not.toContain('/script-system/');
   });
 
   it('does nothing when the generated marker no longer exists', async () => {

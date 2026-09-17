@@ -55,6 +55,7 @@ import {
 import {
   tryParseExplicitStory,
   tryParseHierarchicalBranchStory,
+  tryBuildLinearStoryFallback,
   tryParseLinearScreenplay,
   tryParseMenuBranchStory,
   tryParseNaturalBranchStory,
@@ -169,6 +170,7 @@ export interface ResolveStoryPlanOptions {
   skipSemanticAuditAfterValidation?: boolean;
   enableAiPlotPlanning?: boolean;
   enableHeuristicBranchParsing?: boolean;
+  fallbackToLinearOnBranchFailure?: boolean;
   onProgress?: (event: StoryPlanProgressEvent) => void;
   onLlmTelemetry?: (event: StoryPlanLlmTelemetryEvent) => void;
 }
@@ -460,6 +462,34 @@ export async function resolveStoryPlanForImport(
         branchIssues = error instanceof StoryExtractionValidationError
           ? error.issues
           : [branchPlannerRetryIssue(error, source)];
+      }
+    }
+    if (options.fallbackToLinearOnBranchFailure) {
+      const fallbackPlan = tryBuildLinearStoryFallback(source);
+      if (fallbackPlan) {
+        emit(options, {
+          phase: 'deterministic_validation',
+          attempt: 2,
+          message: 'Branch planning exhausted; preserving visible source as a linear Script',
+        });
+        const extraction = buildStoryExtractionFromPlan(fallbackPlan, source);
+        const document = materializeStoryExtraction(
+          extraction,
+          source,
+          options.roleMap,
+          { enforceVisibleTextContract: true },
+        );
+        return await acceptValidatedStory({
+          source,
+          extraction,
+          document,
+          projection: buildStoryAuditProjection(document),
+          converted: true,
+          attempt: 2,
+          options,
+          budget: llmBudget,
+          plotPlan: buildDeterministicStoryPlotPlan(document),
+        });
       }
     }
     const detail = formatBranchIssueDetail(branchIssues.at(-1), source);

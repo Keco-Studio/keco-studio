@@ -53,7 +53,9 @@ describe('dialogue generation worker', () => {
     } as any);
     expect(result).toBe('completed');
     expect(resolveStoryForImport).toHaveBeenCalledWith('Edited dialogue', expect.objectContaining({
-      skipSemanticAuditAfterValidation: true, enableAiPlotPlanning: true,
+      skipSemanticAuditAfterValidation: true,
+      enableAiPlotPlanning: true,
+      fallbackToLinearOnBranchFailure: true,
     }));
     expect(importStoryDocument).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       projectId: 'project-1', userId: 'user-1', folderId: null,
@@ -78,6 +80,31 @@ describe('dialogue generation worker', () => {
       resolveOwner: jest.fn(async () => 'user-1'), findExistingScript: jest.fn(async () => null), fail: jest.fn(async () => true), retry,
     } as any)).resolves.toBe('queued');
     expect(retry as jest.Mock).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', 'provider unavailable', expect.any(Number));
+  });
+
+  it('removes collaborative Document markers before Story conversion', async () => {
+    const resolve = jest.fn(async (_content: string, _options: unknown) => (
+      { document: { nodes: [] }, plotPlan: { nodes: [] } } as any
+    ));
+    await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
+      heartbeat: jest.fn(async () => undefined),
+      complete: jest.fn(async () => true),
+      read: jest.fn(async () => ({
+        markdown: '<BlockAnchor id="11111111-1111-4111-8111-111111111111" />\\[Oend | 收束]\n\n守夜人：去吧。',
+        token: { epoch: 1, revision: 1 },
+        updateTail: [],
+      } as any)),
+      resolve,
+      importStory: jest.fn(async () => ({ libraryId: 'library-clean', rowCount: 1, fieldCount: 1 })),
+      resolveOwner: jest.fn(async () => 'user-1'),
+      findExistingScript: jest.fn(async () => null),
+      updateReference: jest.fn(async () => undefined),
+      updateSnapshot: jest.fn(async () => undefined),
+      fail: jest.fn(async () => true),
+      retry: jest.fn(async () => 'queued' as const),
+    })).resolves.toBe('completed');
+
+    expect(resolve).toHaveBeenCalledWith('[Oend | 收束]\n\n守夜人：去吧。', expect.any(Object));
   });
 
   it('repairs the GDD reference when recovering an already imported Script', async () => {

@@ -30,6 +30,12 @@ const DOCUMENT_TARGET: ResourceReferenceTarget = {
   fallbackLabel: 'The city closes its gates',
 };
 
+const WHOLE_DOCUMENT_TARGET: ResourceReferenceTarget = {
+  kind: 'document',
+  documentId: '77777777-7777-4777-8777-777777777777',
+  fallbackLabel: 'Arrival dialogue',
+};
+
 let referenceResult: {
   resolved: ResolvedResourceReference | undefined;
   isLoading: boolean;
@@ -187,6 +193,26 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain(`aria-label="${accessibleLabel}"`);
     expect(markup).not.toContain('data-tooltip=');
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
+  });
+
+  it('renders a whole Document as neutral clickable text instead of a gray resource chip', () => {
+    referenceResult = {
+      isLoading: false,
+      hasError: false,
+      resolved: {
+        key: resourceReferenceKey(WHOLE_DOCUMENT_TARGET),
+        status: 'available',
+        label: 'Arrival dialogue',
+        contextLabel: 'Arrival dialogue',
+        href: `/${PROJECT_ID}/doc/${WHOLE_DOCUMENT_TARGET.documentId}`,
+      },
+    };
+
+    const markup = renderReference(WHOLE_DOCUMENT_TARGET, { readOnly: true });
+
+    expect(markup).toContain('resourceReferenceDocument');
+    expect(markup).toContain(`href="/${PROJECT_ID}/doc/${WHOLE_DOCUMENT_TARGET.documentId}"`);
+    expect(markup).toContain('>Arrival dialogue<');
   });
 
   it('renders one table-row reference as a projected table with a table-name library link only', () => {

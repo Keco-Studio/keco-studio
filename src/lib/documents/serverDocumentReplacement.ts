@@ -14,6 +14,7 @@ export async function replaceDialogueReference(
     projectId: string;
     documentId: string;
     dialogueJobId: string;
+    dialogueDocumentId?: string;
     scriptLibraryId: string;
   },
 ): Promise<boolean> {
@@ -23,14 +24,22 @@ export async function replaceDialogueReference(
 
   const lines = current.markdown.split(/\r?\n/);
   const bullet = /^([ \t]*[-*+][ \t]+)((?:<BlockAnchor\b[^>]*\/>[ \t]*)?)(.*)$/i;
-  const jobIndex = lines.findIndex((line) => {
+  const legacyJobIndex = lines.findIndex((line) => {
     const match = bullet.exec(line);
     return match?.[3]?.trim() === `GDD dialogue job: ${input.dialogueJobId}`;
   });
-  if (jobIndex < 0) return false;
+  const documentReferenceIndex = input.dialogueDocumentId
+    ? lines.findIndex((line) => (
+        line.includes('<ResourceReference') &&
+        line.includes('kind="document"') &&
+        line.includes(`documentId="${input.dialogueDocumentId}"`)
+      ))
+    : -1;
+  const markerIndex = documentReferenceIndex >= 0 ? documentReferenceIndex : legacyJobIndex;
+  if (markerIndex < 0) return false;
   let scriptIndex = -1;
   let scriptPrefix = '';
-  for (let index = jobIndex + 1; index < lines.length; index += 1) {
+  for (let index = markerIndex + 1; index < lines.length; index += 1) {
     const line = lines[index] ?? '';
     if (/^#{1,6}[ \t]+/.test(line)) break;
     const match = bullet.exec(line);
@@ -43,8 +52,7 @@ export async function replaceDialogueReference(
     }
   }
   if (scriptIndex < 0) return false;
-  const scriptHref = `/script-system/${encodeURIComponent(input.projectId)}/script/${encodeURIComponent(input.scriptLibraryId)}`;
-  lines[scriptIndex] = `${scriptPrefix}Script: Completed - [Script](${scriptHref})`;
+  lines[scriptIndex] = `${scriptPrefix}Script: Completed`;
   const replacementMarkdown = coerceSanctionedMdx(lines.join('\n'));
   const currentYjsState = mergeYjsState(
     current.yjsStateBase64,
@@ -76,6 +84,7 @@ type DialogueSnapshotReplacementInput = {
   projectId: string;
   documentId: string;
   dialogueJobId: string;
+  dialogueDocumentId?: string;
   chapterKey: string;
   chapterTitle: string;
   snapshotMarkdown: string;
@@ -134,7 +143,7 @@ function insertAfterLine(
 
 function insertSnapshotInChapter(
   markdown: string,
-  input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'dialogueJobId' | 'snapshotMarkdown'>,
+  input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'dialogueJobId' | 'dialogueDocumentId' | 'snapshotMarkdown'>,
 ): string {
   const lines = markdown.split('\n');
   const headings = lines.map((line, index) => {
@@ -163,7 +172,12 @@ function insertSnapshotInChapter(
 
   // Fallback: park the card under the Dialogue Resources bullet for this job.
   const jobLine = lines.findIndex((line) => (
-    line.includes(`GDD dialogue job: ${input.dialogueJobId}`)
+    line.includes(`GDD dialogue job: ${input.dialogueJobId}`) || (
+      Boolean(input.dialogueDocumentId) &&
+      line.includes('<ResourceReference') &&
+      line.includes('kind="document"') &&
+      line.includes(`documentId="${input.dialogueDocumentId}"`)
+    )
   ));
   if (jobLine >= 0) {
     let end = jobLine;

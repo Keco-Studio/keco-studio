@@ -187,6 +187,17 @@ function documentTarget(
   };
 }
 
+function wholeDocumentTarget(
+  overrides: Partial<Extract<ResourceReferenceTarget, { kind: 'document' }>> = {}
+): Extract<ResourceReferenceTarget, { kind: 'document' }> {
+  return {
+    kind: 'document',
+    documentId: DOCUMENT_ID,
+    fallbackLabel: 'Old document name',
+    ...overrides,
+  };
+}
+
 const unavailable = (key: string) => ({
   key,
   status: 'unavailable',
@@ -532,6 +543,25 @@ describe('resolveResourceReferences', () => {
       contextLabel: 'World outline / Conflict',
       href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${BLOCK_ID}`,
     });
+  });
+
+  it('resolves a whole-document reference directly to the current document name', async () => {
+    const target = wholeDocumentTarget();
+    const { client } = makeClient({
+      documents: [{ id: DOCUMENT_ID, project_id: PROJECT_ID, name: 'Arrival dialogue' }],
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, [target]);
+
+    expect(resolved.get(`document:${DOCUMENT_ID}`)).toEqual({
+      key: `document:${DOCUMENT_ID}`,
+      status: 'available',
+      label: 'Arrival dialogue',
+      contextLabel: 'Arrival dialogue',
+      href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}`,
+    });
+    expect(readDocumentState).not.toHaveBeenCalled();
+    expect(createHeadlessDocumentEditor).not.toHaveBeenCalled();
   });
 
   it('resolves a document range from current cross-block text and links its start block', async () => {

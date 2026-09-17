@@ -51,7 +51,7 @@ export const SANCTIONED_MDX_REGISTRY = {
       {
         name: 'kind',
         required: true,
-        allowedValues: ['table-row', 'document-block', 'document-range'],
+        allowedValues: ['document', 'table-row', 'document-block', 'document-range'],
       },
       { name: 'libraryId', required: false },
       { name: 'assetId', required: false },

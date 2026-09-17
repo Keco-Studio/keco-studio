@@ -173,8 +173,12 @@ describe('GDD dialogue resources', () => {
     });
     expect(resource.documentId).toMatch(/^[0-9a-f-]{36}$/);
     expect(resource.dialogueJobId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(markdown).toContain(`[Arrival dialogue](/project-1/doc/${resource.documentId})`);
-    expect(markdown).toContain(`GDD dialogue job: ${resource.dialogueJobId}`);
+    expect(markdown).toContain(
+      `<ResourceReference kind="document" documentId="${resource.documentId}" fallbackLabel="Arrival dialogue" />`,
+    );
+    expect(markdown).not.toContain(`[Arrival dialogue](`);
+    expect(markdown).not.toContain(resource.dialogueJobId);
+    expect(markdown).not.toContain('- Arrival:');
     expect(markdown).toContain('Generating');
   });
 
@@ -187,7 +191,7 @@ describe('GDD dialogue resources', () => {
     expect(markdown).not.toContain('Script:');
   });
 
-  it('links a completed dialogue resource to its script library', () => {
+  it('keeps the completed Script status plain because the gray branch card is the Script link', () => {
     const [resource] = materializeDialogueResources('gdd-job-1', [validPlan]);
     const markdown = renderDialogueReferences('project-1', [resource], [{
       dialogueJobId: resource.dialogueJobId,
@@ -196,7 +200,9 @@ describe('GDD dialogue resources', () => {
     }]);
 
     expect(markdown).toContain('Completed');
-    expect(markdown).toContain('[Script](/script-system/project-1/script/script-1)');
+    expect(markdown).toContain('Script: Completed');
+    expect(markdown).not.toContain('[Script](');
+    expect(markdown).not.toContain('/script-system/');
   });
 
   it('replaces an anchored legacy Dialogue Resources section instead of appending to it', () => {
@@ -221,7 +227,8 @@ describe('GDD dialogue resources', () => {
     ].join('\n'), 'project-1', [resource]);
 
     expect(markdown.match(/Dialogue Resources/g)).toHaveLength(1);
-    expect(markdown).toContain(`GDD dialogue job: ${resource.dialogueJobId}`);
+    expect(markdown).toContain(`<ResourceReference kind="document" documentId="${resource.documentId}"`);
+    expect(markdown).not.toContain(resource.dialogueJobId);
     expect(markdown).toContain('## <BlockAnchor id="maps" />Maps and Levels');
     expect(markdown).not.toContain('old-job');
     expect(markdown).not.toContain('Old dialogue');

@@ -148,6 +148,23 @@ describe('Create Map V3 direct workbench', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*680px\)[\s\S]*?\.headerCreateMap \.searchContainer\s*\{[\s\S]*?display:\s*none/);
   });
 
+  it('keeps the Map Generator sidebar full-height and aligned with Libraries controls', () => {
+    const workbenchCss = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
+      'utf8',
+    );
+    const topBarCss = readFileSync(
+      path.join(process.cwd(), 'src/components/layout/TopBar.module.css'),
+      'utf8',
+    );
+
+    expect(topBarCss).toMatch(/\.headerCreateMap\s*\{[^}]*margin-left:\s*300px[^}]*margin-bottom:\s*-4rem/s);
+    expect(workbenchCss).toMatch(/\.leftPanel\s*\{[^}]*background:\s*#fafafa[^}]*border-right:\s*0\.5px solid #11111133/s);
+    expect(workbenchCss).toMatch(/\.directCanvasPanel,\s*\.rightPanel\s*\{[^}]*margin-top:\s*4rem[^}]*height:\s*calc\(100% - 4rem\)/s);
+    expect(workbenchCss).toMatch(/\.savedMapsSection\s*\{[^}]*padding:\s*8px 12px 16px/s);
+    expect(workbenchCss).toMatch(/\.savedMapsSearch\s*\{[^}]*height:\s*30px[^}]*border:\s*0[^}]*border-radius:\s*88px[^}]*background:\s*#f1f5f9/s);
+  });
+
   it('installs V3 browser failure observers before the first navigation', () => {
     const source = readFileSync(path.join(process.cwd(), 'tests/e2e/specs/create-map-v3.spec.ts'), 'utf8');
     const helper = source.slice(source.indexOf('async function loginAndOpen'), source.indexOf('async function createSavedMap'));

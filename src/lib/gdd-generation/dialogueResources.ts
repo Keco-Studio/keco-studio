@@ -198,8 +198,20 @@ function statusLabel(status: DialogueResourceStatus | undefined): string {
   return 'Completed';
 }
 
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderDialogueDocumentReference(resource: DialogueResource): string {
+  return `<ResourceReference kind="document" documentId="${resource.documentId}" fallbackLabel="${escapeAttribute(resource.documentName)}" />`;
+}
+
 export function renderDialogueReferences(
-  projectId: string,
+  _projectId: string,
   resources: DialogueResource[],
   statuses: DialogueResourceStatus[] = [],
 ): string {
@@ -208,13 +220,9 @@ export function renderDialogueReferences(
   return resources.map((resource) => {
     const status = statusByJob.get(resource.dialogueJobId);
     const lines = [
-      `- ${resource.title}: [${resource.documentName}](/${encodeURIComponent(projectId)}/doc/${encodeURIComponent(resource.documentId)})`,
-      `  - GDD dialogue job: ${resource.dialogueJobId}`,
+      `- ${renderDialogueDocumentReference(resource)}`,
       `  - Script: ${statusLabel(status)}`,
     ];
-    if (status?.status === 'completed' && status.scriptLibraryId) {
-      lines[2] += ` - [Script](/script-system/${encodeURIComponent(projectId)}/script/${encodeURIComponent(status.scriptLibraryId)})`;
-    }
     return lines.join('\n');
   }).join('\n');
 }
