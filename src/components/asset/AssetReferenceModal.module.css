@@ -18,8 +18,7 @@
 .modal {
   background: white;
   border-radius: 0.5rem;
-  /* Match document Insert reference modal + Figma ~Fill columns */
-  width: min(560px, calc(100vw - 32px));
+  width: min(480px, calc(100vw - 32px));
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -35,7 +34,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   border-radius: calc(0.5rem - 1px) calc(0.5rem - 1px) 0 0;
@@ -63,6 +62,7 @@
   justify-content: center;
   color: #64748b;
   transition: opacity 0.2s;
+  font-size: 1rem;
 }
 
 .closeButton:hover {
@@ -70,12 +70,12 @@
 }
 
 .content {
-  padding: 1.25rem;
+  padding: 1rem;
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   font-family: 'Roboto', sans-serif;
 }
 
@@ -178,8 +178,8 @@
 
 .searchInput {
   width: 100%;
-  border-radius: 1.25rem;
-  height: 38px;
+  border-radius: 0.5rem;
+  height: 32px;
   font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
 }
@@ -189,9 +189,16 @@
 }
 
 .librarySelect :global(.ant-select-selector) {
-  border-radius: 0.625rem !important;
+  border-radius: 0.5rem !important;
   background: #ffffff !important;
   min-height: 2.25rem !important;
+}
+
+.selectionHint {
+  margin: -0.25rem 0 0;
+  color: #6b7280;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
 }
 
 .selectOptionRow {
@@ -255,23 +262,29 @@
 }
 
 .refTable tbody tr {
-  cursor: pointer;
   background: #ffffff;
 }
 
-.refTable tbody tr:hover {
+.refTable tbody td[aria-disabled='false'] {
+  cursor: cell;
+  user-select: none;
+}
+
+.refTable tbody td[aria-disabled='false']:hover {
   background: #f8fafc;
 }
 
-.rowSelected,
-.refTable tbody tr.rowSelected {
+.refTable tbody td.cellSelected {
+  position: relative;
   background: var(--keco-blue-tint, #e6f4ff) !important;
+  box-shadow: inset 0 0 0 1px #0b99ff;
+  color: #0958d9;
 }
 
-.checkCol {
-  width: 2.5rem;
-  min-width: 2.5rem;
-  text-align: center;
+.refTable tbody td.cellDisabled {
+  cursor: default;
+  color: #9ca3af;
+  background: #fafafa;
 }
 
 .fieldCol {
@@ -291,30 +304,6 @@
   text-overflow: ellipsis;
 }
 
-.nameCell {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.refBadge {
-  flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  background: #0B99FF;
-  color: #ffffff;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-
-.nameText,
 .cellText {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -544,14 +533,14 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  padding: 1rem 24px;
+  padding: 0.75rem 1rem;
   border-top: 1px solid #e5e7eb;
 }
 
 .cancelButton {
   padding: 0.5rem 16px;
   border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   background-color: white;
   color: #374151;
   cursor: pointer;
@@ -568,7 +557,7 @@
 .applyButton {
   padding: 0.5rem 16px;
   border: none;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   background-color: #1677ff;
   color: #fff;
   cursor: pointer;
@@ -751,5 +740,3 @@
 .assetCardLibraryArrow {
   flex-shrink: 0;
 }
-
-
