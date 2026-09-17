@@ -211,11 +211,6 @@ describeDb('account project storage real Postgres behavior', () => {
     expect(await upload(fx.owner, objectPath, 3)).not.toBeNull();
 
     const reservation = await reserve(fx.owner, 3, objectPath);
-    const gate = await fx.owner.client.rpc('storage_has_pending_upload_reservation', {
-      p_bucket_id: 'project-assets', p_object_path: objectPath,
-    });
-    expect(gate.error).toBeNull();
-    expect(gate.data).toBe(true);
     expect(await upload(fx.owner, objectPath, 3)).toBeNull();
     await expect(finalize(fx.owner, reservation.reservationId as string, 4))
       .rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });

@@ -33,11 +33,11 @@ describe('account project storage migration', () => {
   });
 
   it('gates accounted bucket writes and verifies storage metadata before settlement', () => {
-    expect(sql).toMatch(/function public\.storage_has_pending_upload_reservation\(/i);
-    expect(sql).toMatch(/reservation\.requested_by\s*=\s*auth\.uid\(\)/i);
+    expect(sql).not.toMatch(/function public\.storage_has_pending_upload_reservation\(/i);
+    expect(sql).toMatch(/reservation\.requested_by\s*=\s*\(select auth\.uid\(\)\)/i);
     expect(sql).toMatch(/reservation\.status\s*=\s*'pending'/i);
     expect(sql).toMatch(/reservation\.expires_at\s*>\s*clock_timestamp\(\)/i);
-    expect(sql).toMatch(/public\.storage_has_pending_upload_reservation\(bucket_id,\s*name\)/i);
+    expect(sql).toMatch(/create policy project_assets_storage_insert[\s\S]*from public\.storage_upload_reservations reservation/i);
     expect(sql).toMatch(/from storage\.objects as object/i);
     expect(sql).toMatch(/object\.metadata\s*->>\s*'size'/i);
     expect(sql).toMatch(/p_actual_bytes\s+is distinct from\s+v_verified_bytes/i);
