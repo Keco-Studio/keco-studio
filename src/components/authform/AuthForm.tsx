@@ -55,7 +55,10 @@ function AuthFormContent() {
       window.sessionStorage.setItem(DESKTOP_MODE_STORAGE_KEY, '1');
     }
     setIsDesktopMode(desktopFromSearch || isDesktopModeSession(window.sessionStorage));
-  }, []);
+    if (searchParams.get('oauth_error') === 'desktop_oauth_failed') {
+      setErrorMsg('Unable to complete desktop sign-in. Please try again.');
+    }
+  }, [searchParams]);
 
   const switchMode = (next: Mode) => {
     setMode(next);

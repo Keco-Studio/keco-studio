@@ -32,6 +32,12 @@ describe('desktop mode', () => {
     expect(source).toContain('supabase.auth.signInWithOAuth');
   });
 
+  it('shows a generic retryable error after a native OAuth failure marker', () => {
+    const source = read('src/components/authform/AuthForm.tsx');
+    expect(source).toContain("searchParams.get('oauth_error') === 'desktop_oauth_failed'");
+    expect(source).toContain('Unable to complete desktop sign-in. Please try again.');
+  });
+
   it('persists desktop mode when client-side navigation changes the search parameters', () => {
     const source = read('src/components/desktop/DesktopModeMarker.tsx');
     expect(source).toContain("import { useSearchParams } from 'next/navigation'");
