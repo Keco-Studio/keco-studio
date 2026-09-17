@@ -10,6 +10,7 @@ import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
 import { isDuplicateEmailError, normalizeEmail } from "@/lib/auth/emailIdentity";
 import { DESKTOP_MODE_STORAGE_KEY, isDesktopModeSearch, isDesktopModeSession } from "@/lib/desktopMode";
+import { beginDesktopGoogleOAuth } from "@/lib/desktopGoogleOAuth";
 
 type Mode = "login" | "register";
 
@@ -166,6 +167,11 @@ function AuthFormContent() {
     setGoogleLoading(true);
 
     try {
+      if (isDesktopMode) {
+        await beginDesktopGoogleOAuth();
+        return;
+      }
+
       // Ensure we use the current origin (localhost:3000 for dev, vercel.app for prod)
       const currentOrigin = window.location.origin;
       const redirectPath = searchParams.get('redirect');
@@ -290,7 +296,7 @@ function AuthFormContent() {
               </form>
             ) : (
               <>
-                    {isDesktopMode === false ? (
+                    {isDesktopMode !== null ? (
                   <>
                     <div className={styles.oauthSection}>
                       <button
@@ -325,8 +331,6 @@ function AuthFormContent() {
                       <span className={styles.dividerText}>or</span>
                     </div>
                   </>
-                    ) : isDesktopMode ? (
-                      <div>Google login is unavailable in desktop mode.</div>
                     ) : null}
 
                 <form className={styles.form} onSubmit={handleLogin} autoComplete="off">
