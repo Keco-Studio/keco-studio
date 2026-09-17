@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { InternalPaymentStatus } from '@/lib/payment-domain';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
+import { getStudioPlanById } from '@/lib/studio-plans';
 
 export type PaymentOrderInput = {
   id: string;
@@ -88,6 +89,24 @@ export async function updatePaymentOrderFromStripe(input: {
   paymentIntentId?: string | null;
 }) {
   const supabase = getSupabaseServiceRoleClient();
+  const { data: order, error: orderError } = await supabase
+    .from('payment_orders')
+    .select('id, user_id, plan_id, plan_label')
+    .eq('stripe_checkout_session_id', input.sessionId)
+    .maybeSingle();
+
+  if (orderError) {
+    throw new Error(`Failed to load payment order: ${orderError.message}`);
+  }
+  if (!order) {
+    throw new Error(`Payment order not found for Checkout session ${input.sessionId}`);
+  }
+
+  const plan = input.status === 'paid' ? getStudioPlanById(order.plan_id) : null;
+  if (input.status === 'paid' && (!plan?.creditAmount || !order.user_id)) {
+    throw new Error(`Payment order ${order.id} does not have a valid Credit grant`);
+  }
+
   const { error } = await supabase
     .from('payment_orders')
     .update({
@@ -100,5 +119,18 @@ export async function updatePaymentOrderFromStripe(input: {
 
   if (error) {
     throw new Error(`Failed to update payment order: ${error.message}`);
+  }
+
+  if (input.status === 'paid' && plan?.creditAmount && order.user_id) {
+    const { error: creditError } = await supabase.from('credit_ledger_entries').insert({
+      user_id: order.user_id,
+      credit_delta: plan.creditAmount,
+      reason: `Stripe ${order.plan_label} purchase`,
+      reference_key: `stripe-checkout:${input.sessionId}`,
+    });
+
+    if (creditError && creditError.code !== '23505') {
+      throw new Error(`Failed to grant purchased Credits: ${creditError.message}`);
+    }
   }
 }

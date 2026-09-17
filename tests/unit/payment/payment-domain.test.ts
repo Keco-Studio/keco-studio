@@ -63,10 +63,13 @@ describe('studio-plans', () => {
     expect(getStudioPlanById('credits-5000')).toBeNull();
     expect(getStudioPlanById('plan-pro')).toMatchObject({
       popular: true,
+      creditAmount: 10_000,
       creditsLabel: '10,000 agent credits included',
     });
-    expect(getStudioPlanById('plan-studio')?.creditsLabel)
-      .toBe('50,000 agent credits included');
+    expect(getStudioPlanById('plan-studio')).toMatchObject({
+      creditAmount: 50_000,
+      creditsLabel: '50,000 agent credits included',
+    });
     expect(formatPlanPrice(getStudioPlanById('plan-pro')!)).toMatch(/\$/);
   });
 });
