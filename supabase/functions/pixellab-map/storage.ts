@@ -2,9 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ValidatedPng } from "./png.ts";
 import { MAX_PNG_BYTES } from "./png.ts";
 import { PixelLabMapError } from "./types.ts";
+import {
+  finalizeServiceStorage,
+  releaseServiceStorage,
+  reserveServiceStorage,
+} from "../_shared/storage-quota.ts";
 
 export type AssetStorageContext = {
   serviceClient: SupabaseClient;
+  actorUserId: string;
   projectId: string;
   mapId: string;
   revisionId: string;
@@ -66,7 +72,20 @@ export async function persistValidatedAsset(
 ): Promise<ReadyAssetBinding> {
   const storagePath = `${context.projectId}/${context.mapId}/${context.revisionId}/${asset.assetKey}/${png.sha256}.png`;
   const bucket = context.serviceClient.storage.from("map-assets");
+  let reservationId: string | null = null;
   try {
+    const reservation = await reserveServiceStorage(context.serviceClient, {
+      actorUserId: context.actorUserId,
+      projectId: context.projectId,
+      bucketId: "map-assets",
+      objectPath: storagePath,
+      expectedBytes: MAX_PNG_BYTES,
+      displayName: `${asset.assetKey}.png`,
+      mimeType: "image/png",
+      sourceKind: "map_asset",
+      sourceEntityId: asset.id,
+    });
+    reservationId = reservation.reservationId;
     const upload = await bucket.upload(storagePath, png.bytes, {
       contentType: "image/png", cacheControl: "31536000", upsert: false,
     });
@@ -99,8 +118,20 @@ export async function persistValidatedAsset(
     if (mapAssetTransitionStatus(data) !== "ready") {
       throw new PixelLabMapError("pixellab_invalid_response", "Map asset state changed before storage completed", 409);
     }
+    await finalizeServiceStorage(context.serviceClient, {
+      actorUserId: context.actorUserId,
+      reservationId,
+      actualBytes: png.bytes.byteLength,
+      sourceEntityId: asset.id,
+    });
     return { assetId: asset.id, storagePath, sha256: png.sha256, width: png.width, height: png.height, hasTransparency: png.hasTransparency };
   } catch (error) {
+    if (reservationId) {
+      await releaseServiceStorage(context.serviceClient, {
+        actorUserId: context.actorUserId,
+        reservationId,
+      }).catch(() => undefined);
+    }
     await failAsset(context, asset, "storage_failed");
     if (error instanceof PixelLabMapError) throw error;
     throw new PixelLabMapError("pixellab_upstream", "Validated asset storage failed");

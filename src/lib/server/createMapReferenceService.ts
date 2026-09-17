@@ -4,6 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
+import {
+  finalizeServiceStorage,
+  releaseServiceStorage,
+  reserveServiceStorage,
+} from '../../../supabase/functions/_shared/storage-quota';
 
 const MAX_REFERENCE_BYTES = 5 * 1024 * 1024;
 const MAX_REFERENCE_DIMENSION = 2048;
@@ -136,17 +141,49 @@ export async function uploadCreateMapReference(
     created_by: createdBy,
   };
   const admin = getSupabaseServiceRoleClient();
+  let reservationId: string | null = null;
+  try {
+    const reservation = await reserveServiceStorage(admin, {
+      actorUserId: createdBy,
+      projectId,
+      bucketId: 'map-assets',
+      objectPath: storagePath,
+      expectedBytes: image.bytes.byteLength,
+      displayName: name,
+      mimeType: 'image/png',
+      sourceKind: 'map_reference',
+    });
+    reservationId = reservation.reservationId;
+  } catch {
+    throw new CreateMapReferenceError('reference_upload_failed', 502);
+  }
   const { error: uploadError } = await admin.storage.from('map-assets').upload(storagePath, image.bytes, {
     contentType: 'image/png',
     upsert: false,
   });
   if (uploadError) {
+    await releaseServiceStorage(admin, { actorUserId: createdBy, reservationId }).catch(() => undefined);
     throw new CreateMapReferenceError('reference_upload_failed', 502);
   }
 
   const { error: insertError } = await admin.from('map_reference_images').insert(row);
   if (insertError) {
     await admin.storage.from('map-assets').remove([storagePath]).catch(() => undefined);
+    await releaseServiceStorage(admin, { actorUserId: createdBy, reservationId }).catch(() => undefined);
+    throw new CreateMapReferenceError('reference_registry_failed', 502);
+  }
+
+  try {
+    await finalizeServiceStorage(admin, {
+      actorUserId: createdBy,
+      reservationId,
+      actualBytes: image.bytes.byteLength,
+      sourceEntityId: id,
+    });
+  } catch {
+    try { await admin.from('map_reference_images').delete().eq('id', id); } catch { /* best effort */ }
+    await admin.storage.from('map-assets').remove([storagePath]).catch(() => undefined);
+    await releaseServiceStorage(admin, { actorUserId: createdBy, reservationId }).catch(() => undefined);
     throw new CreateMapReferenceError('reference_registry_failed', 502);
   }
 

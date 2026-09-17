@@ -2,7 +2,11 @@ import { bearerToken, jsonResponse, readJsonBody } from "./http.ts";
 import { authorizeProject, authorizeServiceRequest, resolveCharacterReferences } from "./auth.ts";
 import { negotiateCharacterReferences, PixelLabCharacterClient } from "./pixellab-client.ts";
 import { createLifecycleDependencies, runCharacterLifecycle } from "./lifecycle.ts";
-import { persistValidatedCharacterAsset } from "./storage.ts";
+import {
+  finalizePersistedCharacterAsset,
+  persistValidatedCharacterAsset,
+  releasePersistedCharacterAsset,
+} from "./storage.ts";
 import { animationResult, characterResult } from "./provider-response.ts";
 import { downloadProviderOutput } from "./provider-output.ts";
 import { PixelLabCharacterError, type CharacterAssetPlan } from "./types.ts";
@@ -87,16 +91,22 @@ async function handle(request: Request): Promise<Response> {
       }
       const bytes = await downloadProviderOutput(output);
       const validated = await persistValidatedCharacterAsset(authorized.serviceClient, current, bytes, plan.kind === "animation" ? { frameCount: plan.frameCount, frameWidth: plan.frameWidth, frameHeight: plan.frameHeight } : { alphaRequired: true });
-      const ready = await authorized.serviceClient.rpc("transition_character_generation", {
-        p_attempt_id: current.attemptId, p_expected_status: current.status, p_next_status: "ready", p_expected_attempt_count: current.attemptCount,
-        p_provider_operation: null, p_provider_transport: "mcp", p_provider_job_id: null, p_provider_schema_fingerprint: null, p_last_error_code: null,
-        p_storage_path: `${current.projectId}/${current.assetId}/${current.generationId}/${validated.sha256}.png`, p_sha256: validated.sha256,
-        p_width: validated.width, p_height: validated.height, p_has_transparency: validated.hasTransparency,
-        p_metadata: { ...current.metadata, providerCharacterId: current.sourceProviderCharacterId, frameCount },
-      });
-      const readyRow = Array.isArray(ready.data) ? ready.data[0] : ready.data;
-      if (ready.error || !readyRow || readyRow.status !== "ready") throw new PixelLabCharacterError("pixellab_upstream", "Could not persist ready character state");
-      return { status: "ready" as const };
+      try {
+        const ready = await authorized.serviceClient.rpc("transition_character_generation", {
+          p_attempt_id: current.attemptId, p_expected_status: current.status, p_next_status: "ready", p_expected_attempt_count: current.attemptCount,
+          p_provider_operation: null, p_provider_transport: "mcp", p_provider_job_id: null, p_provider_schema_fingerprint: null, p_last_error_code: null,
+          p_storage_path: `${current.projectId}/${current.assetId}/${current.generationId}/${validated.sha256}.png`, p_sha256: validated.sha256,
+          p_width: validated.width, p_height: validated.height, p_has_transparency: validated.hasTransparency,
+          p_metadata: { ...current.metadata, providerCharacterId: current.sourceProviderCharacterId, frameCount },
+        });
+        const readyRow = Array.isArray(ready.data) ? ready.data[0] : ready.data;
+        if (ready.error || !readyRow || readyRow.status !== "ready") throw new PixelLabCharacterError("pixellab_upstream", "Could not persist ready character state");
+        await finalizePersistedCharacterAsset(authorized.serviceClient, current, validated);
+        return { status: "ready" as const };
+      } catch (error) {
+        await releasePersistedCharacterAsset(authorized.serviceClient, current, validated);
+        throw error;
+      }
     },
   });
   const result = await runCharacterLifecycle({ operation: operation as never, expectedAttemptCount: typeof body.expectedAttemptCount === "number" ? body.expectedAttemptCount : undefined, acknowledgeDuplicateBilling: body.acknowledgeDuplicateBilling === true }, state, deps);

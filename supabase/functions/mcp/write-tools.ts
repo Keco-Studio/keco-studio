@@ -27,6 +27,7 @@ import {
 import { projectAssetContentMatches } from "../../../shared/project-asset-content.ts";
 
 const uuid = z.string().uuid();
+const LEGACY_MISSING_RESERVATION_ID = "00000000-0000-4000-8000-000000000000";
 const IMAGE_BUCKET = "library-media-files";
 const PROJECT_ASSET_BUCKET = "project-assets";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -349,8 +350,8 @@ type UploadDescriptor = {
   headers: Record<string, string>;
   expiresInSeconds: number;
 };
-type ProvisionalImage = ImageFileInput & { url?: string; path: string };
-type VerifiedImage = ProvisionalImage & { uploadedAt: string };
+type ProvisionalImage = ImageFileInput & { url?: string; path: string; reservationId: string };
+type VerifiedImage = ImageFileInput & { url?: string; path: string; uploadedAt: string };
 type VerifiedUpload = {
   image: VerifiedImage;
   bytes: Uint8Array;
@@ -382,6 +383,56 @@ type RegisteredAssetExpectation = {
   category: GameAssetCategory;
   storageBucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET;
 };
+
+async function reserveMcpStorage(
+  context: ProjectMcpRequestContext,
+  input: ImageFileInput,
+  bucketName: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET,
+  path: string,
+): Promise<string> {
+  const { data, error } = await context.supabase.rpc("reserve_project_storage_upload", {
+    p_project_id: context.projectId,
+    p_bucket_id: bucketName,
+    p_object_path: path,
+    p_expected_bytes: input.fileSize,
+    p_display_name: input.fileName,
+    p_mime_type: input.fileType,
+    p_source_kind: bucketName === PROJECT_ASSET_BUCKET ? "project_asset" : "library_media",
+    p_source_entity_id: null,
+  });
+  const reservationId = data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>).reservationId
+    : null;
+  if (error || typeof reservationId !== "string") {
+    const code = error && typeof error === "object" ? String((error as unknown as Record<string, unknown>).details ?? "") : "";
+    throw new McpDomainError(
+      code === "STORAGE_QUOTA_EXCEEDED" ? "PAYLOAD_TOO_LARGE" : "IMAGE_UPLOAD_PREPARATION_FAILED",
+      code === "STORAGE_QUOTA_EXCEEDED"
+        ? "The project owner's storage allowance is full. Clean up files or upgrade the plan before uploading."
+        : "The image upload target could not be reserved; retry preparation for this file.",
+    );
+  }
+  return reservationId;
+}
+
+async function releaseMcpStorage(context: ProjectMcpRequestContext, reservationId: string): Promise<void> {
+  try { await context.supabase.rpc("release_project_storage_upload", { p_reservation_id: reservationId }); } catch { /* expiry reconciliation repairs it */ }
+}
+
+async function finalizeMcpStorage(
+  context: ProjectMcpRequestContext,
+  reservationId: string,
+  image: VerifiedImage,
+  sourceEntityId: string | null,
+): Promise<void> {
+  const { error } = await context.supabase.rpc("finalize_project_storage_upload", {
+    p_reservation_id: reservationId,
+    p_actual_bytes: image.fileSize,
+    p_source_entity_id: sourceEntityId,
+    p_object_created_at: image.uploadedAt,
+  });
+  if (error) throw new McpDomainError("INTERNAL_ERROR", "The uploaded file could not be added to storage usage.");
+}
 
 const registeredAssetDimension = z.number().int().min(1).max(2_147_483_647)
   .nullable();
@@ -416,6 +467,7 @@ async function prepareImageUpload(
   const pathFileName = imagePathFileName(fileName);
   const path =
     `${context.userId}/${context.projectId}/${crypto.randomUUID()}-${pathFileName}`;
+  const reservationId = await reserveMcpStorage(context, input, bucketName, path);
   const bucket = context.supabase.storage.from(bucketName);
   const { data, error } = await measureMcpPhase(
     context,
@@ -423,6 +475,7 @@ async function prepareImageUpload(
     async () => await bucket.createSignedUploadUrl(path, { upsert: false }),
   );
   if (error || !data?.signedUrl) {
+    await releaseMcpStorage(context, reservationId);
     throw new McpDomainError(
       "IMAGE_UPLOAD_PREPARATION_FAILED",
       "The image upload target could not be prepared; retry preparation for this file.",
@@ -444,6 +497,7 @@ async function prepareImageUpload(
     },
     image: {
       path,
+      reservationId,
       fileName,
       fileSize: input.fileSize,
       fileType: input.fileType,
@@ -604,8 +658,16 @@ async function verifyProjectAssetUpload(
 async function completeImageUpload(
   context: ProjectMcpRequestContext,
   path: string,
+  reservationId: string,
 ): Promise<VerifiedImage> {
-  return (await verifyImageUpload(context, path)).image;
+  try {
+    const image = (await verifyImageUpload(context, path)).image;
+    await finalizeMcpStorage(context, reservationId, image, null);
+    return image;
+  } catch (error) {
+    await releaseMcpStorage(context, reservationId);
+    throw error;
+  }
 }
 
 function normalizeRegisteredAsset(
@@ -1594,6 +1656,7 @@ function registerWriteToolSet(
 
   const completeImageUploadSchema = z.object({
     ...projectShape,
+    reservationId: uuid.optional(),
     path: z.string().trim().min(1).max(MAX_IMAGE_PATH_CHARS).describe(
       "Only image.path from create_image_upload or prepare_image_uploads for the same user and project; local paths, file: URIs, public URLs, and signed upload URLs are invalid.",
     ),
@@ -1609,7 +1672,11 @@ function registerWriteToolSet(
     async (input: z.infer<typeof completeImageUploadSchema>) =>
       withProjectContext(input, contextFor, async (context) => {
         try {
-          const image = await completeImageUpload(context, input.path);
+          const image = await completeImageUpload(
+            context,
+            input.path,
+            input.reservationId ?? LEGACY_MISSING_RESERVATION_ID,
+          );
           return toolSuccess("Image upload completed.", {
             ok: true,
             image,
@@ -1670,7 +1737,11 @@ function registerWriteToolSet(
         (paths) => new Set(paths).size === paths.length,
         "paths must be unique.",
       ),
-  }).strict();
+    reservationIds: z.array(uuid).min(1).max(20).optional(),
+  }).strict().refine(
+    (value) => value.reservationIds === undefined || value.paths.length === value.reservationIds.length,
+    "reservationIds must match paths one-to-one.",
+  );
   server.registerTool(
     "complete_image_uploads",
     {
@@ -1688,7 +1759,11 @@ function registerWriteToolSet(
               index,
               ok: true as const,
               path,
-              image: await completeImageUpload(context, path),
+              image: await completeImageUpload(
+                context,
+                path,
+                input.reservationIds?.[index] ?? LEGACY_MISSING_RESERVATION_ID,
+              ),
             });
           } catch (error) {
             const safe = asPublicMcpError(error);
@@ -1788,6 +1863,7 @@ function registerWriteToolSet(
     items: z.array(
       z.object({
         path: preparedImagePathSchema,
+        reservationId: uuid.optional(),
         category: gameAssetCategory.default("media"),
       }).strict(),
     ).min(1).max(20).refine(
@@ -1820,6 +1896,12 @@ function registerWriteToolSet(
               verified.bucket,
               item.category,
             );
+            await finalizeMcpStorage(
+              context,
+              item.reservationId ?? LEGACY_MISSING_RESERVATION_ID,
+              verified.image,
+              registered.asset.id,
+            );
             items.push({
               index,
               ok: true as const,
@@ -1829,6 +1911,7 @@ function registerWriteToolSet(
               asset: registered.asset,
             });
           } catch (error) {
+            await releaseMcpStorage(context, item.reservationId ?? LEGACY_MISSING_RESERVATION_ID);
             const safe = asPublicMcpError(error);
             items.push({
               index,

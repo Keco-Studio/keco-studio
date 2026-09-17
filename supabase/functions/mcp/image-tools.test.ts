@@ -104,6 +104,12 @@ function imageContext(
         },
       },
       async rpc(name: string, ...arguments_: unknown[]) {
+        if (name === "reserve_project_storage_upload") {
+          return { data: { reservationId: "44444444-4444-4444-8444-444444444444" }, error: null };
+        }
+        if (name === "finalize_project_storage_upload" || name === "release_project_storage_upload") {
+          return { data: {}, error: null };
+        }
         if (name === "mcp_get_asset_upload_auto_execute") {
           return { data: assetUploadAutoExecute, error: null };
         }
