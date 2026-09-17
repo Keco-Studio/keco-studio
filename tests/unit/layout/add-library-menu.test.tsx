@@ -9,14 +9,15 @@ import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 
 jest.mock('next/image', () => ({
   __esModule: true,
-  default: ({ alt = '' }: { alt?: string }) =>
-    React.createElement('img', { alt }),
+  default: ({ alt = '', src }: { alt?: string; src?: string }) =>
+    React.createElement('img', { alt, src }),
 }));
 jest.mock('@/assets/images/FolderCloseIcon.svg', () => 'FolderCloseIcon.svg', { virtual: true });
 jest.mock('@/assets/images/table.svg', () => 'table.svg', { virtual: true });
 jest.mock('@/assets/images/paper.svg', () => 'paper.svg', {
   virtual: true,
 });
+jest.mock('@/assets/images/nav-icons/image.svg', () => 'image.svg', { virtual: true });
 jest.mock('@/components/libraries/AddLibraryMenu.module.css', () =>
   new Proxy({}, { get: () => 'class' })
 );
@@ -85,7 +86,10 @@ describe('AddLibraryMenu', () => {
       })
     );
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Create Asset' }));
+    const createAssetMenuItem = screen.getByRole('menuitem', { name: 'Create Asset' });
+    expect(createAssetMenuItem.querySelector('img')?.getAttribute('src')).toBe('image.svg');
+
+    fireEvent.click(createAssetMenuItem);
     expect(onCreateAsset).toHaveBeenCalledTimes(1);
   });
 });
