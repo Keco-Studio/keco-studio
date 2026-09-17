@@ -78,55 +78,46 @@ export function AccountEmailSettings() {
   };
 
   return (
-    <main className={styles.page}>
-      <div className={styles.content}>
-        <header className={styles.pageHeader}>
-          <h1>Account</h1>
-          <p>Manage the email used to sign in and recover your account.</p>
-        </header>
-
-        <section className={styles.section} aria-labelledby="account-email-heading">
-          <div className={styles.sectionHeading}>
-            <span className={styles.icon} aria-hidden="true">
-              <MailOutlined />
-            </span>
-            <div>
-              <h2 id="account-email-heading">Email address</h2>
-              <p>A change takes effect only after the required email confirmations.</p>
-            </div>
-          </div>
-
-          <dl className={styles.currentEmail}>
-            <dt>Current email</dt>
-            <dd>{loadingEmail ? 'Loading...' : currentEmail || 'Unavailable'}</dd>
-          </dl>
-
-          <form className={styles.form} onSubmit={handleSubmit} noValidate>
-            <label htmlFor="account-new-email">New email</label>
-            <div className={styles.formRow}>
-              <input
-                id="account-new-email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder="name@example.com"
-                value={newEmail}
-                onChange={(event) => setNewEmail(event.target.value)}
-                disabled={loadingEmail || submitting || !currentEmail}
-              />
-              <button
-                type="submit"
-                disabled={loadingEmail || submitting || !currentEmail}
-              >
-                {submitting ? 'Requesting...' : 'Change email'}
-              </button>
-            </div>
-          </form>
-
-          {error ? <p className={styles.error} role="alert">{error}</p> : null}
-          {message ? <p className={styles.success} role="status">{message}</p> : null}
-        </section>
+    <section className={styles.section} aria-labelledby="account-email-heading">
+      <div className={styles.sectionHeading}>
+        <span className={styles.icon} aria-hidden="true">
+          <MailOutlined />
+        </span>
+        <div>
+          <h2 id="account-email-heading">Email address</h2>
+          <p>A change takes effect only after the required email confirmations.</p>
+        </div>
       </div>
-    </main>
+
+      <dl className={styles.currentEmail}>
+        <dt>Current email</dt>
+        <dd>{loadingEmail ? 'Loading...' : currentEmail || 'Unavailable'}</dd>
+      </dl>
+
+      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+        <label htmlFor="account-new-email">New email</label>
+        <div className={styles.formRow}>
+          <input
+            id="account-new-email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="name@example.com"
+            value={newEmail}
+            onChange={(event) => setNewEmail(event.target.value)}
+            disabled={loadingEmail || submitting || !currentEmail}
+          />
+          <button
+            type="submit"
+            disabled={loadingEmail || submitting || !currentEmail}
+          >
+            {submitting ? 'Requesting...' : 'Change email'}
+          </button>
+        </div>
+      </form>
+
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {message ? <p className={styles.success} role="status">{message}</p> : null}
+    </section>
   );
 }
