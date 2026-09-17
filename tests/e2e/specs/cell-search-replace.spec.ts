@@ -274,7 +274,11 @@ async function linkReferenceToSourceCell(
     .locator('tbody tr')
     .filter({ hasText: sourceValueSnippet })
     .first();
-  await sourceAssetRow.click();
+  await sourceAssetRow
+    .getByRole('gridcell')
+    .filter({ hasText: sourceValueSnippet })
+    .first()
+    .click();
 
   await modal.getByRole('button', { name: /^apply$/i }).click();
   await expect(modal).not.toBeVisible({ timeout: 20000 });
@@ -457,8 +461,7 @@ test.describe('Table cell search and replace', () => {
     const replaceToken = `refreplaced${stamp}`;
     const notesColumn = 'Notes';
     const refColumn = 'SourceRef';
-    // Apply Reference uses the library's primary (first) field for displayValue —
-    // put the token in the asset name so picker + sync match the table UI.
+    // Put the token in the asset name so the test can select and verify that exact source cell.
     const sourceAssetName = `CSR Source ${findToken}`;
     const consumerAssetName = `CSR Consumer ${stamp}`;
 
