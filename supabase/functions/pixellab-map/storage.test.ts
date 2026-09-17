@@ -9,6 +9,7 @@ const IDs = {
   mapId: "22222222-2222-4222-8222-222222222222",
   revisionId: "33333333-3333-4333-8333-333333333333",
   assetId: "44444444-4444-4444-8444-444444444444",
+  actorUserId: "55555555-5555-4555-8555-555555555555",
 };
 
 function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionStatus = "ready") {
@@ -27,11 +28,24 @@ function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionS
       downloadedBytes.set(bytes);
       return { data: new Blob([downloadedBytes]), error: null };
     },
+    async remove(paths: string[]) {
+      calls.push({ name: "remove", args: paths });
+      return { data: paths, error: null };
+    },
   };
   const client = {
     storage: { from(name: string) { calls.push({ name: "bucket", args: name }); return bucket; } },
     async rpc(name: string, args: unknown) {
       calls.push({ name, args });
+      if (name === "service_reserve_project_storage_upload") {
+        return { data: { reservationId: "66666666-6666-4666-8666-666666666666", ownerId: IDs.actorUserId, projectId: IDs.projectId, expectedBytes: 5242880, reused: false }, error: null };
+      }
+      if (name === "service_finalize_project_storage_upload") {
+        return { data: { fileId: "77777777-7777-4777-8777-777777777777", ownerId: IDs.actorUserId, projectId: IDs.projectId, sizeBytes: bytes.byteLength, reservationId: "66666666-6666-4666-8666-666666666666", reused: false }, error: null };
+      }
+      if (name === "service_release_project_storage_upload") {
+        return { data: { reservationId: "66666666-6666-4666-8666-666666666666", reused: false }, error: null };
+      }
       const next = (args as Record<string, unknown>).p_next_status;
       return { data: [{ status: next === "ready" ? readyTransitionStatus : next }], error: null };
     },
@@ -51,7 +65,7 @@ const png: ValidatedPng = {
 Deno.test("uploads privately, reads back exact bytes, then transitions ready", async () => {
   const { client, calls, getDownloadCount } = fixtureClient(png.bytes);
   const result = await persistValidatedAsset(
-    { serviceClient: client, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
+    { serviceClient: client, actorUserId: IDs.actorUserId, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
     { id: IDs.assetId, assetKey: "oak-tree" }, png,
   );
   const expectedPath = `${IDs.projectId}/${IDs.mapId}/${IDs.revisionId}/oak-tree/${png.sha256}.png`;
@@ -75,7 +89,7 @@ Deno.test("uploads privately, reads back exact bytes, then transitions ready", a
 Deno.test("read-back failure never binds a path and marks storage_failed", async () => {
   const { client, calls } = fixtureClient(png.bytes, true);
   await assertRejects(() => persistValidatedAsset(
-    { serviceClient: client, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
+    { serviceClient: client, actorUserId: IDs.actorUserId, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
     { id: IDs.assetId, assetKey: "oak-tree" }, png,
   ), PixelLabMapError);
   const transitions = calls.filter((call) => call.name === "transition_map_asset");
@@ -88,7 +102,7 @@ Deno.test("read-back failure never binds a path and marks storage_failed", async
 Deno.test("a stale ready transition conflict never returns a binding", async () => {
   const { client, calls } = fixtureClient(png.bytes, false, "conflict");
   await assertRejects(() => persistValidatedAsset(
-    { serviceClient: client, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
+    { serviceClient: client, actorUserId: IDs.actorUserId, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
     { id: IDs.assetId, assetKey: "oak-tree" }, png,
   ), PixelLabMapError);
   const transitions = calls.filter((call) => call.name === "transition_map_asset");

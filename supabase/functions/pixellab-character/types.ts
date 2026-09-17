@@ -45,6 +45,7 @@ export type CharacterAssetPlan = {
 
 export type AuthorizedCharacterAttempt = {
   serviceClient?: SupabaseClient;
+  actorUserId: string;
   projectId: string; assetId: string; attemptId: string; generationId: string;
   planFingerprint: string; attemptCount: number;
   status: "planned" | "queued" | "generating" | "ready" | "failed" | "blocked";

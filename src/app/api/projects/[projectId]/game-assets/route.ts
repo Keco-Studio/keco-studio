@@ -12,6 +12,11 @@ import {
   projectAssetExtensionMatches,
 } from '@/lib/services/projectAssetUploadContract';
 import { projectAssetContentMatches } from '@/lib/services/projectAssetContent';
+import {
+  releaseProjectStorage,
+  reserveProjectStorage,
+  StorageQuotaError,
+} from '@/lib/server/storageQuota';
 
 const UUID = z.string().uuid();
 const NO_STORE = { 'Cache-Control': 'private, no-store' };
@@ -21,6 +26,32 @@ export const runtime = 'nodejs';
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status, headers: NO_STORE });
+}
+
+function storageErrorResponse(error: unknown): Response | null {
+  if (!(error instanceof StorageQuotaError)) return null;
+  if (error.code === 'STORAGE_QUOTA_EXCEEDED') {
+    return json({ error: 'Storage quota exceeded' }, 409);
+  }
+  if (error.code === 'STORAGE_PROJECT_FORBIDDEN') {
+    return json({ error: 'Forbidden' }, 403);
+  }
+  return json({ error: 'Storage is temporarily unavailable' }, 503);
+}
+
+async function bestEffortRelease(supabase: Parameters<typeof reserveProjectStorage>[0], reservationId: string) {
+  try { await releaseProjectStorage(supabase, reservationId); } catch { /* best effort */ }
+}
+
+function storageCompletionError(error: unknown): Error {
+  const detail = error && typeof error === 'object'
+    ? (error as Record<string, unknown>).details ?? (error as Record<string, unknown>).message
+    : null;
+  if (detail === 'STORAGE_QUOTA_EXCEEDED' || detail === 'STORAGE_PROJECT_FORBIDDEN'
+    || detail === 'STORAGE_RESERVATION_EXPIRED' || detail === 'STORAGE_OBJECT_MISMATCH') {
+    return new StorageQuotaError(detail);
+  }
+  return new Error('Asset registration failed');
 }
 
 function mimeFromName(name: string): string | null {
@@ -38,7 +69,10 @@ const prepareUploadSchema = z.object({
 }).strict();
 const completeUploadSchema = z.object({
   action: z.literal('complete'),
-  items: z.array(fileMetadataSchema.extend({ path: z.string().min(1).max(2048) })).min(1).max(MAX_BATCH_SIZE),
+  items: z.array(fileMetadataSchema.extend({
+    path: z.string().min(1).max(2048),
+    reservationId: UUID,
+  })).min(1).max(MAX_BATCH_SIZE),
 }).strict();
 const activateWorkspaceSchema = z.object({ action: z.literal('activate-workspace') }).strict();
 
@@ -94,10 +128,21 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
     if (prepared.success) {
       const items = [];
       for (const [index, input] of prepared.data.files.entries()) {
+        let reservationId: string | null = null;
         try {
           const file = validatedMetadata(input);
           const safeName = file.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
           const path = `${user.id}/${projectId}/${randomUUID()}-${safeName}`;
+          const reservation = await reserveProjectStorage(supabase, {
+            projectId,
+            bucketId: PROJECT_ASSET_BUCKET,
+            objectPath: path,
+            expectedBytes: file.fileSize,
+            displayName: file.fileName,
+            mimeType: file.fileType,
+            sourceKind: 'project_asset',
+          });
+          reservationId = reservation.reservationId;
           const { data, error } = await supabase.storage
             .from(PROJECT_ASSET_BUCKET)
             .createSignedUploadUrl(path, { upsert: false });
@@ -107,13 +152,20 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
             ok: true as const,
             file,
             path,
+            reservationId,
             upload: {
               url: data.signedUrl,
               method: 'PUT' as const,
               headers: { 'cache-control': 'max-age=3600', 'content-type': file.fileType, 'x-upsert': 'false' },
             },
           });
-        } catch {
+        } catch (error) {
+          if (reservationId) await bestEffortRelease(supabase, reservationId);
+          const storageError = storageErrorResponse(error);
+          if (storageError) {
+            await Promise.all(items.filter((item) => item.ok).map((item) => bestEffortRelease(supabase, item.reservationId)));
+            return storageError;
+          }
           items.push({ index, ok: false as const, file: input, error: 'Upload preparation failed' });
         }
       }
@@ -126,13 +178,24 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
       return json({ error: 'Asset paths must be unique' }, 400);
     }
     const items = [];
+    let completionStorageError: unknown = null;
     for (const [index, input] of completed.data.items.entries()) {
-      let removeInvalidObject = false;
+      let removeObjectOnFailure = false;
+      let reservationBindingConfirmed = false;
       try {
-        const file = validatedMetadata(input);
         const prefix = `${user.id}/${projectId}/`;
         const relativePath = input.path.startsWith(prefix) ? input.path.slice(prefix.length) : '';
         if (!relativePath || relativePath.includes('/')) throw new Error('Invalid project asset path');
+        const { error: bindingError } = await supabase.rpc('resolve_project_storage_upload_reservation', {
+          p_project_id: projectId,
+          p_bucket_id: PROJECT_ASSET_BUCKET,
+          p_object_path: input.path,
+          p_reservation_id: input.reservationId,
+        });
+        if (bindingError) throw storageCompletionError(bindingError);
+        reservationBindingConfirmed = true;
+        removeObjectOnFailure = true;
+        const file = validatedMetadata(input);
         const bucket = supabase.storage.from(PROJECT_ASSET_BUCKET);
         const { data: rawInfo, error: infoError } = await bucket.info(input.path);
         if (infoError || !rawInfo) throw new Error('Uploaded asset was not found');
@@ -142,13 +205,11 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
         if (actualSize !== file.fileSize || actualMimeType !== file.fileType
           || !Number.isInteger(actualSize) || actualSize < 1
           || actualSize > projectAssetMaxBytes(file.fileType)) {
-          removeInvalidObject = true;
           throw new Error('Uploaded asset metadata does not match its preparation');
         }
         const { data: blob, error: downloadError } = await bucket.download(input.path);
         if (downloadError || !blob) throw new Error('Uploaded asset could not be verified');
         const bytes = Buffer.from(await blob.arrayBuffer());
-        removeInvalidObject = true;
         if (bytes.byteLength !== actualSize || !projectAssetContentMatches(file.fileType, bytes)) {
           throw new Error('File content does not match its declared format');
         }
@@ -163,33 +224,49 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
           height = metadata.height ?? null;
           hasTransparency = metadata.hasAlpha ?? null;
         }
-        const { data, error } = await supabase.rpc('mcp_register_project_game_asset', {
+        const objectCreatedAt = typeof info.created_at === 'string'
+          ? info.created_at
+          : typeof info.createdAt === 'string'
+            ? info.createdAt
+            : null;
+        // This RPC validates the reservation binding, registers the asset, and
+        // finalizes physical bytes in one database transaction.
+        const { data, error } = await supabase.rpc('complete_project_game_asset_storage_upload', {
+          p_reservation_id: input.reservationId,
           p_project_id: projectId,
           p_name: file.fileName,
           p_category: 'media',
           p_mime_type: file.fileType,
+          p_storage_bucket: PROJECT_ASSET_BUCKET,
           p_storage_path: input.path,
           p_sha256: sha256,
           p_width: width,
           p_height: height,
           p_has_transparency: hasTransparency,
           p_file_size: file.fileSize,
+          p_object_created_at: objectCreatedAt,
         });
-        if (error) throw new Error('Asset registration failed');
+        if (error) throw storageCompletionError(error);
         const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
         if (!row || typeof row.id !== 'string') throw new Error('Asset registration returned invalid data');
-        removeInvalidObject = false;
+        removeObjectOnFailure = false;
         items.push({ ok: true as const, index, name: file.fileName, id: row.id, sha256, reused: row.reused === true });
-      } catch {
-        if (removeInvalidObject) {
+      } catch (error) {
+        if (removeObjectOnFailure) {
           try { await supabase.storage.from(PROJECT_ASSET_BUCKET).remove([input.path]); } catch { /* best effort */ }
         }
+        if (reservationBindingConfirmed) await bestEffortRelease(supabase, input.reservationId);
+        if (!completionStorageError && error instanceof StorageQuotaError) completionStorageError = error;
         items.push({ ok: false as const, index, name: input.fileName, error: 'Upload failed' });
       }
     }
+    const storageError = storageErrorResponse(completionStorageError);
+    if (storageError) return storageError;
     return json({ items, completedCount: items.filter((item) => item.ok).length, failedCount: items.filter((item) => !item.ok).length }, 201);
   } catch (error) {
     if (error instanceof AuthorizationError) return json({ error: 'Forbidden' }, 403);
+    const storageError = storageErrorResponse(error);
+    if (storageError) return storageError;
     console.error('[game-assets] upload failed', error);
     return json({ error: 'Unable to upload game assets' }, 500);
   }

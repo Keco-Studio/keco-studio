@@ -87,7 +87,7 @@ export async function authorizeServiceRequest(request: Request, body: Record<str
     ? await resolveCharacterReferences(serviceClient, projectId, asset.plan as CharacterAssetPlan)
     : [];
   return { serviceClient, actorUserId, state: {
-    serviceClient, projectId, assetId, attemptId, generationId: String(attempt.generation_id),
+    serviceClient, actorUserId, projectId, assetId, attemptId, generationId: String(attempt.generation_id),
     planFingerprint: String(attempt.plan_fingerprint), attemptCount: Number(attempt.attempt_count), status: attempt.status,
     lastErrorCode: attempt.last_error_code, providerJobId: attempt.provider_job_id, metadata: attempt.metadata ?? {}, plan: asset.plan,
     sourceProviderCharacterId: asset.kind === "character" && typeof attempt.metadata?.providerCharacterId === "string" ? attempt.metadata.providerCharacterId : sourceProviderCharacterId,

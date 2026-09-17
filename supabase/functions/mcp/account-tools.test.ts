@@ -167,6 +167,12 @@ function accountContext(
             options.resolvedRole ?? "editor";
           return { data: role, error: null };
         }
+        if (name === "reserve_project_storage_upload") {
+          return {
+            data: { reservationId: "44444444-4444-4444-8444-444444444444" },
+            error: null,
+          };
+        }
         if (name === "mcp_read_project_structure") {
           if (options.delayProjectReadMs) {
             await new Promise((resolve) =>

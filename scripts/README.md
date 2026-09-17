@@ -53,6 +53,25 @@ npm run supabase:realtime-pool:check
 `npm run dev` runs `predev` → `supabase:realtime-pool:ensure`, which soft-fails
 when Docker/Supabase is down or when `NEXT_PUBLIC_SUPABASE_URL` is not local.
 
+## Account storage rollout
+
+Storage accounting is an owner-level quota. Shared project bytes remain visible
+to collaborators in Account, but are charged only to the project owner.
+
+Roll out storage accounting in this order:
+
+1. Deploy the schema and code with the enforcement feature flag off.
+2. Run `npm run storage:backfill` and review conflicts and unassigned totals.
+3. Run `npm run storage:backfill -- --apply`.
+4. Run `npm run storage:reconcile` and reach zero unexplained counter drift.
+5. Enable enforcement.
+6. Monitor quota errors, expired reservations, and cleanup failures.
+7. Retain rollback ability by disabling enforcement without deleting accounting rows.
+
+Do not enable enforcement before the dry-run review and reconciliation gate are
+complete. Disabling enforcement is the rollback path; accounting rows remain
+available for a later re-enable and reconciliation.
+
 ## CI seeding
 
 GitHub Actions Playwright tests do **not** run `npm run seed:api`.

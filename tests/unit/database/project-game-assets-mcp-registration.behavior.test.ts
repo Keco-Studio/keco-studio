@@ -79,6 +79,18 @@ describeDb('MCP project game asset registration real Postgres behavior', () => {
 
   it('allows an owner to upload the user/project/file storage path shape', async () => {
     const path = `${fx.owner.id}/${fx.projectId}/policy-${fx.suffix}.png`;
+    const reservation = await fx.owner.client.rpc('reserve_project_storage_upload', {
+      p_project_id: fx.projectId,
+      p_bucket_id: 'project-assets',
+      p_object_path: path,
+      p_expected_bytes: 1,
+      p_display_name: 'policy-' + fx.suffix + '.png',
+      p_mime_type: 'image/png',
+      p_source_kind: 'project_asset',
+      p_source_entity_id: null,
+    });
+    expect(reservation.error).toBeNull();
+    const reservationId = (reservation.data as { reservationId: string }).reservationId;
     const { error } = await fx.owner.client.storage.from('project-assets').upload(
       path,
       new Uint8Array([0]),
@@ -86,6 +98,10 @@ describeDb('MCP project game asset registration real Postgres behavior', () => {
     );
     expect(error).toBeNull();
     uploadedPaths.add(path);
+    const released = await fx.owner.client.rpc('release_project_storage_upload', {
+      p_reservation_id: reservationId,
+    });
+    expect(released.error).toBeNull();
   });
 
   it.each(['viewer', 'outsider'] as const)('rejects %s without a row', async role => {

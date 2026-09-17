@@ -7,8 +7,13 @@
 }
 
 .content {
-  width: min(100%, 760px);
+  width: min(100%, 1120px);
   margin: 0 auto;
+}
+
+.narrow {
+  width: min(100%, 760px);
+  margin-inline: auto;
 }
 
 .pageHeader {
