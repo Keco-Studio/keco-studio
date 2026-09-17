@@ -11,6 +11,7 @@ import type {
 } from '@/lib/types/accountStorage';
 import { ACCOUNT_STORAGE_PAGE_SIZE } from '@/lib/types/accountStorage';
 import { isUuid } from '@/lib/utils/uuid';
+import { StorageQuotaError } from './storageQuota';
 
 const SUMMARY_FIELDS = [
   'quotaBytes',
@@ -41,6 +42,16 @@ const SORTS: readonly AccountStorageSort[] = [
 ];
 
 type RecordValue = Record<string, unknown>;
+
+function projectFilesRpcError(error: unknown): Error {
+  if (error && typeof error === 'object') {
+    const record = error as RecordValue;
+    if (record.details === 'STORAGE_PROJECT_FORBIDDEN' || record.message === 'STORAGE_PROJECT_FORBIDDEN') {
+      return new StorageQuotaError('STORAGE_PROJECT_FORBIDDEN');
+    }
+  }
+  return new Error('Unable to load project storage files');
+}
 
 function isExactRecord(value: unknown, fields: readonly string[]): value is RecordValue {
   return Boolean(value)
@@ -193,13 +204,18 @@ export async function readProjectStorageFiles(
   const offset = input.offset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid account storage offset');
 
-  const { data, error } = await client.rpc('account_storage_project_files', {
-    p_project_id: projectId,
-    p_query: query,
-    p_sort: sort,
-    p_limit: limit,
-    p_offset: offset,
-  });
-  if (error) throw new Error('Unable to load project storage files');
-  return readFilePage(data);
+  let result: { data: unknown; error: unknown };
+  try {
+    result = await client.rpc('account_storage_project_files', {
+      p_project_id: projectId,
+      p_query: query,
+      p_sort: sort,
+      p_limit: limit,
+      p_offset: offset,
+    });
+  } catch (error) {
+    throw projectFilesRpcError(error);
+  }
+  if (result.error) throw projectFilesRpcError(result.error);
+  return readFilePage(result.data);
 }

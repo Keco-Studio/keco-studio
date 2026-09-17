@@ -6,6 +6,7 @@ import {
   readOwnAccountStorage,
   readProjectStorageFiles,
 } from '@/lib/server/accountStorage';
+import { StorageQuotaError } from '@/lib/server/storageQuota';
 
 const UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -147,5 +148,20 @@ describe('readProjectStorageFiles', () => {
     await expect(readProjectStorageFiles(clientFor({ ...validPage, extra: true }) as never, {
       projectId: UUID,
     })).rejects.toThrow('Invalid account storage file page');
+  });
+
+  it.each([
+    { details: 'STORAGE_PROJECT_FORBIDDEN' },
+    { message: 'STORAGE_PROJECT_FORBIDDEN' },
+  ])('preserves the project-forbidden code from an RPC error', async (error) => {
+    await expect(readProjectStorageFiles(clientFor(validPage, error) as never, { projectId: UUID }))
+      .rejects.toEqual(new StorageQuotaError('STORAGE_PROJECT_FORBIDDEN'));
+  });
+
+  it('keeps unknown project-files RPC errors generic without raw database text', async () => {
+    await expect(readProjectStorageFiles(clientFor(validPage, {
+      details: 'unexpected private database detail',
+    }) as never, { projectId: UUID }))
+      .rejects.toEqual(new Error('Unable to load project storage files'));
   });
 });
