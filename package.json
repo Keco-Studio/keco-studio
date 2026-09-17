@@ -133,6 +133,7 @@
     "test:destructive": "playwright test tests/e2e/specs/destructive.spec.ts",
     "test:e2e:edit-info": "playwright test tests/e2e/specs/edit-info.spec.ts",
     "clean:test-data": "tsx scripts/clean-remote-test-data.ts",
+    "grant:account-credits": "tsx scripts/grant-account-credits.ts",
     "seed:api": "tsx scripts/seed-via-api.ts",
     "supabase:realtime-pool": "tsx scripts/configure-local-realtime-pool.ts",
     "supabase:realtime-pool:check": "tsx scripts/configure-local-realtime-pool.ts --check",
