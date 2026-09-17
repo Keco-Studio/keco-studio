@@ -4,28 +4,41 @@ import { describe, expect, it } from '@jest/globals';
 
 const migrationPath = path.join(
   process.cwd(),
-  'supabase/migrations/20260811030000_project_storage_cleanup_outbox.sql',
+  'supabase/migrations/20260917010000_account_project_storage_usage.sql',
 );
 
 describe('project storage cleanup outbox migration', () => {
-  it('atomically records reference paths before deleting the project', () => {
+  it('marks registered objects pending and snapshots every accounted bucket before deleting the project', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    expect(sql).toMatch(/create table public\.project_storage_cleanup_jobs/i);
     expect(sql).toMatch(/create function public\.delete_project_and_enqueue_storage_cleanup/i);
     expect(sql).toMatch(/from public\.projects[\s\S]+for update/i);
-    expect(sql).toMatch(/array_agg\(reference\.storage_path[\s\S]+from public\.map_reference_images/i);
-    expect(sql).toMatch(/from public\.map_assets[\s\S]+join public\.map_revisions[\s\S]+join public\.map_projects/i);
+    expect(sql).toMatch(/set lifecycle_status = 'pending_cleanup'[\s\S]+project_id = p_project_id/i);
+    expect(sql).toMatch(/array_agg\(file\.id order by file\.object_path\) as file_ids/i);
+    expect(sql).toMatch(/array_agg\(file\.owner_id order by file\.object_path\) as owner_ids/i);
+    expect(sql).toMatch(/array_agg\(file\.size_bytes order by file\.object_path\) as file_bytes/i);
+    expect(sql).toMatch(/storage_file_ids uuid\[\]/i);
+    expect(sql).toMatch(/storage_file_owner_ids uuid\[\]/i);
+    expect(sql).toMatch(/storage_file_bytes bigint\[\]/i);
     expect(sql).toMatch(/insert into public\.project_storage_cleanup_jobs[\s\S]+delete from public\.projects/i);
+    for (const bucket of ['library-media-files', 'project-assets', 'map-assets', 'character-assets']) {
+      expect(sql).toContain(`'${bucket}'`);
+    }
   });
 
-  it('keeps the cleanup queue private and callable only through service role', () => {
+  it('settles active or pending registry rows exactly once under an owner quota lock', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    expect(sql).toMatch(/alter table public\.project_storage_cleanup_jobs enable row level security/i);
-    expect(sql).toMatch(/revoke all on public\.project_storage_cleanup_jobs from public, anon, authenticated/i);
-    expect(sql).toMatch(/grant select, update, delete on public\.project_storage_cleanup_jobs to service_role/i);
-    expect(sql).toMatch(/revoke all on function public\.delete_project_and_enqueue_storage_cleanup\(uuid\)[\s\S]+from public, anon, authenticated/i);
-    expect(sql).toMatch(/grant execute on function public\.delete_project_and_enqueue_storage_cleanup\(uuid\)[\s\S]+to service_role/i);
+    expect(sql).toMatch(/function private\.storage_settle_project_storage_file_deletion/i);
+    expect(sql).toMatch(/function public\.settle_project_storage_file_deletion/i);
+    expect(sql).toMatch(/function public\.service_settle_project_storage_file_deletion/i);
+    expect(sql).toMatch(/file\.lifecycle_status in \('active', 'pending_cleanup'\)/i);
+    expect(sql).toMatch(/where quota\.owner_id = v_file\.owner_id[\s\S]+for update/i);
+    expect(sql).toMatch(/v_quota\.used_bytes < v_file\.size_bytes/i);
+    expect(sql).toMatch(/delete from public\.project_storage_files where id = v_file\.id/i);
+    expect(sql).toMatch(/'releasedBytes', v_file\.size_bytes, 'reused', false/i);
+    expect(sql).toMatch(/'releasedBytes', 0, 'reused', true/i);
+    expect(sql).toMatch(/grant execute on function public\.settle_project_storage_file_deletion\(text, text\) to authenticated/i);
+    expect(sql).toMatch(/grant execute on function public\.service_settle_project_storage_file_deletion\(text, text\) to service_role/i);
   });
 });

@@ -826,3 +826,183 @@ grant execute on function public.service_reserve_project_storage_upload(uuid, uu
 grant execute on function public.service_finalize_project_storage_upload(uuid, uuid, bigint, uuid, timestamptz) to service_role;
 grant execute on function public.service_release_project_storage_upload(uuid, uuid) to service_role;
 grant execute on function public.reconcile_expired_project_storage_reservations() to service_role;
+
+-- A project deletion detaches files from the deleted project (the foreign key
+-- is ON DELETE SET NULL), so the cleanup outbox keeps the immutable registry
+-- identity and billing snapshot needed to retry physical deletion safely.
+alter table public.project_storage_cleanup_jobs
+  drop constraint if exists project_storage_cleanup_jobs_bucket_id_check;
+alter table public.project_storage_cleanup_jobs
+  add constraint project_storage_cleanup_jobs_bucket_id_check
+  check (bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets'));
+alter table public.project_storage_cleanup_jobs
+  add column if not exists storage_file_ids uuid[];
+alter table public.project_storage_cleanup_jobs
+  add column if not exists storage_file_owner_ids uuid[];
+alter table public.project_storage_cleanup_jobs
+  add column if not exists storage_file_bytes bigint[];
+alter table public.project_storage_cleanup_jobs
+  drop constraint if exists project_storage_cleanup_jobs_registry_snapshot_check;
+alter table public.project_storage_cleanup_jobs
+  add constraint project_storage_cleanup_jobs_registry_snapshot_check check (
+    storage_file_ids is null or (
+      cardinality(storage_file_ids) = cardinality(storage_paths)
+      and cardinality(storage_file_owner_ids) = cardinality(storage_paths)
+      and cardinality(storage_file_bytes) = cardinality(storage_paths)
+    )
+  );
+
+-- The old cleanup function only knows about map and character tables. The
+-- registry is authoritative for accounted objects and survives the project
+-- delete, letting every bucket settle independently and idempotently.
+drop function public.delete_project_and_enqueue_storage_cleanup(uuid);
+create function public.delete_project_and_enqueue_storage_cleanup(p_project_id uuid)
+returns table (cleanup_job_id uuid, bucket_id text, storage_paths text[])
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_job record;
+begin
+  perform 1
+  from public.projects project
+  where project.id = p_project_id
+  for update;
+  if not found then
+    raise exception 'project not found' using errcode = 'P0002';
+  end if;
+
+  update public.project_storage_files file
+  set lifecycle_status = 'pending_cleanup', updated_at = clock_timestamp()
+  where file.project_id = p_project_id
+    and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+    and file.lifecycle_status = 'active';
+
+  for v_job in
+    with grouped as (
+      select
+        file.bucket_id,
+        array_agg(file.object_path order by file.object_path) as paths,
+        array_agg(file.id order by file.object_path) as file_ids,
+        array_agg(file.owner_id order by file.object_path) as owner_ids,
+        array_agg(file.size_bytes order by file.object_path) as file_bytes
+      from public.project_storage_files file
+      where file.project_id = p_project_id
+        and file.bucket_id in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+        and file.lifecycle_status = 'pending_cleanup'
+      group by file.bucket_id
+    )
+    insert into public.project_storage_cleanup_jobs (
+      project_id, bucket_id, storage_paths,
+      storage_file_ids, storage_file_owner_ids, storage_file_bytes
+    )
+    select p_project_id, grouped.bucket_id, grouped.paths,
+      grouped.file_ids, grouped.owner_ids, grouped.file_bytes
+    from grouped
+    returning id, bucket_id, storage_paths
+  loop
+    cleanup_job_id := v_job.id;
+    bucket_id := v_job.bucket_id;
+    storage_paths := v_job.storage_paths;
+    return next;
+  end loop;
+
+  delete from public.projects where id = p_project_id;
+end;
+$$;
+
+-- The physical object must be removed before either public wrapper calls this
+-- function. A retry finds no registry row and therefore cannot decrement a
+-- quota twice.
+create function private.storage_settle_project_storage_file_deletion(
+  p_owner_id uuid,
+  p_bucket_id text,
+  p_object_path text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_file public.project_storage_files%rowtype;
+  v_quota public.account_storage_quotas%rowtype;
+begin
+  if p_bucket_id not in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
+     or p_object_path is null or p_object_path <> btrim(p_object_path) or p_object_path = ''
+     or p_object_path like '%..%' then
+    raise exception 'Storage object metadata does not match the deletion'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  select * into v_file
+  from public.project_storage_files file
+  where file.bucket_id = p_bucket_id
+    and file.object_path = p_object_path
+    and (p_owner_id is null or file.owner_id = p_owner_id)
+    and file.lifecycle_status in ('active', 'pending_cleanup')
+  for update;
+  if not found then
+    return jsonb_build_object('releasedBytes', 0, 'reused', true);
+  end if;
+
+  select * into v_quota
+  from public.account_storage_quotas quota
+  where quota.owner_id = v_file.owner_id
+  for update;
+  if not found or v_quota.used_bytes < v_file.size_bytes then
+    raise exception 'Storage usage underflow'
+      using errcode = 'P0001', detail = 'STORAGE_USAGE_UNDERFLOW';
+  end if;
+
+  delete from public.project_storage_files where id = v_file.id;
+  update public.account_storage_quotas
+  set used_bytes = used_bytes - v_file.size_bytes,
+      updated_at = clock_timestamp()
+  where owner_id = v_file.owner_id;
+
+  return jsonb_build_object('releasedBytes', v_file.size_bytes, 'reused', false);
+end;
+$$;
+
+create function public.settle_project_storage_file_deletion(
+  p_bucket_id text,
+  p_object_path text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  return private.storage_settle_project_storage_file_deletion(auth.uid(), p_bucket_id, p_object_path);
+end;
+$$;
+
+create function public.service_settle_project_storage_file_deletion(
+  p_bucket_id text,
+  p_object_path text
+)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select private.storage_settle_project_storage_file_deletion(null, p_bucket_id, p_object_path);
+$$;
+
+revoke all on function public.delete_project_and_enqueue_storage_cleanup(uuid)
+  from public, anon, authenticated;
+revoke all on function private.storage_settle_project_storage_file_deletion(uuid, text, text)
+  from public, anon, authenticated, service_role;
+revoke all on function public.settle_project_storage_file_deletion(text, text)
+  from public, anon, authenticated, service_role;
+revoke all on function public.service_settle_project_storage_file_deletion(text, text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.delete_project_and_enqueue_storage_cleanup(uuid) to service_role;
+grant execute on function public.settle_project_storage_file_deletion(text, text) to authenticated;
+grant execute on function public.service_settle_project_storage_file_deletion(text, text) to service_role;
