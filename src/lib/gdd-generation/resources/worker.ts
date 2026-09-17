@@ -135,28 +135,33 @@ export async function processClaimedGddResourceJob(
         });
       }
     } else if (job.kind === 'tables') {
-      const payload = job.payload as { markdown?: unknown; input?: unknown };
+      const payload = job.payload as { markdown?: unknown; input?: unknown; resources?: unknown };
       if (typeof payload.markdown !== 'string' || !payload.input || typeof payload.input !== 'object') {
         throw new Error('Resource payload is missing its GDD context.');
       }
       const gddInput = payload.input as GddGenerationRequestV2;
-      const usageBinding = getUsageBinding
-        ? await getUsageBinding(serviceClient, job, 'gdd_table')
-        : undefined;
-      const reviewed = await dependencies.review(
-        { ...gddInput, resourceMode: 'inline' },
-        payload.markdown,
-        usageBinding ? { usageBinding } : {},
-        { recoverDialogue: false },
-      );
-      const expectedTables = gddInput.rules.tableGuidance.map((guidance) => guidance.table.toLocaleLowerCase());
-      const generatedTables = new Set(reviewed.tablePlans.map((plan) => plan.table.toLocaleLowerCase()));
-      const missing = expectedTables.filter((table) => !generatedTables.has(table));
-      if (missing.length > 0) throw new Error(`Async table generation is still missing: ${missing.join(', ')}.`);
-      const existingIds = await loadSeriesTableLibraryIds(serviceClient, job.project_id, gddInput.designSystemId);
-      const tableResources = sanitizeTableResourcesForPersistence(
-        materializeTableResources(`${job.project_id}:${gddInput.designSystemId}`, reviewed.tablePlans, existingIds),
-      );
+      let tableResources;
+      if (Array.isArray(payload.resources) && payload.resources.length > 0) {
+        tableResources = sanitizeTableResourcesForPersistence(payload.resources);
+      } else {
+        const usageBinding = getUsageBinding
+          ? await getUsageBinding(serviceClient, job, 'gdd_table')
+          : undefined;
+        const reviewed = await dependencies.review(
+          { ...gddInput, resourceMode: 'inline' },
+          payload.markdown,
+          usageBinding ? { usageBinding } : {},
+          { recoverDialogue: false },
+        );
+        const expectedTables = gddInput.rules.tableGuidance.map((guidance) => guidance.table.toLocaleLowerCase());
+        const generatedTables = new Set(reviewed.tablePlans.map((plan) => plan.table.toLocaleLowerCase()));
+        const missing = expectedTables.filter((table) => !generatedTables.has(table));
+        if (missing.length > 0) throw new Error(`Async table generation is still missing: ${missing.join(', ')}.`);
+        const existingIds = await loadSeriesTableLibraryIds(serviceClient, job.project_id, gddInput.designSystemId);
+        tableResources = sanitizeTableResourcesForPersistence(
+          materializeTableResources(`${job.project_id}:${gddInput.designSystemId}`, reviewed.tablePlans, existingIds),
+        );
+      }
       const document = await readDocument(serviceClient, job.document_id);
       const markdown = coerceGeneratedSanctionedMdx(
         applyInlineTableResourceReferences(document.markdown, tableResources),

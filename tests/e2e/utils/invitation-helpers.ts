@@ -8,6 +8,7 @@ export async function createInvitationFixture(
   input: {
     projectId: string;
     recipientEmail: string;
+    recipientUserId?: string;
     role: InvitationRole;
     invitedBy: string;
   }
@@ -32,6 +33,7 @@ export async function createInvitationFixture(
     id,
     project_id: input.projectId,
     recipient_email: input.recipientEmail.toLowerCase(),
+    recipient_user_id: input.recipientUserId ?? null,
     role: input.role,
     invited_by: input.invitedBy,
     invitation_token: token,

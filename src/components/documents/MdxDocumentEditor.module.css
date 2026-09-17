@@ -175,7 +175,6 @@
 .resourceReferenceTable {
   display: grid;
   width: max-content;
-  min-width: 100%;
   border-top: 1px solid var(--ant-color-border, #d9d9d9);
   border-left: 1px solid var(--ant-color-border, #d9d9d9);
 }

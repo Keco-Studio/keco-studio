@@ -129,6 +129,59 @@ describe('GDD resource worker', () => {
     expect(retry).not.toHaveBeenCalled();
   });
 
+  it('materializes queued table resources without regenerating their reference ids', async () => {
+    const queuedResources = [{
+      id: '11111111-1111-4111-8111-111111111111',
+      table: 'MapPuzzles',
+      purpose: 'Map puzzle data.',
+      fields: ['id', 'clueId'],
+      fieldIds: [
+        '22222222-2222-4222-8222-222222222222',
+        '33333333-3333-4333-8333-333333333333',
+      ],
+      rows: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'puzzle-1',
+        values: { id: 'puzzle-1', clueId: 'clue-1' },
+      }],
+    }];
+    const persistedReference = [
+      '# GDD',
+      '',
+      '## Map Puzzles',
+      '<ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="44444444-4444-4444-8444-444444444444" displayFieldId="22222222-2222-4222-8222-222222222222" fallbackLabel="puzzle-1" />',
+      '',
+      '## Content',
+    ].join('\n');
+    const claim = jest.fn(async () => resourceJob('tables', {
+      markdown: persistedReference,
+      input: {
+        resourceMode: 'async',
+        designSystemId: 'system-1',
+        rules: { tableGuidance: [{ table: 'MapPuzzles', purpose: 'Map puzzle data.', fields: ['id', 'clueId'] }] },
+      },
+      resources: queuedResources,
+    }));
+    const materialize = jest.fn(async (..._args: unknown[]) => undefined);
+    const review = jest.fn() as never;
+
+    await expect(processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
+      claim,
+      finish: jest.fn(async () => 'completed' as const),
+      retry: jest.fn(async () => 'queued' as const),
+      compile: jest.fn(async () => []),
+      materialize,
+      readDocument: jest.fn(async () => ({ markdown: persistedReference, yjsState: 'old-yjs' })),
+      review,
+    })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'completed' });
+
+    expect(review).not.toHaveBeenCalled();
+    expect(materialize).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      tableResources: queuedResources,
+      markdown: expect.stringContaining('libraryId="11111111-1111-4111-8111-111111111111" assetId="44444444-4444-4444-8444-444444444444" displayFieldId="22222222-2222-4222-8222-222222222222"'),
+    }));
+  });
+
   it('materializes only table references in a table resource job', async () => {
     const gddInput = {
       resourceMode: 'async', projectId: 'project-1', designSystemId: 'system-1',

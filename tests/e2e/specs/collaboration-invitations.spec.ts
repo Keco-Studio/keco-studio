@@ -97,6 +97,7 @@ test.describe('Collaboration invitations', () => {
     const invitation = await createInvitationFixture(admin, {
       projectId,
       recipientEmail: invitee.email,
+      recipientUserId: invitee.id,
       role: 'editor',
       invitedBy: ownerId,
     });
@@ -120,6 +121,7 @@ test.describe('Collaboration invitations', () => {
     const invitation = await createInvitationFixture(admin, {
       projectId,
       recipientEmail: invitee.email,
+      recipientUserId: invitee.id,
       role: 'viewer',
       invitedBy: ownerId,
     });

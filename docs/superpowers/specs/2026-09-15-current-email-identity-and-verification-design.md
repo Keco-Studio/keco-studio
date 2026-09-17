@@ -108,10 +108,12 @@ a former user's rights to a new UUID.
 Keep `/forgot-password` and `/auth/reset-password` and the provider's recovery
 link. Show an email-only input, give a non-enumerating success response, support
 expired-link retry, and validate the password against the configured Auth
-minimum (currently 12 characters locally). Avoid asserting that mail was
-actually delivered solely because the provider accepted the request. The
-recovery session must identify the same Auth UUID; a newly registered account
-with a reused email is not the deleted account.
+minimum (6 characters, the Supabase platform minimum). The client only checks
+that the password is present and matches its confirmation; Auth remains the
+authority for minimum length. Avoid asserting that mail was actually delivered
+solely because the provider accepted the request. The recovery session must
+identify the same Auth UUID; a newly registered account with a reused email is
+not the deleted account.
 
 ## Verification and Rollout
 

@@ -18,9 +18,9 @@ import {
   type VerifiedImageMetadata,
 } from "./image-metadata.ts";
 import {
+  canonicalProjectAssetMimeType,
   PROJECT_ASSET_EXTENSIONS,
   PROJECT_ASSET_MIME_TYPES,
-  canonicalProjectAssetMimeType,
   projectAssetExtensionMatches,
   projectAssetMaxBytes,
 } from "../../../shared/project-asset-upload-contract.ts";
@@ -69,11 +69,13 @@ const projectAssetFileShape = {
     isPrintableAsciiImageFileName,
     "fileName must contain only printable ASCII and no path separators.",
   ).describe("A plain local file name, without a directory path."),
-  fileType: z.enum([
-    ...PROJECT_ASSET_MIME_TYPES,
-    "image/jpg",
-    "audio/x-m4a",
-  ] as const).transform((value) => canonicalProjectAssetMimeType(value)!)
+  fileType: z.enum(
+    [
+      ...PROJECT_ASSET_MIME_TYPES,
+      "image/jpg",
+      "audio/x-m4a",
+    ] as const,
+  ).transform((value) => canonicalProjectAssetMimeType(value)!)
     .describe(
       "The supported media type matching fileName. image/jpg and audio/x-m4a are normalized.",
     ),
@@ -88,7 +90,10 @@ const projectAssetFileSchema = z.object(projectAssetFileShape).strict().refine(
   "fileName extension must match fileType and fileSize must satisfy its type-specific limit.",
 );
 const imageFileShape = {
-  ...projectAssetFileShape,
+  fileName: z.string().trim().min(1).max(200).refine(
+    (value) => !/[\\/\u0000-\u001f]/.test(value),
+    "fileName must be a plain file name.",
+  ).describe("A plain local file name, without a directory path."),
   fileType: imageFileType.describe(
     "The supported image media type matching fileName.",
   ),
@@ -315,7 +320,9 @@ function uploadedImageFileName(path: string): string | null {
       return null;
     }
   }
-  return isPrintableAsciiImageFileName(decoded) ? decoded : null;
+  return decoded.length <= 200 && !/[\\/\u0000-\u001f]/.test(decoded)
+    ? decoded
+    : null;
 }
 
 async function removeInvalidImage(
@@ -581,7 +588,10 @@ async function verifyProjectAssetUpload(
       bucket: PROJECT_ASSET_BUCKET,
     });
   } catch (error) {
-    if (!(error instanceof McpDomainError) || error.code !== "IMAGE_UPLOAD_NOT_FOUND") {
+    if (
+      !(error instanceof McpDomainError) ||
+      error.code !== "IMAGE_UPLOAD_NOT_FOUND"
+    ) {
       throw error;
     }
   }
@@ -729,6 +739,67 @@ function registrationDimension(value: number | null): number | null {
       value <= 2_147_483_647
     ? value
     : null;
+}
+
+type AssetUploadAuthorization = boolean | null;
+
+async function getAssetUploadAutoExecute(
+  context: ProjectMcpRequestContext,
+): Promise<AssetUploadAuthorization> {
+  // Legacy/non-OAuth contexts cannot persist an automatic-upload decision.
+  if (!context.sessionId || !context.clientId) return null;
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc(
+        "mcp_get_asset_upload_auto_execute",
+        { p_project_id: context.projectId },
+      ),
+  );
+  if (error) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The asset upload authorization could not be checked.",
+    );
+  }
+  return data === true || data === false ? data : null;
+}
+
+async function setAssetUploadAutoExecute(
+  context: ProjectMcpRequestContext,
+  enabled: boolean,
+): Promise<void> {
+  if (!context.sessionId || !context.clientId) return;
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc(
+        "mcp_set_asset_upload_auto_execute",
+        { p_project_id: context.projectId, p_enabled: enabled },
+      ),
+  );
+  if (error || data !== true) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The asset upload authorization could not be saved.",
+    );
+  }
+}
+
+function assetUploadChoiceRequired(): McpDomainError {
+  return new McpDomainError(
+    "ASSET_UPLOAD_CONFIRMATION_REQUIRED",
+    "Ask the user whether to allow automatic project asset uploads for this MCP session, then retry with assetUploadAutoExecute set to true or false.",
+  );
+}
+
+function assetUploadBatchConfirmationRequired(): McpDomainError {
+  return new McpDomainError(
+    "ASSET_UPLOAD_CONFIRMATION_REQUIRED",
+    "Ask the user to confirm this project asset upload batch, then retry with confirmUpload set to true. This does not authorize future batches.",
+  );
 }
 
 async function createFolder(
@@ -1647,6 +1718,9 @@ function registerWriteToolSet(
   const prepareProjectAssetUploadsSchema = z.object({
     ...projectShape,
     files: z.array(projectAssetFileSchema).min(1).max(20),
+    assetUploadAutoExecute: z.boolean().optional().describe(
+      "On the first call, the user's choice to allow automatic project asset uploads for the rest of this OAuth MCP session.",
+    ),
   }).strict();
   server.registerTool(
     "prepare_project_asset_uploads",
@@ -1658,6 +1732,23 @@ function registerWriteToolSet(
     },
     async (input: z.infer<typeof prepareProjectAssetUploadsSchema>) =>
       withProjectContext(input, contextFor, async (context) => {
+        const storedAuthorization = await getAssetUploadAutoExecute(context);
+        if (
+          storedAuthorization === null &&
+          input.assetUploadAutoExecute === undefined
+        ) {
+          throw assetUploadChoiceRequired();
+        }
+        if (input.assetUploadAutoExecute !== undefined) {
+          await setAssetUploadAutoExecute(
+            context,
+            input.assetUploadAutoExecute,
+          );
+        }
+        const effectiveAuthorization = input.assetUploadAutoExecute ??
+          storedAuthorization;
+        const effectiveAutoExecute = effectiveAuthorization === true &&
+          Boolean(context.sessionId && context.clientId);
         const items = [];
         for (const [index, file] of input.files.entries()) {
           try {
@@ -1680,6 +1771,8 @@ function registerWriteToolSet(
         const failedCount = items.filter((item) => !item.ok).length;
         return toolSuccess("Project Asset upload targets prepared.", {
           ok: true,
+          assetUploadAutoExecute: effectiveAutoExecute,
+          completionConfirmationRequired: !effectiveAutoExecute,
           preparedCount: items.length - failedCount,
           failedCount,
           items,
@@ -1689,6 +1782,9 @@ function registerWriteToolSet(
 
   const completeProjectGameAssetUploadsSchema = z.object({
     ...projectShape,
+    confirmUpload: z.literal(true).optional().describe(
+      "Confirm this upload batch only when assetUploadAutoExecute is disabled or unavailable; this does not authorize future batches.",
+    ),
     items: z.array(
       z.object({
         path: preparedImagePathSchema,
@@ -1709,6 +1805,10 @@ function registerWriteToolSet(
     },
     async (input: z.infer<typeof completeProjectGameAssetUploadsSchema>) =>
       withProjectContext(input, contextFor, async (context) => {
+        const storedAuthorization = await getAssetUploadAutoExecute(context);
+        if (storedAuthorization !== true && input.confirmUpload !== true) {
+          throw assetUploadBatchConfirmationRequired();
+        }
         const items = [];
         for (const [index, item] of input.items.entries()) {
           try {

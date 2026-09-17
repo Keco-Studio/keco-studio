@@ -345,6 +345,53 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
+  it('persists deterministic table references at their body markers before async materialization', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const updateEq = jest.fn(async (_column: string, _value: string) => ({ data: null, error: null }));
+    const upsert = jest.fn(async (_rows: unknown[], _options: unknown) => ({ data: null, error: null }));
+    const from = jest.fn((table: string) => table === 'documents'
+      ? { update: () => ({ eq: updateEq }) }
+      : { upsert });
+    const v2Job = {
+      ...job,
+      resource_mode: 'async',
+      applied_rule_ids: ['readable-state'],
+      omitted_rule_ids: [],
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN', resourceMode: 'async' },
+    } as GddGenerationJob;
+
+    await persistGeneratedGddV2Document(
+      { rpc, from } as never,
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Gameplay Systems\nRules.\n\n<!-- KECO_TABLE_REF Skills -->\n\n## Content\nLevels.',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }],
+    );
+
+    const args = rpc.mock.calls[0]![1] as Record<string, unknown>;
+    const persistedMarkdown = String(args.p_markdown);
+    expect(persistedMarkdown).toMatch(/## Gameplay Systems[\s\S]*<ResourceReference[\s\S]*## Content/);
+    expect(persistedMarkdown).not.toContain('## Keco Tables');
+    expect(args.p_table_resources).toEqual([]);
+    const persistedIds = /libraryId="([^"]+)" assetId="([^"]+)" displayFieldId="([^"]+)"/.exec(persistedMarkdown);
+    expect(persistedIds).not.toBeNull();
+    const queuedRows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: { resources?: Array<{
+      id: string;
+      fieldIds: string[];
+      rows: Array<{ id?: string }>;
+    }> } }>;
+    const queuedTable = queuedRows.find((row) => row.kind === 'tables')?.payload.resources?.[0];
+    expect(queuedTable).toEqual(expect.objectContaining({
+      id: persistedIds![1],
+      fieldIds: expect.arrayContaining([persistedIds![3]]),
+      rows: [expect.objectContaining({ id: persistedIds![2] })],
+    }));
+  });
+
   it('enqueues dialogue independently when no table resources exist', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
       data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],

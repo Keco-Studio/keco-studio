@@ -1,0 +1,22 @@
+{
+    "$schema": "https://schema.native-sdk.dev/app/v1.json",
+    "id":"dev.keco.studio",
+    "name":"keco-studio",
+    "display_name":"Keco Studio",
+    "version": "0.1.0",
+    "icons": ["assets/icon.png"],
+    "platforms": ["macos", "windows"],
+    "permissions": [],
+    "capabilities": ["webview"],
+    "security": {
+        "navigation": {
+            "allowed_origins": ["https://keco-studio-main.vercel.app"],
+            "external_links": { "action": "deny" }
+        }
+    },
+    "web_engine": "system",
+    "cef": { "dir": "third_party/cef/macos", "auto_install": false },
+    "windows": [
+        { "label": "main", "title":"Keco Studio", "width": 1280, "height": 800, "restore_state": true }
+    ]
+}

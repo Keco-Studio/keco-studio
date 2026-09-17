@@ -7,6 +7,14 @@ import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/i
 import { useQuery } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
 import {
+  ASSET_GRID_SIZES,
+  DEFAULT_ASSET_GRID_SIZE_INDEX,
+  getAdminAssetTargetRowHeight,
+  isAssetGridListMode,
+  nextAssetGridSize,
+  type AssetGridSizeIndex,
+} from '@/components/libraries/utils/assetGridPresentation';
+import {
   parseGameAssetsCategoryParam,
   type GameAssetStatus,
   type ProjectGameAsset,
@@ -40,8 +48,9 @@ function isAudio(asset: ProjectGameAsset): boolean {
 }
 
 const FALLBACK_ASPECT = 4 / 3;
-const TARGET_ROW_HEIGHT = 168;
 const COL_GAP = 14;
+const ZOOM_GESTURE_INTERVAL_MS = 120;
+const COMPACT_THUMBNAIL_SIZE = 56;
 
 type SizedAsset = {
   asset: ProjectGameAsset;
@@ -66,10 +75,19 @@ function resolveSizedAsset(asset: ProjectGameAsset, measuredAspects: Record<stri
 function buildJustifiedRows(
   items: SizedAsset[],
   containerWidth: number,
-  targetRowHeight = TARGET_ROW_HEIGHT,
+  targetRowHeight = getAdminAssetTargetRowHeight(DEFAULT_ASSET_GRID_SIZE_INDEX),
   gap = COL_GAP,
+  listMode = false,
 ): JustifiedItem[][] {
   if (containerWidth <= 0 || items.length === 0) return [];
+
+  if (listMode) {
+    return items.map((item) => [{
+      ...item,
+      width: containerWidth,
+      height: COMPACT_THUMBNAIL_SIZE,
+    }]);
+  }
 
   const rows: JustifiedItem[][] = [];
   let current: SizedAsset[] = [];
@@ -113,9 +131,15 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
   const [measuredAspects, setMeasuredAspects] = useState<Record<string, number>>({});
   const gridRef = useRef<HTMLDivElement>(null);
+  const lastZoomAtRef = useRef(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [assetSizeIndex, setAssetSizeIndex] = useState<AssetGridSizeIndex>(
+    DEFAULT_ASSET_GRID_SIZE_INDEX,
+  );
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const listMode = isAssetGridListMode(assetSizeIndex);
+  const targetRowHeight = getAdminAssetTargetRowHeight(assetSizeIndex);
 
   const assetsQuery = useQuery<ApiResponse>({
     queryKey: ['project-game-assets', projectId],
@@ -147,9 +171,27 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   }, []);
 
   const rows = useMemo(
-    () => buildJustifiedRows(sized, containerWidth),
-    [sized, containerWidth],
+    () => buildJustifiedRows(sized, containerWidth, targetRowHeight, COL_GAP, listMode),
+    [sized, containerWidth, listMode, targetRowHeight],
   );
+
+  useEffect(() => {
+    const element = gridRef.current;
+    if (!element) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+
+      const now = Date.now();
+      if (now - lastZoomAtRef.current < ZOOM_GESTURE_INTERVAL_MS) return;
+      lastZoomAtRef.current = now;
+      setAssetSizeIndex((current) => nextAssetGridSize(current, event.deltaY));
+    };
+
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const handleMeasuredAspect = useCallback((assetId: string, aspect: number) => {
     setMeasuredAspects((prev) => {
@@ -277,9 +319,14 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
               <span>Generated materials will appear here as soon as they are available.</span>
             </div>
           ) : null}
-          <div className={styles.grid} ref={gridRef}>
+          <div
+            className={`${styles.grid} ${listMode ? styles.gridList : ''}`}
+            ref={gridRef}
+            data-testid="game-assets-grid"
+            data-asset-layout={listMode ? 'list' : 'grid'}
+          >
             {rows.map((row, rowIndex) => (
-              <div className={styles.row} key={`row-${rowIndex}`}>
+              <div className={styles.row} key={`row-${rowIndex}`} data-asset-row>
                 {row.map((item) => (
                   <AssetCard
                     key={item.asset.id}
@@ -287,10 +334,38 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                     selected={selected?.id === item.asset.id}
                     onSelect={() => setSelected(item.asset)}
                     onMeasuredAspect={handleMeasuredAspect}
+                    listMode={listMode}
                   />
                 ))}
               </div>
             ))}
+          </div>
+          <div className={styles.zoomControls} aria-label="Asset size" data-testid="asset-size-controls">
+            <button
+              type="button"
+              className={styles.zoomButton}
+              aria-label="Decrease asset size"
+              title="Decrease asset size"
+              disabled={assetSizeIndex === 0}
+              onClick={() => setAssetSizeIndex((current) => Math.max(0, current - 1))}
+            >
+              -
+            </button>
+            <span className={styles.zoomValue}>{ASSET_GRID_SIZES[assetSizeIndex]?.label}</span>
+            <button
+              type="button"
+              className={styles.zoomButton}
+              aria-label="Increase asset size"
+              title="Increase asset size"
+              disabled={assetSizeIndex === ASSET_GRID_SIZES.length - 1}
+              onClick={() =>
+                setAssetSizeIndex((current) =>
+                  Math.min(ASSET_GRID_SIZES.length - 1, current + 1),
+                )
+              }
+            >
+              +
+            </button>
           </div>
         </section>
 
@@ -311,21 +386,29 @@ function AssetCard({
   selected,
   onSelect,
   onMeasuredAspect,
+  listMode,
 }: {
   item: JustifiedItem;
   selected: boolean;
   onSelect: () => void;
   onMeasuredAspect: (assetId: string, aspect: number) => void;
+  listMode: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`${styles.card} ${selected ? styles.cardSelected : ''}`}
+      className={`${styles.card} ${listMode ? styles.listCard : ''} ${selected ? styles.cardSelected : ''}`}
       onClick={onSelect}
       style={{ width: item.width, flex: `0 0 ${item.width}px` }}
       aria-pressed={selected}
+      data-asset-card
     >
-      <div className={styles.thumbnail} style={{ width: item.width, height: item.height }}>
+      <div
+        className={styles.thumbnail}
+        style={listMode
+          ? { width: COMPACT_THUMBNAIL_SIZE, height: COMPACT_THUMBNAIL_SIZE }
+          : { width: item.width, height: item.height }}
+      >
         {item.previewSrc && isImage(item.asset) ? (
           // User-uploaded object URLs are not covered by a trusted Next Image remote pattern.
           // eslint-disable-next-line @next/next/no-img-element

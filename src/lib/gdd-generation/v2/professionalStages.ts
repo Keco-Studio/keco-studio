@@ -358,8 +358,8 @@ function normalizeHeadingTitle(value: string): string {
     .trim()
     // Accept common Chinese/Arabic outline prefixes while retaining the
     // blueprint title as the canonical persisted heading.
-    .replace(/^(?:第\s*)?(?:[一二三四五六七八九十百千万零〇两]+|\d+)(?:\s*章\s*|\s*[、.)：:]\s*|\s+-\s+)/u, '')
-    .replace(/[：:、。.!！?？]+$/u, '')
+    .replace(/^(?:\u7b2c\s*)?(?:[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u96f6\u3007\u4e24]+|\d+)(?:\s*\u7ae0\s*|\s*[\u3001.)\uff1a:]\s*|\s+-\s+)/u, '')
+    .replace(/[\uff1a:\u3001\u3002.!\uff01?\uff1f]+$/u, '')
     .trim()
     .toLocaleLowerCase();
 }

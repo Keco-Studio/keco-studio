@@ -47,7 +47,7 @@ expect(isDuplicateEmailError({ message: 'Network request failed' })).toBe(false)
 
 - [ ] **Step 2: Verify RED**
 
-Run: `npm test -- --runInBand tests/unit/auth/email-identity.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/email-identity.test.ts`
 
 Expected: FAIL because `@/lib/auth/emailIdentity` does not exist.
 
@@ -74,7 +74,7 @@ In `AuthForm.tsx`, normalize before both Auth calls. Map duplicate signup errors
 
 - [ ] **Step 5: Verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/auth/email-identity.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/email-identity.test.ts`
 
 Expected: PASS.
 
@@ -89,7 +89,7 @@ git commit -m "fix: normalize account email inputs"
 
 **Files:**
 - Create: `supabase/migrations/20260915120000_current_email_identity.sql`
-- Create: `tests/unit/database/current-email-identity-migration.test.ts`
+- Create: `tests/unit/database/current-email-identity.behavior.test.ts`
 - Modify: `src/lib/contexts/AuthContext.tsx`
 
 **Interfaces:**
@@ -97,13 +97,13 @@ git commit -m "fix: normalize account email inputs"
 - Produces: trigger function `public.sync_profile_email_from_auth_user()`
 - Consumes: `auth.users(id, email)` and `public.profiles(id, email)`
 
-- [ ] **Step 1: Write a failing migration contract test**
+- [ ] **Step 1: Write a failing live-database behavior test**
 
-Read the migration as text and assert it contains: a preflight duplicate query using `lower(btrim(email))`; unique partial indexes for Auth and profiles; an `AFTER INSERT OR UPDATE OF email ON auth.users` trigger; profile backfill from Auth; and column-level profile update grants that exclude `email`.
+Apply the migration to local Supabase and test observable behavior: normalized duplicate Auth emails are rejected, Auth email changes synchronize to profiles, authenticated clients cannot directly edit `profiles.email`, and deleting an account releases the email.
 
 - [ ] **Step 2: Verify RED**
 
-Run: `npm test -- --runInBand tests/unit/database/current-email-identity-migration.test.ts`
+Run: `RLS_DB_TESTS=1 npm run test:unit -- --runInBand tests/unit/database/current-email-identity.behavior.test.ts`
 
 Expected: FAIL because the migration does not exist.
 
@@ -136,7 +136,7 @@ Revoke table-level profile updates from `authenticated`, then grant update only 
 
 - [ ] **Step 5: Verify GREEN and migration applicability**
 
-Run: `npm test -- --runInBand tests/unit/database/current-email-identity-migration.test.ts tests/unit/auth-profile-stability.test.ts`
+Run: `RLS_DB_TESTS=1 npm run test:unit -- --runInBand tests/unit/database/current-email-identity.behavior.test.ts tests/unit/auth-profile-stability.test.ts`
 
 When local Supabase is available, run: `supabase db reset`
 
@@ -145,7 +145,7 @@ Expected: tests pass; reset completes; duplicate normalized email insertion fail
 - [ ] **Step 6: Commit the database contract**
 
 ```bash
-git add supabase/migrations/20260915120000_current_email_identity.sql tests/unit/database/current-email-identity-migration.test.ts src/lib/contexts/AuthContext.tsx
+git add supabase/migrations/20260915120000_current_email_identity.sql tests/unit/database/current-email-identity.behavior.test.ts src/lib/contexts/AuthContext.tsx
 git commit -m "feat: enforce current email identity"
 ```
 
@@ -181,7 +181,7 @@ and reports that confirmation messages were sent without claiming the email alre
 
 - [ ] **Step 2: Verify RED**
 
-Run: `npm test -- --runInBand tests/unit/auth/account-email-settings.test.tsx`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/account-email-settings.test.tsx`
 
 Expected: FAIL because the account component does not exist.
 
@@ -195,7 +195,7 @@ Create a restrained account settings view using existing shell typography and sp
 
 - [ ] **Step 5: Verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/auth/account-email-settings.test.tsx tests/unit/auth/proxy-policy.test.ts tests/unit/keco-admin/keco-admin-navigation.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/account-email-settings.test.tsx tests/unit/auth/proxy-policy.test.ts tests/unit/keco-admin/keco-admin-navigation.test.ts`
 
 Expected: PASS, including existing Keco Admin menu ordering and visibility tests.
 
@@ -210,8 +210,11 @@ git commit -m "feat: add account email change flow"
 
 **Files:**
 - Create: `supabase/migrations/20260915130000_bind_invitations_to_recipient_uuid.sql`
-- Create: `tests/unit/database/invitation-recipient-identity-migration.test.ts`
-- Create: `tests/unit/collaboration/invitation-recipient-identity.test.ts`
+- Create: `tests/unit/database/invitation-recipient-identity.behavior.test.ts`
+- Create: `tests/unit/api-invitation-create-identity.test.ts`
+- Modify: `tests/unit/api-invitation-accept-race.test.ts`
+- Modify: `tests/unit/collaboration-service-errors.test.ts`
+- Create: `tests/unit/collaboration/pending-invitation-display.test.ts`
 - Modify: `src/app/api/invitations/route.ts`
 - Modify: `src/app/api/invitations/accept/route.ts`
 - Modify: `src/lib/services/collaborationService.ts`
@@ -228,7 +231,7 @@ Assert that the migration adds/indexes/backfills `recipient_user_id`, and that b
 
 - [ ] **Step 2: Verify RED**
 
-Run: `npm test -- --runInBand tests/unit/database/invitation-recipient-identity-migration.test.ts tests/unit/collaboration/invitation-recipient-identity.test.ts`
+Run: `RLS_DB_TESTS=1 npm run test:unit -- --runInBand tests/unit/database/invitation-recipient-identity.behavior.test.ts tests/unit/api-invitation-create-identity.test.ts tests/unit/api-invitation-accept-race.test.ts`
 
 Expected: FAIL because invitations are currently authorized by token email.
 
@@ -246,14 +249,14 @@ Load the invitation before identity authorization, reject missing/null/mismatche
 
 - [ ] **Step 6: Verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/collaboration-service-errors.test.ts tests/unit/collaboration tests/unit/database/invitation-recipient-identity-migration.test.ts`
+Run: `RLS_DB_TESTS=1 npm run test:unit -- --runInBand tests/unit/collaboration-service-errors.test.ts tests/unit/collaboration tests/unit/api-invitation-create-identity.test.ts tests/unit/api-invitation-accept-race.test.ts tests/unit/database/invitation-recipient-identity.behavior.test.ts`
 
 Expected: PASS.
 
 - [ ] **Step 7: Commit UUID-bound invitations**
 
 ```bash
-git add supabase/migrations/20260915130000_bind_invitations_to_recipient_uuid.sql tests/unit/database/invitation-recipient-identity-migration.test.ts tests/unit/collaboration src/app/api/invitations src/lib/services/collaborationService.ts src/lib/hooks/useProjectCollaborators.ts
+git add supabase/migrations/20260915130000_bind_invitations_to_recipient_uuid.sql tests/unit/database/invitation-recipient-identity.behavior.test.ts tests/unit/api-invitation-create-identity.test.ts tests/unit/api-invitation-accept-race.test.ts tests/unit/collaboration-service-errors.test.ts tests/unit/collaboration src/app/api/invitations src/lib/services/collaborationService.ts src/lib/hooks/useProjectCollaborators.ts
 git commit -m "fix: bind collaboration invitations to user UUIDs"
 ```
 
@@ -269,15 +272,16 @@ git commit -m "fix: bind collaboration invitations to user UUIDs"
 **Interfaces:**
 - Consumes: `normalizeEmail(value: string): string`
 - Consumes: Supabase `resetPasswordForEmail` and recovery-session `updateUser`
-- Password minimum: 12 characters, matching `supabase/config.toml`
+- Client validation: password is required and must match its confirmation
+- Auth minimum: 6 characters, matching the Supabase platform minimum in `supabase/config.toml`
 
 - [ ] **Step 1: Write failing UI-contract tests**
 
-Assert that the request form label and placeholder are email-only, the success copy is non-enumerating (`If an account exists for this email, you will receive a password reset link.`), reset validation requires 12 characters, and the login link says `Forgot your password?`.
+Assert that the request form label and placeholder are email-only, the success copy is non-enumerating (`If an account exists for this email, you will receive a password reset link.`), reset validation requires a matching non-empty password without a client-side length rule, and the login link says `Forgot your password?`.
 
 - [ ] **Step 2: Verify RED**
 
-Run: `npm test -- --runInBand tests/unit/auth/password-recovery-ui.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/password-recovery-ui.test.ts`
 
 Expected: FAIL on the current username label, six-character rule, and typo.
 
@@ -287,15 +291,17 @@ Normalize the email with the shared helper. On a successful provider response,
 always show the same success copy whether or not the address exists. For a
 provider failure, show a generic unavailable/rate-limit message that does not
 reveal account existence; do not falsely claim delivery. Change the reset
-minimum to 12 and preserve invalid/expired recovery-link handling.
+Auth minimum to 6, remove the client-side length rule, and preserve
+invalid/expired recovery-link handling.
 
 - [ ] **Step 4: Update end-to-end expectations**
 
-Change selectors and expected copy, add a password shorter than 12 case, then keep the successful `NewPassword123!` recovery assertion.
+Change selectors and expected copy, reject mismatched confirmation, then use a
+six-character password for the successful recovery assertion.
 
 - [ ] **Step 5: Verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/auth/password-recovery-ui.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/auth/password-recovery-ui.test.ts`
 
 Run when local Auth/Mailpit are available: `npx playwright test tests/e2e/specs/password-reset.spec.ts --workers=1`
 
@@ -320,12 +326,12 @@ git commit -m "fix: harden password recovery flow"
 - [ ] **Step 1: Run focused tests**
 
 ```bash
-npm test -- --runInBand \
+npm run test:unit -- --runInBand \
   tests/unit/auth \
   tests/unit/collaboration-service-errors.test.ts \
   tests/unit/collaboration \
-  tests/unit/database/current-email-identity-migration.test.ts \
-  tests/unit/database/invitation-recipient-identity-migration.test.ts
+  tests/unit/database/current-email-identity.behavior.test.ts \
+  tests/unit/database/invitation-recipient-identity.behavior.test.ts
 ```
 
 - [ ] **Step 2: Run static and type verification**

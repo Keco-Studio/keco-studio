@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import loginImg from '@/assets/images/loginImg_2.png';
 import loginLeftArrowIcon from '@/assets/images/loginArrowIcon.svg';
+import { normalizeEmail } from '@/lib/auth/emailIdentity';
 import styles from './page.module.css';
 
 import loginMessageIcon from "@/assets/images/loginMessageIcon.svg";
@@ -30,7 +31,7 @@ export default function ForgotPasswordPage() {
     setMessage(null);
     setErrorMsg(null);
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail) {
       setErrorMsg('Email is required');
       return;
@@ -46,20 +47,19 @@ export default function ForgotPasswordPage() {
       const redirectTo = `${window.location.origin}/auth/reset-password`;
       
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo: redirectTo,
+        redirectTo,
       });
 
       if (error) {
         console.error('Reset password error:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        throw error;
+        setErrorMsg('Unable to send a password reset email. Try again later.');
+        return;
       }
 
-      setMessage('Password reset email sent! Please check your inbox and click the link to reset your password.');
-    } catch (error: any) {
+      setMessage('If an account exists for this email, you will receive a password reset link.');
+    } catch (error: unknown) {
       console.error('Failed to send reset email:', error);
-      console.error('Error stack:', error?.stack);
-      setErrorMsg(error?.message || 'Failed to send reset email');
+      setErrorMsg('Unable to send a password reset email. Try again later.');
     } finally {
       setLoading(false);
     }
@@ -117,12 +117,12 @@ export default function ForgotPasswordPage() {
             {/* Send Reset Email Form */}
             <form className={styles.form} onSubmit={handleSendResetEmail} noValidate>
               <label className={styles.label}>
-                Email or username
+                Email
                 <input
                   className={styles.input}
-                  type="text"
+                  type="email"
                   inputMode="email"
-                  placeholder="type your email or username..."
+                  placeholder="type your email..."
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />

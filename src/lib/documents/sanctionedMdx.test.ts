@@ -1,4 +1,4 @@
-import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments, coerceSanctionedMdxBraces, coerceSanctionedMdxExpressions } from './sanctionedMdx';
+import { validateSanctionedMdx, coerceGeneratedSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments, coerceSanctionedMdxBraces, coerceSanctionedMdxExpressions } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
 import {
@@ -115,6 +115,35 @@ describe('sanctioned MDX validation', () => {
       '```',
     ].join('\n'));
     expect(() => validateSanctionedMdx(coerceSanctionedMdxExpressions(markdown))).not.toThrow();
+  });
+
+  it('neutralizes angle-bracket placeholders in generated prose', () => {
+    const markdown = [
+      '# Field Types',
+      '',
+      '<Callout type="note" title="See <https://example.com>">',
+      '',
+      'Use <string>, <field_name>, or <string[]> for each field.',
+      '',
+      '</Callout>',
+      '',
+      'Keep `<string>` as inline code and <https://example.com> as an autolink.',
+      '',
+      '```md',
+      '<string>',
+      '```',
+    ].join('\n');
+
+    const coerced = coerceGeneratedSanctionedMdx(markdown);
+
+    expect(coerced).toContain('Use &lt;string&gt;, &lt;field_name&gt;, or &lt;string[]&gt; for each field.');
+    expect(coerced).toContain('<Callout type="note" title="See <https://example.com>">');
+    expect(coerced).toContain('</Callout>');
+    expect(coerced).toContain('`<string>`');
+    expect(coerced).toContain('[https://example.com](https://example.com)');
+    expect(coerced).toContain('```md\n<string>\n```');
+    expect(() => validateSanctionedMdx(coerced)).not.toThrow();
+    expect(() => validateSanctionedMdx('<string>')).toThrow(DocumentContentValidationError);
   });
 
   it('derives editor property metadata and validation from the sanctioned registry', () => {

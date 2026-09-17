@@ -49,6 +49,15 @@
   cursor: default;
 }
 
+.listCard {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  padding: 6px 8px;
+}
+
 .card:hover {
   border-color: #c6e6fa;
   background: #edf7fd;
@@ -71,6 +80,12 @@
   border: 1px solid #e5e7eb;
   border-radius: 3px;
   background: #f7f8fa;
+}
+
+.listCard .preview {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px !important;
 }
 
 .previewImage {
@@ -98,6 +113,12 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.listCard .name {
+  flex: 1;
+  width: auto;
+  text-align: left;
 }
 
 .metadata {
