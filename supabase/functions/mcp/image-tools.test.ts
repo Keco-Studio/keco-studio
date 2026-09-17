@@ -33,6 +33,8 @@ function imageContext(
     failPreparationFor?: string;
     missingPaths?: string[];
     registrationErrorCode?: string;
+    registrationErrorDetail?: string;
+    reservationMismatch?: boolean;
     reused?: boolean | ((registrationCount: number) => boolean);
     mutateRegistrationRow?: (row: Record<string, unknown>) => void;
     assetUploadAutoExecute?: boolean | null;
@@ -110,6 +112,16 @@ function imageContext(
         if (name === "finalize_project_storage_upload" || name === "release_project_storage_upload") {
           return { data: {}, error: null };
         }
+        if (name === "resolve_project_storage_upload_reservation") {
+          const parameters = arguments_[0] as Record<string, unknown>;
+          if (options.reservationMismatch) {
+            return { data: null, error: { details: "STORAGE_OBJECT_MISMATCH" } };
+          }
+          return {
+            data: parameters.p_reservation_id ?? "44444444-4444-4444-8444-444444444444",
+            error: null,
+          };
+        }
         if (name === "mcp_get_asset_upload_auto_execute") {
           return { data: assetUploadAutoExecute, error: null };
         }
@@ -131,7 +143,7 @@ function imageContext(
         if (name === "mcp_complete_operation") {
           return { data: null, error: null };
         }
-        if (name === "mcp_register_project_game_asset") {
+        if (name === "complete_project_game_asset_storage_upload") {
           registrationCount += 1;
           storageCalls.push({ name, arguments: arguments_ });
           if (options.registrationErrorCode) {
@@ -139,6 +151,7 @@ function imageContext(
               data: null,
               error: {
                 code: options.registrationErrorCode,
+                details: options.registrationErrorDetail,
                 message: "provider detail",
               },
             };
@@ -846,7 +859,7 @@ Deno.test("complete_project_game_asset_uploads verifies and registers ordered it
     secondPath,
   ]);
   const registrations = calls.filter((call) =>
-    call.name === "mcp_register_project_game_asset"
+    call.name === "complete_project_game_asset_storage_upload"
   );
   assertEquals(registrations.length, 2);
   assertEquals(
@@ -855,6 +868,52 @@ Deno.test("complete_project_game_asset_uploads verifies and registers ordered it
     ),
     ["map", "media"],
   );
+});
+
+Deno.test("project asset completion rejects a reservation that is not bound to the path", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), { reservationMismatch: true }),
+    "complete_project_game_asset_uploads",
+    {
+      items: [{
+        path: UPLOAD_PATH,
+        reservationId: "77777777-7777-4777-8777-777777777777",
+      }],
+    },
+  );
+
+  const result = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+  };
+  assertEquals(result.completedCount, 0);
+  assertEquals(result.failedCount, 1);
+  assertEquals(
+    calls.some((call) => call.name === "complete_project_game_asset_storage_upload"),
+    false,
+  );
+});
+
+Deno.test("project asset completion removes the object when actual bytes exceed quota", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      registrationErrorCode: "P0001",
+      registrationErrorDetail: "STORAGE_QUOTA_EXCEEDED",
+    }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  const result = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+  };
+  assertEquals(result.completedCount, 0);
+  assertEquals(result.failedCount, 1);
+  assertEquals(calls.some((call) => call.name === "remove"), true);
+  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
 });
 
 Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as null int4 arguments", async () => {
@@ -878,7 +937,7 @@ Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as nu
     );
 
     const registration = calls.find((call) =>
-      call.name === "mcp_register_project_game_asset"
+      call.name === "complete_project_game_asset_storage_upload"
     );
     if (!registration) {
       throw new Error(
@@ -893,10 +952,12 @@ Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as nu
     assertEquals(
       registration.arguments[0],
       {
+        p_reservation_id: "44444444-4444-4444-8444-444444444444",
         p_project_id: PROJECT_ID,
         p_name: "icon.svg",
         p_category: "media",
         p_mime_type: "image/svg+xml",
+        p_storage_bucket: "project-assets",
         p_storage_path: path,
         p_sha256: (registration.arguments[0] as Record<string, unknown>)
           .p_sha256,
@@ -904,6 +965,7 @@ Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as nu
         p_height: null,
         p_has_transparency: null,
         p_file_size: content.byteLength,
+        p_object_created_at: "2026-07-30T08:00:00.000Z",
       },
     );
   }
@@ -1293,7 +1355,7 @@ Deno.test("printable ASCII names survive preparation and exact completion retry"
       [[fileName, fileName], [fileName, fileName]],
     );
     assertEquals(
-      calls.filter((call) => call.name === "mcp_register_project_game_asset")
+      calls.filter((call) => call.name === "complete_project_game_asset_storage_upload")
         .map((call) => (call.arguments[0] as Record<string, unknown>).p_name),
       [fileName, fileName],
     );

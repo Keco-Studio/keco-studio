@@ -207,6 +207,47 @@ describeDb('account project storage real Postgres behavior', () => {
       .rejects.toMatchObject({ code: 'STORAGE_QUOTA_EXCEEDED' });
   });
 
+  it('rolls back project asset registration when actual bytes exceed the reservation quota', async () => {
+    const quotaLimit = await fx.svc.from('account_storage_quotas')
+      .update({ quota_bytes: 3 }).eq('owner_id', fx.owner.id);
+    if (quotaLimit.error) throw new Error(`set quota limit failed: ${quotaLimit.error.message}`);
+
+    const objectPath = pathFor(fx.owner);
+    const reservation = await reserve(fx.owner, 3, objectPath);
+    expect(await upload(fx.owner, objectPath, 4)).toBeNull();
+
+    const completion = await fx.owner.client.rpc('complete_project_game_asset_storage_upload', {
+      p_reservation_id: reservation.reservationId,
+      p_project_id: fx.projectId,
+      p_name: 'overflow.png',
+      p_category: 'media',
+      p_mime_type: 'image/png',
+      p_storage_bucket: 'project-assets',
+      p_storage_path: objectPath,
+      p_sha256: '0'.repeat(64),
+      p_width: 1,
+      p_height: 1,
+      p_has_transparency: false,
+      p_file_size: 4,
+      p_object_created_at: null,
+    });
+    expect(completion.error?.details ?? completion.error?.code).toBe('STORAGE_QUOTA_EXCEEDED');
+
+    const assets = await fx.svc.from('project_game_assets').select('id').eq('storage_path', objectPath);
+    expect(assets.error).toBeNull();
+    expect(assets.data).toEqual([]);
+    const files = await fx.svc.from('project_storage_files').select('id').eq('object_path', objectPath);
+    expect(files.error).toBeNull();
+    expect(files.data).toEqual([]);
+    const quota = await fx.svc.from('account_storage_quotas')
+      .select('used_bytes,reserved_bytes').eq('owner_id', fx.owner.id).single();
+    expect(quota.error).toBeNull();
+    expect(quota.data).toMatchObject({ used_bytes: 0, reserved_bytes: 3 });
+
+    await fx.svc.storage.from('project-assets').remove([objectPath]);
+    await release(fx.owner, reservation.reservationId as string);
+  });
+
   it('requires a pending reservation for direct bucket writes and settles verified object bytes only', async () => {
     const objectPath = pathFor(fx.owner);
     expect(await upload(fx.owner, objectPath, 3)).not.toBeNull();
@@ -217,6 +258,72 @@ describeDb('account project storage real Postgres behavior', () => {
       .rejects.toMatchObject({ code: 'STORAGE_OBJECT_MISMATCH' });
     await expect(finalize(fx.owner, reservation.reservationId as string, 3))
       .resolves.toMatchObject({ sizeBytes: 3 });
+  });
+
+  it('settles collaborator-owned paths against the project owner only after physical deletion', async () => {
+    const objectPath = pathFor(fx.editor);
+    const reservation = await reserve(
+      fx.editor,
+      16,
+      objectPath,
+      fx.projectId,
+      'library-media-files',
+    );
+    expect(await upload(fx.editor, objectPath, 16, 'library-media-files')).toBeNull();
+    await finalize(fx.editor, reservation.reservationId as string, 16);
+
+    const premature = await fx.editor.client.rpc('settle_project_storage_file_deletion', {
+      p_bucket_id: 'library-media-files',
+      p_object_path: objectPath,
+    });
+    expect(premature.error?.details ?? premature.error?.code).toBe('STORAGE_OBJECT_MISMATCH');
+
+    const removed = await fx.owner.client.storage.from('library-media-files').remove([objectPath]);
+    expect(removed.error).toBeNull();
+    const settled = await fx.owner.client.rpc('settle_project_storage_file_deletion', {
+      p_bucket_id: 'library-media-files',
+      p_object_path: objectPath,
+    });
+    expect(settled.error).toBeNull();
+    expect(settled.data).toMatchObject({ releasedBytes: 16, reused: false });
+
+    const quota = await fx.svc.from('account_storage_quotas')
+      .select('used_bytes').eq('owner_id', fx.owner.id).single();
+    expect(quota.error).toBeNull();
+    expect(Number(quota.data?.used_bytes)).toBe(0);
+
+    const replay = await fx.owner.client.rpc('settle_project_storage_file_deletion', {
+      p_bucket_id: 'library-media-files',
+      p_object_path: objectPath,
+    });
+    expect(replay.error).toBeNull();
+    expect(replay.data).toMatchObject({ releasedBytes: 0, reused: true });
+  });
+
+  it('prevents a removed collaborator from deleting a project-scoped media object', async () => {
+    const objectPath = pathFor(fx.editor);
+    await reserve(fx.editor, 3, objectPath, fx.projectId, 'library-media-files');
+    expect(await upload(fx.editor, objectPath, 3, 'library-media-files')).toBeNull();
+
+    const removed = await fx.svc.from('project_collaborators').delete()
+      .eq('project_id', fx.projectId).eq('user_id', fx.editor.id);
+    if (removed.error) throw new Error(`remove editor failed: ${removed.error.message}`);
+
+    const deletion = await fx.editor.client.storage.from('library-media-files').remove([objectPath]);
+    expect(deletion.error).toBeNull();
+    const remaining = await fx.svc.storage.from('library-media-files').info(objectPath);
+    expect(remaining.error).toBeNull();
+    expect(remaining.data).not.toBeNull();
+
+    await fx.svc.from('project_collaborators').insert({
+      project_id: fx.projectId,
+      user_id: fx.editor.id,
+      role: 'editor',
+      invited_by: fx.owner.id,
+      invited_at: new Date().toISOString(),
+      accepted_at: new Date().toISOString(),
+    });
+    await fx.svc.storage.from('library-media-files').remove([objectPath]);
   });
 
   it('rechecks current membership on update policies after an editor reservation', async () => {

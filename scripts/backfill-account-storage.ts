@@ -74,14 +74,12 @@ function pathProjectId(bucketId: AccountedStorageBucket, objectPath: string, pro
 }
 
 async function selectRows(client: BackfillClient, table: string, columns: string): Promise<Record<string, unknown>[]> {
-  if (!client.from) return [];
-  try {
-    const result = await client.from(table).select(columns);
-    if (result.error || !Array.isArray(result.data)) return [];
-    return result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
-  } catch {
-    return [];
+  if (!client.from) throw new Error(`Storage attribution query is unavailable for ${table}`);
+  const result = await client.from(table).select(columns);
+  if (result.error || !Array.isArray(result.data)) {
+    throw new Error(`Storage attribution query failed for ${table}`);
   }
+  return result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
 }
 
 async function knownProjects(client: BackfillClient): Promise<Map<string, string>> {
@@ -238,6 +236,21 @@ async function importFile(client: BackfillClient, input: StorageObject & Storage
   return data.inserted === true;
 }
 
+async function rebuildAccountStorageTotals(client: BackfillClient): Promise<void> {
+  if (client.rebuildAccountStorageTotals) {
+    await client.rebuildAccountStorageTotals();
+    return;
+  }
+  if (!client.rpc) throw new Error('Storage quota rebuild RPC is unavailable');
+  const result = await client.rpc('service_rebuild_account_storage_quota_totals');
+  const data = result.data && typeof result.data === 'object'
+    ? result.data as Record<string, unknown>
+    : null;
+  if (result.error || !data || !Number.isSafeInteger(data.rebuiltAccounts)) {
+    throw new Error('Storage quota rebuild RPC failed');
+  }
+}
+
 export async function backfillAccountStorage(client: BackfillClient, { apply }: { apply: boolean }): Promise<BackfillReport> {
   const projects = await knownProjects(client);
   const nativeReferences = client.findStorageAttributions ? null : await nativeAttributions(client, projects);
@@ -260,7 +273,7 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
       if (apply) report.insertedFiles += (await importFile(client, { ...object, ...resolution.attribution })) ? 1 : 0;
     }
   }
-  if (apply && client.rebuildAccountStorageTotals) await client.rebuildAccountStorageTotals();
+  if (apply) await rebuildAccountStorageTotals(client);
   return report;
 }
 

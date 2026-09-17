@@ -26,7 +26,7 @@ function json(data: unknown, status = 200) {
 }
 
 function isProjectForbidden(error: unknown): boolean {
-  return Boolean(error)
+  return error !== null
     && typeof error === 'object'
     && 'code' in error
     && error.code === 'STORAGE_PROJECT_FORBIDDEN';

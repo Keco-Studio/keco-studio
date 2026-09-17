@@ -32,6 +32,11 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/STORAGE_QUOTA_EXCEEDED/i);
     expect(sql).toMatch(/function public\.service_import_project_storage_file\(/i);
     expect(sql).toMatch(/function public\.service_rebuild_account_storage_quota_totals\(\)/i);
+    expect(sql).toMatch(/function public\.resolve_project_storage_upload_reservation\(/i);
+    expect(sql).toMatch(/function public\.complete_project_game_asset_storage_upload\(/i);
+    expect(sql).toMatch(/perform public\.storage_finalize_project_storage_upload\([\s\S]*v_asset\.id/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock_shared/i);
+    expect(sql).toMatch(/pg_advisory_xact_lock\(/i);
     expect(sql).toMatch(/grant execute on function public\.service_import_project_storage_file[\s\S]*to service_role/i);
   });
 

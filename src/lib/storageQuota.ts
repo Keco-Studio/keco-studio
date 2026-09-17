@@ -28,7 +28,7 @@ const RELEASED_FIELDS = ['reservationId', 'reused'] as const;
 type RecordValue = Record<string, unknown>;
 
 function isExactRecord(value: unknown, fields: readonly string[]): value is RecordValue {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === fields.length && fields.every((field) => Object.prototype.hasOwnProperty.call(value, field));
 }
 function readUuid(value: unknown, field: string): string { if (typeof value !== 'string' || !isUuid(value)) throw new Error(`Invalid storage quota field: ${field}`); return value; }

@@ -43,8 +43,10 @@ test.describe('Account storage', () => {
     await page.getByLabel('Sort files').selectOption('name_desc');
     await expect.poll(() => backend.fileRequests.at(-1)?.searchParams.get('sort')).toBe('name_desc');
 
+    const targetPath = `/${OWNED_PROJECT_ID}/admin/assets`;
+    const navigation = page.waitForRequest((request) => new URL(request.url()).pathname === targetPath);
     await page.getByRole('button', { name: 'Open Alpha small.png location' }).click();
-    await expect(page).toHaveURL(new RegExp(`/${OWNED_PROJECT_ID}/admin/assets$`));
+    expect(new URL((await navigation).url()).pathname).toBe(targetPath);
   });
 
   test('shows the 80%, 95%, and full warnings', async ({ page }) => {

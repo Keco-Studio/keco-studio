@@ -39,8 +39,12 @@ function numberValue(value: unknown): number | null {
 }
 function key(bucketId: string, objectPath: string): string { return `${bucketId}\u0000${objectPath}`; }
 async function rows(client: ReconciliationClient, table: string, columns: string): Promise<Record<string, unknown>[]> {
-  if (!client.from) return [];
-  try { const result = await client.from(table).select(columns); return result.error || !Array.isArray(result.data) ? [] : result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object'); } catch { return []; }
+  if (!client.from) throw new Error(`Storage reconciliation query is unavailable for ${table}`);
+  const result = await client.from(table).select(columns);
+  if (result.error || !Array.isArray(result.data)) {
+    throw new Error(`Storage reconciliation query failed for ${table}`);
+  }
+  return result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
 }
 async function physicalObjects(client: ReconciliationClient): Promise<Array<{ bucketId: string; objectPath: string; sizeBytes: number }>> {
   if (client.listPhysicalStorageObjects) return client.listPhysicalStorageObjects();
@@ -106,8 +110,13 @@ async function applyQuotaRebuild(client: ReconciliationClient): Promise<number> 
   if (client.rebuildStorageQuotaTotals) return client.rebuildStorageQuotaTotals();
   if (!client.rpc) throw new Error('Storage quota repair RPC is unavailable');
   const result = await client.rpc('service_rebuild_account_storage_quota_totals');
-  if (result.error || !Number.isSafeInteger(result.data)) throw new Error('Storage quota repair RPC failed');
-  return Number(result.data);
+  const data = result.data && typeof result.data === 'object'
+    ? result.data as Record<string, unknown>
+    : null;
+  if (result.error || !data || !Number.isSafeInteger(data.rebuiltAccounts)) {
+    throw new Error('Storage quota repair RPC failed');
+  }
+  return Number(data.rebuiltAccounts);
 }
 
 export async function reconcileAccountStorage(client: ReconciliationClient, { applySafeRepairs }: { applySafeRepairs: boolean }): Promise<ReconciliationReport> {

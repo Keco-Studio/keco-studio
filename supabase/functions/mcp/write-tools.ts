@@ -27,7 +27,6 @@ import {
 import { projectAssetContentMatches } from "../../../shared/project-asset-content.ts";
 
 const uuid = z.string().uuid();
-const LEGACY_MISSING_RESERVATION_ID = "00000000-0000-4000-8000-000000000000";
 const IMAGE_BUCKET = "library-media-files";
 const PROJECT_ASSET_BUCKET = "project-assets";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -419,6 +418,30 @@ async function releaseMcpStorage(context: ProjectMcpRequestContext, reservationI
   try { await context.supabase.rpc("release_project_storage_upload", { p_reservation_id: reservationId }); } catch { /* expiry reconciliation repairs it */ }
 }
 
+async function resolveMcpStorageReservation(
+  context: ProjectMcpRequestContext,
+  bucketId: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET,
+  path: string,
+  reservationId?: string,
+): Promise<string> {
+  const { data, error } = await context.supabase.rpc(
+    "resolve_project_storage_upload_reservation",
+    {
+      p_project_id: context.projectId,
+      p_bucket_id: bucketId,
+      p_object_path: path,
+      p_reservation_id: reservationId ?? null,
+    },
+  );
+  if (error || typeof data !== "string") {
+    throw new McpDomainError(
+      "FIELD_VALIDATION_FAILED",
+      "The upload reservation does not match this project object; use the reservation returned with the prepared path.",
+    );
+  }
+  return data;
+}
+
 async function finalizeMcpStorage(
   context: ProjectMcpRequestContext,
   reservationId: string,
@@ -658,14 +681,28 @@ async function verifyProjectAssetUpload(
 async function completeImageUpload(
   context: ProjectMcpRequestContext,
   path: string,
-  reservationId: string,
+  reservationId?: string,
 ): Promise<VerifiedImage> {
+  let resolvedReservationId: string | null = null;
   try {
+    resolvedReservationId = await resolveMcpStorageReservation(
+      context,
+      IMAGE_BUCKET,
+      path,
+      reservationId,
+    );
     const image = (await verifyImageUpload(context, path)).image;
-    await finalizeMcpStorage(context, reservationId, image, null);
+    try {
+      await finalizeMcpStorage(context, resolvedReservationId, image, null);
+    } catch (error) {
+      await removeInvalidImage(context, path, IMAGE_BUCKET);
+      throw error;
+    }
     return image;
   } catch (error) {
-    await releaseMcpStorage(context, reservationId);
+    if (resolvedReservationId) {
+      await releaseMcpStorage(context, resolvedReservationId);
+    }
     throw error;
   }
 }
@@ -717,8 +754,9 @@ function normalizeRegisteredAsset(
   };
 }
 
-async function registerProjectGameAsset(
+async function completeProjectGameAsset(
   context: ProjectMcpRequestContext,
+  reservationId: string,
   image: VerifiedImage,
   bytes: Uint8Array,
   storageBucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET,
@@ -755,17 +793,20 @@ async function registerProjectGameAsset(
     context,
     "database",
     async () =>
-      await context.supabase.rpc("mcp_register_project_game_asset", {
+      await context.supabase.rpc("complete_project_game_asset_storage_upload", {
+        p_reservation_id: reservationId,
         p_project_id: context.projectId,
         p_name: image.fileName,
         p_category: category,
         p_mime_type: image.fileType,
+        p_storage_bucket: storageBucket,
         p_storage_path: image.path,
         p_sha256: metadata.sha256,
         p_width: metadata.width,
         p_height: metadata.height,
         p_has_transparency: metadata.hasTransparency,
         p_file_size: image.fileSize,
+        p_object_created_at: image.uploadedAt,
       }),
   );
   if (error?.code === "KA401" || error?.code === "42501") {
@@ -781,9 +822,15 @@ async function registerProjectGameAsset(
     );
   }
   if (error) {
+    await removeInvalidImage(context, image.path, storageBucket);
+    const detail = typeof error === "object" && error
+      ? String((error as unknown as Record<string, unknown>).details ?? "")
+      : "";
     throw new McpDomainError(
-      "INTERNAL_ERROR",
-      "The project asset could not be registered.",
+      detail === "STORAGE_QUOTA_EXCEEDED" ? "PAYLOAD_TOO_LARGE" : "INTERNAL_ERROR",
+      detail === "STORAGE_QUOTA_EXCEEDED"
+        ? "The project owner's storage allowance is full. The uploaded object was removed."
+        : "The project asset could not be registered.",
     );
   }
   return normalizeRegisteredAsset(firstRow(data), {
@@ -1636,7 +1683,7 @@ function registerWriteToolSet(
     "create_image_upload",
     {
       description:
-        "Prepare one image upload from metadata only. Send the exact local file bytes to upload.url before expiry using upload.method and every upload.headers entry. Then pass only this response's image.path to complete_image_upload.path; never pass a local path, file: URI, public URL, or signed upload URL. Retrying preparation creates a new target.",
+        "Prepare one image upload from metadata only. Send the exact local file bytes to upload.url before expiry using upload.method and every upload.headers entry. Then pass this response's image.path and reservationId to complete_image_upload; never pass a local path, file: URI, public URL, or signed upload URL. Retrying preparation creates a new target.",
       inputSchema: createImageUploadSchema,
       annotations: writeAnnotations,
     },
@@ -1675,7 +1722,7 @@ function registerWriteToolSet(
           const image = await completeImageUpload(
             context,
             input.path,
-            input.reservationId ?? LEGACY_MISSING_RESERVATION_ID,
+            input.reservationId,
           );
           return toolSuccess("Image upload completed.", {
             ok: true,
@@ -1695,7 +1742,7 @@ function registerWriteToolSet(
     "prepare_image_uploads",
     {
       description:
-        "Prepare 1-20 image uploads from metadata only, preserving order. For every successful item, PUT the exact local bytes to upload.url using upload.method and all upload.headers, then pass only item.image.path to complete_image_uploads. Runtime failures are item-scoped; failedCount signals partial failure. Retrying preparation creates new targets. Never persist or log signed URLs or headers.",
+        "Prepare 1-20 image uploads from metadata only, preserving order. For every successful item, PUT the exact local bytes to upload.url using upload.method and all upload.headers, then pass item.image.path and item.reservationId to complete_image_uploads. Runtime failures are item-scoped; failedCount signals partial failure. Retrying preparation creates new targets. Never persist or log signed URLs or headers.",
       inputSchema: prepareImageUploadsSchema,
       annotations: writeAnnotations,
     },
@@ -1762,7 +1809,7 @@ function registerWriteToolSet(
               image: await completeImageUpload(
                 context,
                 path,
-                input.reservationIds?.[index] ?? LEGACY_MISSING_RESERVATION_ID,
+                input.reservationIds?.[index],
               ),
             });
           } catch (error) {
@@ -1887,20 +1934,22 @@ function registerWriteToolSet(
         }
         const items = [];
         for (const [index, item] of input.items.entries()) {
+          let resolvedReservationId: string | null = null;
           try {
             const verified = await verifyProjectAssetUpload(context, item.path);
-            const registered = await registerProjectGameAsset(
+            resolvedReservationId = await resolveMcpStorageReservation(
               context,
+              verified.bucket,
+              item.path,
+              item.reservationId,
+            );
+            const registered = await completeProjectGameAsset(
+              context,
+              resolvedReservationId,
               verified.image,
               verified.bytes,
               verified.bucket,
               item.category,
-            );
-            await finalizeMcpStorage(
-              context,
-              item.reservationId ?? LEGACY_MISSING_RESERVATION_ID,
-              verified.image,
-              registered.asset.id,
             );
             items.push({
               index,
@@ -1911,7 +1960,9 @@ function registerWriteToolSet(
               asset: registered.asset,
             });
           } catch (error) {
-            await releaseMcpStorage(context, item.reservationId ?? LEGACY_MISSING_RESERVATION_ID);
+            if (resolvedReservationId) {
+              await releaseMcpStorage(context, resolvedReservationId);
+            }
             const safe = asPublicMcpError(error);
             items.push({
               index,

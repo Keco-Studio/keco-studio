@@ -21,6 +21,7 @@ function attribution(projectId: string, ownerId = 'owner-a'): StorageAttribution
 
 function clientFixture() {
   const imported = new Set<string>();
+  let rebuilds = 0;
   const inserts: Array<{ objectPath: string; projectId: string | null; ownerId: string }> = [];
   const candidates = new Map<string, StorageAttribution[]>([
     ['legacy/unique.png', [attribution('project-b')]],
@@ -43,6 +44,9 @@ function clientFixture() {
       inserts.push({ objectPath: input.objectPath, projectId: input.projectId, ownerId: input.ownerId });
       return { inserted: true };
     },
+    async rebuildAccountStorageTotals() {
+      rebuilds += 1;
+    },
     from(table: string) {
       if (table !== 'projects') throw new Error(`Unexpected table ${table}`);
       return {
@@ -57,12 +61,12 @@ function clientFixture() {
       };
     },
   };
-  return { client, inserts };
+  return { client, inserts, rebuilds: () => rebuilds };
 }
 
 describe('account storage backfill', () => {
   it('uses path, references, a deterministic same-owner project, then uploader fallback without guessing conflicts', async () => {
-    const { client, inserts } = clientFixture();
+    const { client, inserts, rebuilds } = clientFixture();
 
     await expect(backfillAccountStorage(client, { apply: false })).resolves.toEqual({
       scannedObjects: 7,
@@ -82,6 +86,7 @@ describe('account storage backfill', () => {
     ]));
     expect(inserts).toHaveLength(6);
     expect(inserts.some(input => input.objectPath === 'legacy/ambiguous.png')).toBe(false);
+    expect(rebuilds()).toBe(1);
   });
 
   it('is idempotent when the service import RPC reports existing bucket/path records', async () => {
@@ -89,6 +94,28 @@ describe('account storage backfill', () => {
     await expect(backfillAccountStorage(client, { apply: true })).resolves.toMatchObject({ insertedFiles: 6 });
     await expect(backfillAccountStorage(client, { apply: true })).resolves.toMatchObject({ insertedFiles: 0 });
     expect(inserts).toHaveLength(6);
+  });
+
+  it('uses the service rebuild RPC and accepts its JSON result', async () => {
+    const { client } = clientFixture();
+    delete (client as { rebuildAccountStorageTotals?: () => Promise<void> }).rebuildAccountStorageTotals;
+    const rpc = jest.fn().mockResolvedValue({ data: { rebuiltAccounts: 2 }, error: null });
+
+    await expect(backfillAccountStorage({ ...client, rpc }, { apply: true }))
+      .resolves.toMatchObject({ insertedFiles: 6 });
+    expect(rpc).toHaveBeenCalledWith('service_rebuild_account_storage_quota_totals');
+  });
+
+  it('fails closed when project attribution cannot be queried', async () => {
+    const client = {
+      async listAccountedStorageObjects() { return []; },
+      from() {
+        return { async select() { return { data: null, error: { message: 'offline' } }; } };
+      },
+    };
+
+    await expect(backfillAccountStorage(client, { apply: true }))
+      .rejects.toThrow('Storage attribution query failed for projects');
   });
 
   it('accepts only the report default or explicit apply flag', () => {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { findAccountedStorageWrites, runAccountedStorageWriteCheck } from '../../../scripts/check-accounted-storage-writes';
@@ -26,6 +26,22 @@ describe('accounted storage write guard', () => {
       writeFileSync(path.join(rootDir, 'coordinator.ts'), "const bucket = storage.from('map-assets');\nawait bucket.upload('path.png', file);\n");
       writeFileSync(path.join(rootDir, 'test.test.ts'), "storage.from('map-assets').remove(['path.png']);\n");
       expect(runAccountedStorageWriteCheck({ rootDir, allowlist: new Set(['coordinator.ts']) })).toEqual({ exitCode: 0, violations: [] });
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores other worktrees while reporting direct writes in the scan root', () => {
+    const rootDir = mkdtempSync(path.join(tmpdir(), 'storage-write-guard-'));
+    try {
+      writeFileSync(path.join(rootDir, 'unsafe.ts'), "storage.from('map-assets').upload('path.png', file);\n");
+      const worktreeDir = path.join(rootDir, '.worktrees', 'other-checkout');
+      mkdirSync(worktreeDir, { recursive: true });
+      writeFileSync(path.join(worktreeDir, 'unsafe.ts'), "storage.from('map-assets').upload('path.png', file);\n");
+
+      expect(findAccountedStorageWrites(rootDir, new Set())).toEqual([
+        { file: 'unsafe.ts', line: 1, bucketId: 'map-assets', operation: 'upload' },
+      ]);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }

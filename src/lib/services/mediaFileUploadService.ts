@@ -226,14 +226,21 @@ export async function deleteMediaFile(
   
   // New paths are {userId}/{projectId}/{filename}; keep legacy two-part paths deletable.
   const pathParts = filePath.split('/');
-  if (pathParts.length < 2 || pathParts[0] !== currentUserId) {
+  if (pathParts.length < 2 || (pathParts.length < 3 && pathParts[0] !== currentUserId)) {
     throw new Error('Unauthorized: You can only delete your own files');
   }
 
-  const { error } = await supabase.storage.from(bucket).remove([filePath]);
+  const storage = supabase.storage.from(bucket);
+  const { error } = await storage.remove([filePath]);
 
   if (error) {
     throw new Error(error.message || 'Failed to delete file');
+  }
+
+  // Supabase Storage may report success when RLS caused DELETE to affect zero rows.
+  const verification = await storage.info(filePath);
+  if (!verification.error && verification.data) {
+    throw new Error('Failed to delete file');
   }
 
   if (pathParts.length < 3) return;

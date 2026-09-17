@@ -188,6 +188,9 @@ declare
   v_reservation public.storage_upload_reservations%rowtype;
   v_expired_reservation_id uuid;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
   v_owner_id := public.storage_require_writer(p_project_id, p_actor_user_id);
 
   if p_expected_bytes is null or p_expected_bytes <= 0
@@ -312,6 +315,9 @@ declare
   v_storage_size text;
   v_verified_bytes bigint;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
   select * into v_reservation
   from public.storage_upload_reservations reservation
   where reservation.id = p_reservation_id;
@@ -447,6 +453,9 @@ declare
   v_reservation public.storage_upload_reservations%rowtype;
   v_quota public.account_storage_quotas%rowtype;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
   select * into v_reservation
   from public.storage_upload_reservations reservation
   where reservation.id = p_reservation_id;
@@ -525,6 +534,110 @@ security definer
 set search_path = ''
 as $$
   select public.storage_release_project_storage_upload(auth.uid(), p_reservation_id);
+$$;
+
+create function public.resolve_project_storage_upload_reservation(
+  p_project_id uuid,
+  p_bucket_id text,
+  p_object_path text,
+  p_reservation_id uuid default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_reservation_id uuid;
+begin
+  perform public.storage_require_writer(p_project_id, v_actor);
+  select reservation.id into v_reservation_id
+  from public.storage_upload_reservations reservation
+  where reservation.project_id = p_project_id
+    and reservation.requested_by = v_actor
+    and reservation.bucket_id = p_bucket_id
+    and reservation.object_path = p_object_path
+    and reservation.status in ('pending', 'finalized')
+    and (p_reservation_id is null or reservation.id = p_reservation_id);
+  if not found then
+    raise exception 'Storage reservation does not match the object'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+  return v_reservation_id;
+end;
+$$;
+
+create function public.complete_project_game_asset_storage_upload(
+  p_reservation_id uuid,
+  p_project_id uuid,
+  p_name text,
+  p_category text,
+  p_mime_type text,
+  p_storage_bucket text,
+  p_storage_path text,
+  p_sha256 text,
+  p_width integer,
+  p_height integer,
+  p_has_transparency boolean,
+  p_file_size bigint,
+  p_object_created_at timestamptz default null
+)
+returns table (
+  id uuid, project_id uuid, created_by uuid, name text, category text,
+  status text, mime_type text, storage_path text, sha256 text,
+  width integer, height integer, has_transparency boolean, file_size bigint,
+  created_at timestamptz, updated_at timestamptz, reused boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_actor uuid := auth.uid();
+  v_reservation public.storage_upload_reservations%rowtype;
+  v_asset record;
+begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
+  select * into v_reservation
+  from public.storage_upload_reservations reservation
+  where reservation.id = p_reservation_id;
+  if not found
+     or v_reservation.project_id is distinct from p_project_id
+     or v_reservation.requested_by is distinct from v_actor
+     or v_reservation.bucket_id is distinct from p_storage_bucket
+     or v_reservation.object_path is distinct from p_storage_path
+     or v_reservation.status not in ('pending', 'finalized') then
+    raise exception 'Storage reservation does not match the project asset'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  select * into v_asset
+  from public.mcp_register_project_game_asset(
+    p_project_id, p_name, p_category, p_mime_type, p_storage_path,
+    p_sha256, p_width, p_height, p_has_transparency, p_file_size
+  );
+  if not exists (
+    select 1 from public.project_game_assets asset
+    where asset.id = v_asset.id and asset.storage_bucket = p_storage_bucket
+  ) then
+    raise exception 'Project asset storage bucket does not match the reservation'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  perform public.storage_finalize_project_storage_upload(
+    v_actor, p_reservation_id, p_file_size, v_asset.id, p_object_created_at
+  );
+
+  return query select
+    v_asset.id, v_asset.project_id, v_asset.created_by, v_asset.name,
+    v_asset.category, v_asset.status, v_asset.mime_type, v_asset.storage_path,
+    v_asset.sha256, v_asset.width, v_asset.height, v_asset.has_transparency,
+    v_asset.file_size, v_asset.created_at, v_asset.updated_at, v_asset.reused;
+end;
 $$;
 
 create function public.service_reserve_project_storage_upload(
@@ -703,6 +816,9 @@ declare
   v_quota public.account_storage_quotas%rowtype;
   v_count integer := 0;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
   for v_reservation in
     select * from public.storage_upload_reservations reservation
     where reservation.status = 'pending' and reservation.expires_at <= clock_timestamp()
@@ -731,6 +847,7 @@ $$;
 -- delete policies remain for existing legacy user-only paths.
 drop policy if exists "Authenticated users can upload their own files" on storage.objects;
 drop policy if exists "Users can update their own files" on storage.objects;
+drop policy if exists "Users can delete their own files" on storage.objects;
 drop policy if exists project_assets_storage_insert on storage.objects;
 drop policy if exists project_assets_storage_update on storage.objects;
 drop policy if exists "Authenticated uploads to tiptap-images" on storage.objects;
@@ -755,6 +872,36 @@ create policy library_media_files_project_update
     and array_length(storage.foldername(name), 1) >= 2
     and (storage.foldername(name))[1] = (select auth.uid())::text
     and private.storage_has_pending_upload_reservation(bucket_id, name)
+  );
+create policy library_media_files_owner_delete
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'library-media-files'
+    and (
+      (
+        array_length(storage.foldername(storage.objects.name), 1) = 1
+        and (storage.foldername(storage.objects.name))[1] = (select auth.uid())::text
+      )
+      or (
+        array_length(storage.foldername(storage.objects.name), 1) = 2
+        and exists (
+          select 1
+          from public.projects project
+          where project.id::text = (storage.foldername(storage.objects.name))[2]
+            and (
+              project.owner_id = (select auth.uid())
+              or exists (
+                select 1
+                from public.project_collaborators collaborator
+                where collaborator.project_id = project.id
+                  and collaborator.user_id = (select auth.uid())
+                  and collaborator.accepted_at is not null
+                  and collaborator.role in ('admin', 'editor')
+              )
+            )
+        )
+      )
+    )
   );
 
 create policy project_assets_storage_insert
@@ -808,6 +955,8 @@ revoke all on function public.storage_release_project_storage_upload(uuid, uuid)
 revoke all on function public.reserve_project_storage_upload(uuid, text, text, bigint, text, text, text, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.finalize_project_storage_upload(uuid, bigint, uuid, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.release_project_storage_upload(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.resolve_project_storage_upload_reservation(uuid, text, text, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.complete_project_game_asset_storage_upload(uuid, uuid, text, text, text, text, text, text, integer, integer, boolean, bigint, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.account_storage_summary() from public, anon, authenticated, service_role;
 revoke all on function public.account_storage_project_files(uuid, text, text, integer, integer) from public, anon, authenticated, service_role;
 revoke all on function public.service_reserve_project_storage_upload(uuid, uuid, text, text, bigint, text, text, text, uuid) from public, anon, authenticated, service_role;
@@ -819,6 +968,8 @@ revoke all on function private.storage_has_pending_upload_reservation(text, text
 grant execute on function public.reserve_project_storage_upload(uuid, text, text, bigint, text, text, text, uuid) to authenticated;
 grant execute on function public.finalize_project_storage_upload(uuid, bigint, uuid, timestamptz) to authenticated;
 grant execute on function public.release_project_storage_upload(uuid) to authenticated;
+grant execute on function public.resolve_project_storage_upload_reservation(uuid, text, text, uuid) to authenticated;
+grant execute on function public.complete_project_game_asset_storage_upload(uuid, uuid, text, text, text, text, text, text, integer, integer, boolean, bigint, timestamptz) to authenticated;
 grant execute on function public.account_storage_summary() to authenticated;
 grant execute on function public.account_storage_project_files(uuid, text, text, integer, integer) to authenticated;
 grant execute on function private.storage_has_pending_upload_reservation(text, text) to authenticated;
@@ -916,7 +1067,7 @@ $$;
 -- function. A retry finds no registry row and therefore cannot decrement a
 -- quota twice.
 create function private.storage_settle_project_storage_file_deletion(
-  p_owner_id uuid,
+  p_actor_id uuid,
   p_bucket_id text,
   p_object_path text
 )
@@ -929,6 +1080,10 @@ declare
   v_file public.project_storage_files%rowtype;
   v_quota public.account_storage_quotas%rowtype;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
+
   if p_bucket_id not in ('library-media-files', 'project-assets', 'map-assets', 'character-assets')
      or p_object_path is null or p_object_path <> btrim(p_object_path) or p_object_path = ''
      or p_object_path like '%..%' then
@@ -940,11 +1095,29 @@ begin
   from public.project_storage_files file
   where file.bucket_id = p_bucket_id
     and file.object_path = p_object_path
-    and (p_owner_id is null or file.owner_id = p_owner_id)
     and file.lifecycle_status in ('active', 'pending_cleanup')
   for update;
   if not found then
     return jsonb_build_object('releasedBytes', 0, 'reused', true);
+  end if;
+
+  if p_actor_id is not null then
+    if v_file.project_id is null then
+      if v_file.owner_id <> p_actor_id then
+        raise exception 'Project storage write forbidden'
+          using errcode = 'P0001', detail = 'STORAGE_PROJECT_FORBIDDEN';
+      end if;
+    else
+      perform public.storage_require_writer(v_file.project_id, p_actor_id);
+    end if;
+  end if;
+
+  if exists (
+    select 1 from storage.objects object
+    where object.bucket_id = p_bucket_id and object.name = p_object_path
+  ) then
+    raise exception 'Storage object still exists'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
   end if;
 
   select * into v_quota
@@ -1029,7 +1202,13 @@ as $$
 declare
   v_file_id uuid;
   v_inserted boolean := false;
+  v_storage_size text;
+  v_verified_bytes bigint;
 begin
+  perform pg_catalog.pg_advisory_xact_lock_shared(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
+
   if p_owner_id is null or p_size_bytes is null or p_size_bytes <= 0 then
     raise exception 'Invalid storage import' using errcode = '22023';
   end if;
@@ -1042,6 +1221,24 @@ begin
   end if;
   if (p_source_kind = 'legacy_unassigned') <> (p_project_id is null) then
     raise exception 'Storage import source mismatch'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+
+  select object.metadata ->> 'size' into v_storage_size
+  from storage.objects object
+  where object.bucket_id = p_bucket_id and object.name = p_object_path;
+  if not found or v_storage_size is null or v_storage_size !~ '^[0-9]+$' then
+    raise exception 'Storage import object does not exist'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end if;
+  begin
+    v_verified_bytes := v_storage_size::bigint;
+  exception when numeric_value_out_of_range then
+    raise exception 'Storage import size is invalid'
+      using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
+  end;
+  if v_verified_bytes <= 0 or v_verified_bytes is distinct from p_size_bytes then
+    raise exception 'Storage import size mismatch'
       using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
   end if;
 
@@ -1070,7 +1267,9 @@ begin
       raise exception 'Storage import conflict'
         using errcode = 'P0001', detail = 'STORAGE_OBJECT_MISMATCH';
     end if;
-  elsif p_project_id is not null then
+  end if;
+
+  if p_project_id is not null then
     insert into public.project_storage_file_locations (
       file_id, project_id, owner_id, source_kind, source_entity_id
     ) values (
@@ -1093,6 +1292,9 @@ as $$
 declare
   v_accounts integer;
 begin
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('account-project-storage-accounting', 0)
+  );
   insert into public.account_storage_quotas (owner_id, used_bytes, reserved_bytes)
   select owner_id, 0, 0 from (
     select file.owner_id from public.project_storage_files file

@@ -54,7 +54,7 @@ function projectFilesRpcError(error: unknown): Error {
 }
 
 function isExactRecord(value: unknown, fields: readonly string[]): value is RecordValue {
-  return Boolean(value)
+  return value !== null
     && typeof value === 'object'
     && !Array.isArray(value)
     && Object.keys(value).length === fields.length

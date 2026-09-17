@@ -14,7 +14,7 @@ const DEFAULT_ALLOWLIST = new Set([
   'scripts/accept-mcp-account-connections-production.ts',
   'scripts/accept-python-generated-asset-writeback.ts',
 ]);
-const SKIP_DIRECTORIES = new Set(['.git', '.next', 'node_modules', 'coverage', 'playwright-report', 'test-results']);
+const SKIP_DIRECTORIES = new Set(['.git', '.next', '.worktrees', 'node_modules', 'coverage', 'playwright-report', 'test-results']);
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
 export type StorageWriteViolation = { file: string; line: number; bucketId: string; operation: string };

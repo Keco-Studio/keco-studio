@@ -33,6 +33,9 @@ describe('project storage cleanup outbox migration', () => {
     expect(sql).toMatch(/function public\.settle_project_storage_file_deletion/i);
     expect(sql).toMatch(/function public\.service_settle_project_storage_file_deletion/i);
     expect(sql).toMatch(/file\.lifecycle_status in \('active', 'pending_cleanup'\)/i);
+    expect(sql).toMatch(/perform public\.storage_require_writer\(v_file\.project_id, p_actor_id\)/i);
+    expect(sql).toMatch(/from storage\.objects object[\s\S]+object\.name = p_object_path/i);
+    expect(sql).toMatch(/raise exception 'Storage object still exists'[\s\S]+STORAGE_OBJECT_MISMATCH/i);
     expect(sql).toMatch(/where quota\.owner_id = v_file\.owner_id[\s\S]+for update/i);
     expect(sql).toMatch(/v_quota\.used_bytes < v_file\.size_bytes/i);
     expect(sql).toMatch(/delete from public\.project_storage_files where id = v_file\.id/i);
@@ -40,5 +43,14 @@ describe('project storage cleanup outbox migration', () => {
     expect(sql).toMatch(/'releasedBytes', 0, 'reused', true/i);
     expect(sql).toMatch(/grant execute on function public\.settle_project_storage_file_deletion\(text, text\) to authenticated/i);
     expect(sql).toMatch(/grant execute on function public\.service_settle_project_storage_file_deletion\(text, text\) to service_role/i);
+  });
+
+  it('keeps project-scoped media deletion limited to current writers', () => {
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+
+    expect(sql).toMatch(/drop policy if exists "Users can delete their own files" on storage\.objects/i);
+    expect(sql).toMatch(/create policy library_media_files_owner_delete/i);
+    expect(sql).toMatch(/collaborator\.accepted_at is not null/i);
+    expect(sql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);
   });
 });

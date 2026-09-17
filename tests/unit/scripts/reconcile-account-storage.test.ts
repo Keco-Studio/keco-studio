@@ -60,6 +60,35 @@ describe('account storage reconciliation', () => {
     expect(client.calls).toEqual({ expire: 1, rebuild: 1 });
   });
 
+  it('accepts the JSON result returned by the service rebuild RPC', async () => {
+    const client = clientFixture();
+    delete (client as { rebuildStorageQuotaTotals?: () => Promise<number> }).rebuildStorageQuotaTotals;
+    const rpc = jest.fn(async (name: string) => name === 'service_rebuild_account_storage_quota_totals'
+      ? { data: { rebuiltAccounts: 3 }, error: null }
+      : { data: 1, error: null });
+
+    await expect(reconcileAccountStorage({ ...client, rpc }, { applySafeRepairs: true }))
+      .resolves.toMatchObject({ repairedReservations: 1, repairedQuotas: 3 });
+  });
+
+  it('fails closed when registry state cannot be queried', async () => {
+    const client = {
+      async listPhysicalStorageObjects() { return []; },
+      from(table: string) {
+        return {
+          async select() {
+            return table === 'project_storage_files'
+              ? { data: null, error: { message: 'offline' } }
+              : { data: [], error: null };
+          },
+        };
+      },
+    };
+
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: true }))
+      .rejects.toThrow('Storage reconciliation query failed for project_storage_files');
+  });
+
   it('parses help, report, and apply modes without allowing extra flags', () => {
     expect(parseReconciliationArguments([])).toEqual({ help: false, applySafeRepairs: false });
     expect(parseReconciliationArguments(['--apply'])).toEqual({ help: false, applySafeRepairs: true });
