@@ -10,12 +10,14 @@ import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   applyInlineTableResourceReferences,
   materializeTableResources,
+  renderPendingTableResourceReferences,
   sanitizeTableResourcesForPersistence,
 } from '@/lib/gdd-generation/tableResources';
 import { loadSeriesTableLibraryIds } from '@/lib/gdd-generation/seriesTableIds';
 import {
   materializeDialogueResources,
   renderDialogueReferences,
+  renderPendingDialogueReferences,
   type DialoguePlan,
 } from '@/lib/gdd-generation/dialogueResources';
 import {
@@ -31,6 +33,7 @@ import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/cont
 import type { ResourceChangeSummary } from './resourceEvolution';
 import {
   generateGddMarkdownV2,
+  hasNarrativeIntent,
   reviewGddMarkdownV2,
   GddV2GenerationValidationError,
   GddV2ResourceRecoveryError,
@@ -317,11 +320,13 @@ export async function persistGeneratedGddV2Document(
   const asyncResources = job.resource_mode === 'async' || (input as { resourceMode?: string }).resourceMode === 'async';
   const persistedTableResources = asyncResources ? [] : tableResources;
   const persistedDialogueResources = asyncResources ? [] : dialogueResources;
-  // Async table writes reuse deterministic IDs, so references can occupy their
-  // authored body positions before the background worker creates the rows.
-  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
-  const withDialogue = persistedDialogueResources.length > 0
-    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
+  const withTableRefs = asyncResources
+    ? renderPendingTableResourceReferences(markdown, tableResources)
+    : applyInlineTableResourceReferences(markdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${asyncResources
+      ? renderPendingDialogueReferences(dialogueResources)
+      : renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
     : withTableRefs;
   const documentMarkdown = withDialogue;
 
@@ -416,8 +421,11 @@ export async function persistGeneratedGddV2Document(
           ...(input.rules.tableGuidance.length > 0 || tableResources.length > 0
             ? [{ kind: 'tables' as const, payload: { input, resources: tableResources, markdown: documentMarkdown } }]
             : []),
-          ...(dialoguePlans.length > 0
-            ? [{ kind: 'dialogue' as const, payload: { dialoguePlans } }]
+          ...(dialoguePlans.length > 0 || hasNarrativeIntent(input, { markdown, tablePlans })
+            ? [{
+                kind: 'dialogue' as const,
+                payload: { dialoguePlans, input, markdown, tablePlans },
+              }]
             : []),
           { kind: 'maps' as const, payload: { markdown: documentMarkdown, artStyle: input.artStyle ?? null } },
         ],

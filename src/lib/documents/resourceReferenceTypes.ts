@@ -6,6 +6,12 @@ import {
 
 export type { DocumentRangeReferenceTarget } from './documentRangeReference';
 
+export type DocumentReferenceTarget = {
+  kind: 'document';
+  documentId: string;
+  fallbackLabel: string;
+};
+
 export type TableRowReferenceTarget = {
   kind: 'table-row';
   libraryId: string;
@@ -23,9 +29,16 @@ export type DocumentBlockReferenceTarget = {
 };
 
 export type ResourceReferenceTarget =
+  | DocumentReferenceTarget
   | TableRowReferenceTarget
   | DocumentBlockReferenceTarget
   | DocumentRangeReferenceTarget;
+
+const DOCUMENT_PROPERTIES = [
+  'kind',
+  'documentId',
+  'fallbackLabel',
+] as const;
 
 const TABLE_ROW_PROPERTIES = [
   'kind',
@@ -83,6 +96,9 @@ function hasValidContext(value: string): boolean {
 }
 
 export function resourceReferenceKey(target: ResourceReferenceTarget): string {
+  if (target.kind === 'document') {
+    return `document:${target.documentId}`;
+  }
   if (target.kind === 'table-row') {
     return `table-row:${target.libraryId}:${target.assetId}:${target.displayFieldId}`;
   }
@@ -105,6 +121,21 @@ export function resourceReferenceKey(target: ResourceReferenceTarget): string {
 export function parseResourceReferenceAttributes(
   attributes: Readonly<Record<string, string>>
 ): ResourceReferenceTarget | null {
+  if (attributes.kind === 'document') {
+    if (
+      !hasExactProperties(attributes, DOCUMENT_PROPERTIES) ||
+      !isUuid(attributes.documentId) ||
+      !hasLabel(attributes.fallbackLabel)
+    ) {
+      return null;
+    }
+    return {
+      kind: 'document',
+      documentId: attributes.documentId,
+      fallbackLabel: attributes.fallbackLabel,
+    };
+  }
+
   if (attributes.kind === 'table-row') {
     if (
       !hasExactProperties(attributes, TABLE_ROW_PROPERTIES) ||
@@ -185,6 +216,13 @@ export function parseResourceReferenceAttributes(
 export function resourceReferenceAttributes(
   target: ResourceReferenceTarget
 ): Record<string, string> {
+  if (target.kind === 'document') {
+    return {
+      kind: target.kind,
+      documentId: target.documentId,
+      fallbackLabel: target.fallbackLabel,
+    };
+  }
   if (target.kind === 'table-row') {
     return {
       kind: target.kind,

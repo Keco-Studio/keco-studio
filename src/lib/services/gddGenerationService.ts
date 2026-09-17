@@ -358,6 +358,48 @@ export async function claimGddResourceJob(serviceClient: SupabaseClient, workerI
   return (row as GddResourceJob | undefined) ?? null;
 }
 
+export async function heartbeatGddResourceJob(
+  serviceClient: SupabaseClient,
+  jobId: string,
+  workerId: string,
+  leaseSeconds = 300,
+): Promise<void> {
+  const { data, error } = await serviceClient.rpc('heartbeat_gdd_resource_job', {
+    p_job_id: jobId,
+    p_worker_id: workerId,
+    p_lease_seconds: leaseSeconds,
+  });
+  if (error) throw error;
+  if (data !== true) throw new Error('GDD resource job lease was lost.');
+}
+
+export async function getGddResourceJob(
+  serviceClient: SupabaseClient,
+  input: { projectId: string; jobId: string; resourceJobId: string },
+): Promise<GddResourceJob | null> {
+  const { data, error } = await serviceClient.from('gdd_resource_jobs')
+    .select(RESOURCE_JOB_COLUMNS)
+    .eq('project_id', input.projectId)
+    .eq('gdd_generation_job_id', input.jobId)
+    .eq('id', input.resourceJobId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as GddResourceJob | null) ?? null;
+}
+
+export async function retryFailedGddResourceJob(
+  serviceClient: SupabaseClient,
+  resourceJobId: string,
+): Promise<GddResourceJob> {
+  const { data, error } = await serviceClient.rpc('retry_failed_gdd_resource_job', {
+    p_job_id: resourceJobId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.id !== 'string') throw new Error('Invalid GDD resource retry response.');
+  return row as GddResourceJob;
+}
+
 export async function finishGddResourceJob(
   serviceClient: SupabaseClient,
   input: { jobId: string; workerId: string; status: 'completed' | 'failed'; error?: string | null },

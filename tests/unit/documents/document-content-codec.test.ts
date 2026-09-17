@@ -16,7 +16,13 @@ function withoutBlockAnchors(markdown: string): string {
   return markdown.replace(BLOCK_ANCHOR_PATTERN, '');
 }
 
-function runCodecProbe(input: Record<string, unknown>): ProbeResult {
+function runCodecProbe(
+  input: Record<string, unknown>,
+  options: { useDefaultRuntime?: boolean } = {},
+): ProbeResult {
+  const env = { ...process.env };
+  if (options.useDefaultRuntime) delete env.DOCUMENT_CODEC_COMMONJS;
+  else env.DOCUMENT_CODEC_COMMONJS = '1';
   const result = spawnSync(
     process.execPath,
     [
@@ -27,10 +33,7 @@ function runCodecProbe(input: Record<string, unknown>): ProbeResult {
     {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        DOCUMENT_CODEC_COMMONJS: '1',
-      },
+      env,
       input: JSON.stringify(input),
     }
   );
@@ -88,6 +91,25 @@ Nested **Markdown**.
 </Callout>`;
 
 describe('document content codec', () => {
+  it('preserves anchored headings and list items without a runtime environment override', () => {
+    const headingId = '11111111-1111-4111-8111-111111111111';
+    const listItemId = '22222222-2222-4222-8222-222222222222';
+
+    const { markdown } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: [
+        `# <BlockAnchor id="${headingId}" />Heading`,
+        '',
+        `- <BlockAnchor id="${listItemId}" />List item`,
+      ].join('\n'),
+    }, { useDefaultRuntime: true }) as { markdown: string };
+
+    expect(markdown).toContain(`<BlockAnchor id="${headingId}" />Heading`);
+    expect(markdown).toContain(`<BlockAnchor id="${listItemId}" />List item`);
+    expect(withoutBlockAnchors(markdown)).toContain('# Heading');
+    expect(withoutBlockAnchors(markdown)).toMatch(/[*-] List item/);
+  });
+
   it('normalizes fresh block identities after an Agent replace_all operation', () => {
     const oldHeadingId = '11111111-1111-4111-8111-111111111111';
     const oldParagraphId = '22222222-2222-4222-8222-222222222222';

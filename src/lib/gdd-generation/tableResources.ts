@@ -185,6 +185,16 @@ function serializeTableRowReference(input: {
     .join(' ')} />`;
 }
 
+function stripInlineMarkdown(value: string): string {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
 export function renderTableResourceReferences(resources: GeneratedTableResource[]): string {
   if (resources.length === 0) return '';
   return resources.map((table) => {
@@ -202,7 +212,7 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
         libraryId: table.id,
         assetId: row.id,
         displayFieldId,
-        fallbackLabel: row.name,
+        fallbackLabel: stripInlineMarkdown(row.name),
       });
     }).join(' ');
     return `\u200B${chips}`;
@@ -210,6 +220,7 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
 }
 
 const TABLE_REF_MARKER = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/gi;
+const GDD_TABLE_PLACEHOLDER_TAG = /<GddTablePlaceholder\s+tableName="([^"]+)"\s*\/>/gi;
 const RESOURCE_REFERENCE_TAG = /<ResourceReference\b[^>]*\/>/gi;
 const RESOURCE_REFERENCE_ATTRIBUTE = /\b(kind|libraryId|assetId|displayFieldId)="([^"]*)"/gi;
 
@@ -443,25 +454,59 @@ export class GddTableReferenceError extends Error {
   }
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Show stable table names while async workers have not created their rows yet. */
+export function renderPendingTableResourceReferences(
+  markdown: string,
+  resources: GeneratedTableResource[],
+): string {
+  const prepared = stripRedundantTableTitlesBeforeMarkers(markdown, resources);
+  const visibleByName = new Map(
+    resources
+      .filter((resource) => !isInternalDialogueTable(resource))
+      .map((resource) => [normalizeTableRefName(resource.table), resource.table] as const),
+  );
+  return prepared.replace(TABLE_REF_MARKER, (marker, rawName: string) => {
+    const normalizedName = normalizeTableRefName(rawName);
+    const tableName = visibleByName.get(normalizedName);
+    if (!tableName) return marker;
+    return `<GddTablePlaceholder tableName="${escapeAttribute(tableName)}" />`;
+  });
 }
 
-/** Drop a lone "TableName:" line immediately before its KECO_TABLE_REF marker. */
+function visibleTableTitle(line: string): string {
+  const heading = /^(?:#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line.trim());
+  return (heading?.[1] ?? line)
+    .replace(/^(?:<BlockAnchor\b[^>]*\/>[ \t]*)+/i, '')
+    .replace(/\u200B/g, '')
+    .replace(/^\d+(?:\.\d+)*[.、)]?[ \t]*/, '')
+    .replace(/[ \t]+#+[ \t]*$/, '')
+    .replace(/[ \t]*[:：][ \t]*$/, '')
+    .trim();
+}
+
+/** Drop a title or heading immediately before its KECO_TABLE_REF marker. */
 function stripRedundantTableTitlesBeforeMarkers(
   markdown: string,
   resources: GeneratedTableResource[],
 ): string {
-  let result = markdown;
-  for (const resource of resources) {
-    const name = escapeRegExp(resource.table.trim());
-    const pattern = new RegExp(
-      `(^|\\n)[ \\t]*${name}[ \\t]*[:：]?[ \\t]*\\n(?=[ \\t]*<!--\\s*KECO_TABLE_REF\\s+${name}\\s*-->)`,
-      'gi',
+  const tableNames = new Set(resources.map((resource) => normalizeTableRefName(resource.table)));
+  const lines = markdown.split(/\r?\n/);
+  for (let markerIndex = 0; markerIndex < lines.length; markerIndex += 1) {
+    const marker = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/i.exec(
+      (lines[markerIndex] ?? '').replace(/\u200B/g, ''),
     );
-    result = result.replace(pattern, '$1');
+    const markerName = normalizeTableRefName(marker?.[1] ?? '');
+    if (!markerName || !tableNames.has(markerName)) continue;
+    let titleIndex = markerIndex - 1;
+    while (
+      titleIndex >= 0
+      && (!(lines[titleIndex]?.trim()) || !visibleTableTitle(lines[titleIndex]!))
+    ) titleIndex -= 1;
+    if (titleIndex >= 0 && normalizeTableRefName(visibleTableTitle(lines[titleIndex]!)) === markerName) {
+      lines[titleIndex] = '';
+    }
   }
-  return result;
+  return lines.join('\n');
 }
 
 export function stripOrphanTableRefMarkers(markdown: string): string {
@@ -504,7 +549,7 @@ function replaceInlineTableResourceReferences(
       })
       .map((resource) => normalizeTableRefName(resource.table)),
   );
-  let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
+  const replaceReference = (rawName: string) => {
     const key = normalizeTableRefName(rawName);
     if (!key) return '';
     const resource = byName.get(key);
@@ -512,7 +557,15 @@ function replaceInlineTableResourceReferences(
     if (seen.has(key)) return '';
     seen.add(key);
     return renderTableResourceReferences([resource]);
-  });
+  };
+  let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => replaceReference(rawName));
+  replaced = replaced.replace(GDD_TABLE_PLACEHOLDER_TAG, (_match, rawName: string) => (
+    replaceReference(rawName
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&'))
+  ));
 
   const missing = visibleResources.filter((resource) => !seen.has(normalizeTableRefName(resource.table)));
   if (missing.length > 0) {

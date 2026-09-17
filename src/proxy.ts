@@ -4,6 +4,7 @@ import {
   getUnauthenticatedAction,
   shouldBypassProxyAuth,
 } from '@/lib/auth/proxyPolicy';
+import { hasKecoAdminAccess } from '@/lib/server/kecoAdminAuthorization';
 
 const AUTH_CHECK_TIMEOUT_MS = 8000;
 
@@ -29,6 +30,13 @@ function buildUnauthenticatedResponse(request: NextRequest): NextResponse {
     `${request.nextUrl.pathname}${request.nextUrl.search}`
   );
 
+  return NextResponse.redirect(redirectUrl);
+}
+
+function buildKecoAdminForbiddenResponse(request: NextRequest): NextResponse {
+  const redirectUrl = request.nextUrl.clone();
+  redirectUrl.pathname = '/projects';
+  redirectUrl.search = '';
   return NextResponse.redirect(redirectUrl);
 }
 
@@ -91,6 +99,13 @@ export async function proxy(request: NextRequest) {
 
     if (!user) {
       return buildUnauthenticatedResponse(request);
+    }
+
+    const isKecoAdminPath =
+      request.nextUrl.pathname === '/keco-admin' ||
+      request.nextUrl.pathname.startsWith('/keco-admin/');
+    if (isKecoAdminPath && !(await hasKecoAdminAccess(user.id, supabase))) {
+      return buildKecoAdminForbiddenResponse(request);
     }
   } catch (err) {
     console.warn('[proxy] Supabase init or auth failed:', (err as Error)?.message);

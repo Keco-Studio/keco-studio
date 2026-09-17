@@ -10,6 +10,11 @@ import {
 
 const REFERENCE_TARGETS: ResourceReferenceTarget[] = [
   {
+    kind: 'document',
+    documentId: '44444444-4444-4444-8444-444444444444',
+    fallbackLabel: 'Arrival dialogue',
+  },
+  {
     kind: 'table-row',
     libraryId: '11111111-1111-4111-8111-111111111111',
     assetId: '22222222-2222-4222-8222-222222222222',
@@ -42,10 +47,14 @@ describe('resource reference targets', () => {
   it.each([
     [
       REFERENCE_TARGETS[0],
-      'table-row:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333',
+      'document:44444444-4444-4444-8444-444444444444',
     ],
     [
       REFERENCE_TARGETS[1],
+      'table-row:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333',
+    ],
+    [
+      REFERENCE_TARGETS[2],
       'document-block:44444444-4444-4444-8444-444444444444:55555555-5555-4555-8555-555555555555',
     ],
   ])('round-trips attributes with a stable key', (target, expectedKey) => {
@@ -56,7 +65,7 @@ describe('resource reference targets', () => {
   });
 
   it('round-trips a document range with a key that changes with its boundaries', () => {
-    const target = REFERENCE_TARGETS[2];
+    const target = REFERENCE_TARGETS[3];
     const moved = target.kind === 'document-range'
       ? { ...target, startOffset: target.startOffset + 1 }
       : target;
@@ -146,6 +155,15 @@ describe('sanctioned MDX validation', () => {
     expect(() => validateSanctionedMdx('<string>')).toThrow(DocumentContentValidationError);
   });
 
+  it('neutralizes Chinese angle-bracket placeholders with slashes', () => {
+    const markdown = '建议句式：“<材质/颜色>的碎片应从<方位>延伸至<地形>”。';
+
+    const coerced = coerceGeneratedSanctionedMdx(markdown);
+
+    expect(coerced).toBe('建议句式：“&lt;材质/颜色&gt;的碎片应从&lt;方位&gt;延伸至&lt;地形&gt;”。');
+    expect(() => validateSanctionedMdx(coerced)).not.toThrow();
+  });
+
   it('derives editor property metadata and validation from the sanctioned registry', () => {
     const Editor = () => null;
     const descriptors = createSanctionedMdxDescriptors(Editor) as Array<{
@@ -194,7 +212,7 @@ describe('sanctioned MDX validation', () => {
           name: 'kind',
           type: 'string',
           required: true,
-          allowedValues: ['table-row', 'document-block', 'document-range'],
+          allowedValues: ['document', 'table-row', 'document-block', 'document-range'],
         },
         { name: 'libraryId', type: 'string', required: false },
         { name: 'assetId', type: 'string', required: false },
@@ -250,7 +268,7 @@ describe('sanctioned MDX validation', () => {
 
   it('accepts document block anchors and resource references', () => {
     expect(() => validateSanctionedMdx(
-      '# <BlockAnchor id="66666666-6666-4666-8666-666666666666" />Heading\n\nSee <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.\n\nSee <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.\n\nSee <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="0" startBefore="" startAfter="The city closes" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="at dawn. " endAfter="Guards wait." fallbackLabel="The city closes its gates at dawn." />.'
+      '# <BlockAnchor id="66666666-6666-4666-8666-666666666666" />Heading\n\nSee <ResourceReference kind="document" documentId="44444444-4444-4444-8444-444444444444" fallbackLabel="Arrival dialogue" />.\n\nSee <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.\n\nSee <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.\n\nSee <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="0" startBefore="" startAfter="The city closes" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="at dawn. " endAfter="Guards wait." fallbackLabel="The city closes its gates at dawn." />.'
     )).not.toThrow();
   });
 
@@ -270,6 +288,18 @@ describe('sanctioned MDX validation', () => {
     expect(() => validateSanctionedMdx(
       '<GddScriptBranchSnapshot dialogueJobId="job-1" chapterKey="opening" title="Opening dialogue" projectId="project-1" dialogueDocumentId="doc-1" scriptLibraryId="lib-1" tree="[{&quot;d&quot;:0,&quot;t&quot;:&quot;Root&quot;},{&quot;d&quot;:1,&quot;t&quot;:&quot;Choice A&quot;}]" />'
     )).not.toThrow();
+  });
+
+  it('accepts a bounded GDD table placeholder and rejects unsafe shapes', () => {
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="Skills" />',
+    )).not.toThrow();
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="" />',
+    )).toThrow();
+    expect(() => validateSanctionedMdx(
+      '<GddTablePlaceholder tableName="Skills" extra="x" />',
+    )).toThrow();
   });
 
   it('rejects GddScriptBranchSnapshot cards with invalid tree payloads', () => {

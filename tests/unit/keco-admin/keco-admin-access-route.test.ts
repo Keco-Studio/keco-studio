@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 let authenticatedUserId: string | null = null;
+const hasKecoAdminAccess = jest.fn();
 
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/auth/route-auth', () => ({
@@ -13,6 +14,9 @@ jest.mock('@/lib/auth/route-auth', () => ({
             user: { id: authenticatedUserId },
           })
         : options.unauthorizedResponse(),
+}));
+jest.mock('@/lib/server/kecoAdminAuthorization', () => ({
+  hasKecoAdminAccess: (...args: unknown[]) => hasKecoAdminAccess(...args),
 }));
 
 import { GET } from '@/app/api/keco-admin/access/route';
@@ -29,6 +33,9 @@ describe('Keco Admin access API', () => {
   beforeEach(() => {
     authenticatedUserId = ADMIN_ID;
     process.env.KECO_ADMIN_USER_ID = ADMIN_ID;
+    hasKecoAdminAccess.mockImplementation((userId: string) =>
+      Promise.resolve(userId === ADMIN_ID),
+    );
   });
 
   afterAll(() => {
@@ -51,7 +58,7 @@ describe('Keco Admin access API', () => {
     });
   });
 
-  it('reports access only for the exact configured user', async () => {
+  it('reports access only for an allowlisted user', async () => {
     const adminResponse = await GET(request(), undefined);
     authenticatedUserId = OTHER_ID;
     const otherResponse = await GET(request(), undefined);
@@ -66,6 +73,7 @@ describe('Keco Admin access API', () => {
 
   it('fails closed when administrator configuration is missing', async () => {
     delete process.env.KECO_ADMIN_USER_ID;
+    hasKecoAdminAccess.mockResolvedValue(false);
 
     const response = await GET(request(), undefined);
 

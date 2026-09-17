@@ -85,6 +85,7 @@ import {
 import { ResourceReferenceProvider } from './ResourceReferenceProvider';
 import { GddMapReferenceProvider } from './GddMapReferenceProvider';
 import { GddMapReferenceEditor } from './GddMapReferenceEditor';
+import { GddTablePlaceholderEditor } from './GddTablePlaceholderEditor';
 import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
@@ -376,6 +377,11 @@ export default function MdxDocumentEditor({
             ? {
                 ...descriptor,
                 Editor: GddScriptBranchSnapshotEditor as unknown as ComponentType<SanctionedMdxEditorProps>,
+              }
+          : descriptor.name === 'GddTablePlaceholder'
+            ? {
+                ...descriptor,
+                Editor: GddTablePlaceholderEditor as unknown as ComponentType<SanctionedMdxEditorProps>,
               }
           : descriptor.name === 'GddMapReference'
             ? {

@@ -3,6 +3,7 @@ import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { DocumentAccessError } from '@/lib/documents/documentStateTypes';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import type { ResolvedStory } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
@@ -154,6 +155,7 @@ const defaultDependencies: DialogueWorkerDependencies = {
       projectId: job.project_id,
       documentId: data.output_document_id,
       dialogueJobId: job.id,
+      dialogueDocumentId: job.document_id,
       scriptLibraryId,
     });
   },
@@ -180,6 +182,7 @@ const defaultDependencies: DialogueWorkerDependencies = {
       projectId: job.project_id,
       documentId: data.output_document_id,
       dialogueJobId: job.id,
+      dialogueDocumentId: job.document_id,
       chapterKey: job.chapter_key,
       chapterTitle: job.title,
       snapshotMarkdown,
@@ -247,7 +250,7 @@ export async function processClaimedDialogueJob(
   try {
     await dependencies.heartbeat(serviceClient, job.id, workerId, 90);
     const source = await dependencies.read(serviceClient, job.document_id);
-    const content = source.markdown.trim();
+    const content = toScriptImportPlainText(source.markdown);
     if (!content) throw new Error('Source dialogue Document is empty.');
     const sourceState = {
       epoch: source.token?.epoch ?? 0,
@@ -274,6 +277,7 @@ export async function processClaimedDialogueJob(
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
           usageBinding,
+          fallbackToLinearOnBranchFailure: true,
         });
         await dependencies.updateSnapshot(serviceClient, job, resolved, existingScriptId);
       } catch (error) {
@@ -295,6 +299,7 @@ export async function processClaimedDialogueJob(
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
           usageBinding,
+          fallbackToLinearOnBranchFailure: true,
         });
         const result = await dependencies.importStory(serviceClient, {
           userId: ownerId,

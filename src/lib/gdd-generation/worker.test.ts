@@ -345,7 +345,7 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
-  it('persists deterministic table references at their body markers before async materialization', async () => {
+  it('persists neutral table-name placeholders before async materialization', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
       data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
       error: null,
@@ -374,21 +374,21 @@ describe('GDD generation worker', () => {
 
     const args = rpc.mock.calls[0]![1] as Record<string, unknown>;
     const persistedMarkdown = String(args.p_markdown);
-    expect(persistedMarkdown).toMatch(/## Gameplay Systems[\s\S]*<ResourceReference[\s\S]*## Content/);
+    expect(persistedMarkdown).toMatch(/## Gameplay Systems[\s\S]*<GddTablePlaceholder tableName="Skills" \/>[\s\S]*## Content/);
+    expect(persistedMarkdown).not.toContain('<ResourceReference');
     expect(persistedMarkdown).not.toContain('## Keco Tables');
     expect(args.p_table_resources).toEqual([]);
-    const persistedIds = /libraryId="([^"]+)" assetId="([^"]+)" displayFieldId="([^"]+)"/.exec(persistedMarkdown);
-    expect(persistedIds).not.toBeNull();
     const queuedRows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: { resources?: Array<{
       id: string;
       fieldIds: string[];
       rows: Array<{ id?: string }>;
     }> } }>;
+    expect(queuedRows.map((row) => row.kind)).toEqual(['tables', 'maps']);
     const queuedTable = queuedRows.find((row) => row.kind === 'tables')?.payload.resources?.[0];
     expect(queuedTable).toEqual(expect.objectContaining({
-      id: persistedIds![1],
-      fieldIds: expect.arrayContaining([persistedIds![3]]),
-      rows: [expect.objectContaining({ id: persistedIds![2] })],
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      fieldIds: [expect.stringMatching(/^[0-9a-f-]{36}$/)],
+      rows: [expect.objectContaining({ id: expect.stringMatching(/^[0-9a-f-]{36}$/) })],
     }));
   });
 
@@ -423,9 +423,120 @@ describe('GDD generation worker', () => {
       dialoguePlans,
     );
 
+    const args = rpc.mock.calls[0]![1] as Record<string, unknown>;
+    const persistedMarkdown = String(args.p_markdown);
+    expect(persistedMarkdown).toContain('Document: Arrival dialogue');
+    expect(persistedMarkdown).toContain('Status: Generating');
+    expect(persistedMarkdown).not.toContain('Script:');
+    expect(persistedMarkdown).not.toContain('[Arrival dialogue](');
+    expect(persistedMarkdown).not.toContain('GddScriptBranchSnapshot');
     const rows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: Record<string, unknown> }>;
     expect(rows.map((row) => row.kind)).toEqual(['dialogue', 'maps']);
-    expect(rows[0]!.payload).toEqual({ dialoguePlans });
+    expect(rows[0]!.payload).toEqual({
+      dialoguePlans,
+      input: v2Job.input,
+      markdown: '# GDD\n\n## Arrival\nScene.',
+      tablePlans: [],
+    });
+  });
+
+  it('enqueues dialogue recovery for a narrative GDD when the first plan pass is empty', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Puzzle GDD', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const upsert = jest.fn(async (_rows: unknown[], _options: unknown) => ({ data: null, error: null }));
+    const from = jest.fn((table: string) => table === 'documents'
+      ? { update: () => ({ eq: jest.fn(async () => ({ data: null, error: null })) }) }
+      : { upsert });
+    const tablePlans = [{
+      table: 'DialogueNodes',
+      purpose: 'Store chapter dialogue.',
+      fields: ['id', 'speaker', 'text', 'choices', 'clueId'],
+      rows: [{
+        name: 'DN_CH01_UNLOCK',
+        values: {
+          id: 'DN_CH01_UNLOCK',
+          speaker: 'Lighthouse keeper',
+          text: 'The eastern light is still burning.',
+          choices: [],
+          clueId: 'CL_CH01_01',
+        },
+      }],
+    }];
+    const input = {
+      ...generationInput,
+      contractVersion: 2 as const,
+      mode: 'professional' as const,
+      language: 'zh-CN',
+      resourceMode: 'async' as const,
+      rules: {
+        ...generationInput.rules,
+        genres: ['Puzzle'],
+        tableGuidance: [],
+      },
+    };
+    const v2Job = {
+      ...job,
+      resource_mode: 'async',
+      applied_rule_ids: ['narrative-gating'],
+      omitted_rule_ids: [],
+      input,
+    } as GddGenerationJob;
+    const markdown = '# Puzzle GDD\n\n## Chapter 1\nThe keeper unlocks the coast puzzle.';
+
+    await persistGeneratedGddV2Document(
+      { rpc, from } as never,
+      v2Job,
+      'worker-1',
+      markdown,
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      tablePlans,
+      [],
+    );
+
+    const rows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: Record<string, unknown> }>;
+    expect(rows.map((row) => row.kind)).toEqual(['tables', 'dialogue', 'maps']);
+    expect(rows[1]!.payload).toEqual({
+      dialoguePlans: [],
+      input,
+      markdown,
+      tablePlans,
+    });
+  });
+
+  it('enqueues dialogue recovery from chapter requirements without creating a table resource', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{ document_id: 'document-1', document_name: 'Puzzle GDD', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const upsert = jest.fn(async (..._args: unknown[]) => ({ data: null, error: null }));
+    const from = jest.fn((table: string) => table === 'documents'
+      ? { update: () => ({ eq: jest.fn(async () => ({ data: null, error: null })) }) }
+      : { upsert });
+    const input = {
+      ...generationInput,
+      contractVersion: 2 as const,
+      mode: 'professional' as const,
+      language: 'zh-CN',
+      resourceMode: 'async' as const,
+      rules: { ...generationInput.rules, genres: ['Puzzle'], tableGuidance: [] },
+    };
+    const markdown = '# 拼图游戏 GDD\n\n## 第一章\n每章包含一段解锁对话序列。';
+
+    await persistGeneratedGddV2Document(
+      { rpc, from } as never,
+      { ...job, resource_mode: 'async', input } as GddGenerationJob,
+      'worker-1',
+      markdown,
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [],
+      [],
+    );
+
+    const rows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: Record<string, unknown> }>;
+    expect(rows.map((row) => row.kind)).toEqual(['dialogue', 'maps']);
+    expect(rows[0]!.payload).toEqual({ dialoguePlans: [], input, markdown, tablePlans: [] });
   });
 
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
