@@ -28,6 +28,10 @@ function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionS
       downloadedBytes.set(bytes);
       return { data: new Blob([downloadedBytes]), error: null };
     },
+    async remove(paths: string[]) {
+      calls.push({ name: "remove", args: paths });
+      return { data: paths, error: null };
+    },
   };
   const client = {
     storage: { from(name: string) { calls.push({ name: "bucket", args: name }); return bucket; } },

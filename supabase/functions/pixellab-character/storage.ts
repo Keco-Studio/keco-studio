@@ -70,6 +70,10 @@ export async function finalizePersistedCharacterAsset(
       sourceEntityId: state.assetId,
     });
   } catch (error) {
+    const storagePath = `${state.projectId}/${state.assetId}/${state.generationId}/${persisted.sha256}.png`;
+    // Finalize is the accounting boundary. If it fails, the object has no
+    // registry row and must not remain as unaccounted Storage bytes.
+    await client.storage.from("character-assets").remove([storagePath]).catch(() => undefined);
     await releaseServiceStorage(client, {
       actorUserId: state.actorUserId,
       reservationId: persisted.reservationId,

@@ -126,6 +126,10 @@ export async function persistValidatedAsset(
     });
     return { assetId: asset.id, storagePath, sha256: png.sha256, width: png.width, height: png.height, hasTransparency: png.hasTransparency };
   } catch (error) {
+    // A failed transition/finalize leaves the physical object unaccounted. Remove
+    // it before releasing the reservation so retries cannot accumulate orphaned
+    // bytes outside the quota registry.
+    await bucket.remove([storagePath]).catch(() => undefined);
     if (reservationId) {
       await releaseServiceStorage(context.serviceClient, {
         actorUserId: context.actorUserId,
