@@ -15,6 +15,7 @@ type LibraryToolbarProps = {
   onCreateFolder?: () => void;
   onCreateLibrary?: () => void;
   onCreateDocument?: () => void;
+  onCreateAsset?: () => void;
   onCreateMap?: () => void;
   onImportTable?: () => void;
   onImportDocument?: () => void;
@@ -53,6 +54,7 @@ export function LibraryToolbar({
   onCreateFolder,
   onCreateLibrary,
   onCreateDocument,
+  onCreateAsset,
   onCreateMap,
   onImportTable,
   onImportDocument,
@@ -222,6 +224,11 @@ export function LibraryToolbar({
           onCreateDocument={
             userRole === 'admin' || userRole === 'editor'
               ? wrapMenuAction(onCreateDocument)
+              : undefined
+          }
+          onCreateAsset={
+            (mode === 'project' || mode === 'recent') && (userRole === 'admin' || userRole === 'editor')
+              ? wrapMenuAction(onCreateAsset)
               : undefined
           }
           onImportTable={userRole === 'admin' ? wrapMenuAction(onImportTable) : undefined}

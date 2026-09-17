@@ -13,10 +13,10 @@ describe('desktop mode', () => {
     expect(isDesktopModeSearch('?other=1')).toBe(false);
   });
 
-  it('mounts the marker in the root layout and suppresses Google OAuth in the auth form', () => {
+  it('mounts the marker in the root layout and keeps Google OAuth available in desktop mode', () => {
     expect(read('src/app/layout.tsx')).toContain('<DesktopModeMarker />');
     expect(read('src/components/authform/AuthForm.tsx')).toContain(DESKTOP_MODE_STORAGE_KEY);
-    expect(read('src/components/authform/AuthForm.tsx')).toMatch(/isDesktopMode === false[\s\S]*Log in using Google/);
+    expect(read('src/components/authform/AuthForm.tsx')).toMatch(/isDesktopMode !== null[\s\S]*Log in using Google/);
   });
 
   it('derives the auth guard from the current URL before relying on the persisted marker', () => {
@@ -26,8 +26,16 @@ describe('desktop mode', () => {
     );
     expect(source).toContain("const [isDesktopMode, setIsDesktopMode] = useState<boolean | null>(null);");
     expect(source).toContain("window.sessionStorage.setItem(DESKTOP_MODE_STORAGE_KEY, '1')");
-    expect(source).toContain('isDesktopMode === false ?');
-    expect(source).toContain('isDesktopMode ? (');
+    expect(source).toContain('isDesktopMode !== null ?');
+    expect(source).toContain('if (isDesktopMode)');
+    expect(source).toContain('beginDesktopGoogleOAuth');
+    expect(source).toContain('supabase.auth.signInWithOAuth');
+  });
+
+  it('shows a generic retryable error after a native OAuth failure marker', () => {
+    const source = read('src/components/authform/AuthForm.tsx');
+    expect(source).toContain("searchParams.get('oauth_error') === 'desktop_oauth_failed'");
+    expect(source).toContain('Unable to complete desktop sign-in. Please try again.');
   });
 
   it('persists desktop mode when client-side navigation changes the search parameters', () => {

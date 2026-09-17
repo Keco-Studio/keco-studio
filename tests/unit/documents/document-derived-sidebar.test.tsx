@@ -93,15 +93,38 @@ describe('document-derived sidebar tree', () => {
     }
     renderToStaticMarkup(React.createElement(Harness));
     expect(treeData.map((node) => node.key)).toEqual(expect.arrayContaining([
-      'game-assets',
       `document-${documentId}`,
       'document-55555555-5555-4555-8555-555555555555',
       `library-${older}`,
       `library-${newer}`,
     ]));
-    const assetsRoot = treeData.find((node) => node.key === 'game-assets');
+    expect(treeData.map((node) => node.key)).not.toContain('game-assets');
+
+    let activeTree: any[] = [];
+    function ActiveHarness() {
+      activeTree = useSidebarTree(
+        { projectId, libraryId: null, folderId: null, assetId: null, documentId: null, isLibraryPage: false, isPredefinePage: false, assetsWorkspaceEnabled: true },
+        [], [], [],
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+      ).treeData;
+      return null;
+    }
+    renderToStaticMarkup(React.createElement(ActiveHarness));
+    const assetsRoot = activeTree.find((node) => node.key === 'game-assets');
     expect(assetsRoot?.isLeaf).toBe(false);
     expect(Array.isArray(assetsRoot?.children)).toBe(true);
+
+    let routeTree: any[] = [];
+    function RouteHarness() {
+      routeTree = useSidebarTree(
+        { projectId, libraryId: null, folderId: null, assetId: null, documentId: null, isLibraryPage: false, isPredefinePage: false, isGameAssetsPage: true },
+        [], [], [],
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+      ).treeData;
+      return null;
+    }
+    renderToStaticMarkup(React.createElement(RouteHarness));
+    expect(routeTree.map((node) => node.key)).toContain('game-assets');
     const documentAndLibraryNodes = treeData.filter((node) =>
       String(node.key).startsWith('document-') || String(node.key).startsWith('library-')
     );

@@ -19,6 +19,7 @@ const allowedUiEventNames = new Set([
   'library-page-view-mode-change',
   'library-presence-update',
   'library-toolbar-create-document',
+  'library-toolbar-create-asset',
   'library-toolbar-create-folder',
   'library-toolbar-create-library',
   'library-toolbar-import-document',
