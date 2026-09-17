@@ -1,6 +1,6 @@
 import type { ChatMessage } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
-import type { AiUsageBinding } from '@/lib/ai-usage/types';
+import type { AiUsageBinding, AiUsageMetadata } from '@/lib/ai-usage/types';
 import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import { z } from 'zod';
 import type { DialoguePlan } from '../dialogueResources';
@@ -255,7 +255,7 @@ export async function planDialogueScene(
 ): Promise<DialoguePlan> {
   const complete = dependencies.complete ?? completeLlm;
   const messages = plannerMessages(input);
-  const metadata = runtime.sceneIndex === undefined ? {} : { sceneIndex: runtime.sceneIndex };
+  const metadata: AiUsageMetadata = runtime.sceneIndex === undefined ? {} : { sceneIndex: runtime.sceneIndex };
   const first = await complete(messages, {
     ...plannerOptions(runtime.signal),
     ...(gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'plan_scene', metadata) ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'plan_scene', metadata) } : {}),

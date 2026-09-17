@@ -34,6 +34,9 @@ export type GddV2GeneratorDependencies = {
   usageBinding?: AiUsageBinding;
 };
 
+type ResolvedGddV2GeneratorDependencies = Required<Omit<GddV2GeneratorDependencies, 'usageBinding'>>
+  & Pick<GddV2GeneratorDependencies, 'usageBinding'>;
+
 export type GeneratedGddV2 = {
   markdown: string;
   review: ReviewV2;
@@ -657,7 +660,7 @@ function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
 
 async function recoverMissingDialoguePlans(
   markdown: string,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  dependencies: ResolvedGddV2GeneratorDependencies,
   signal?: AbortSignal,
 ): Promise<{ plans: DialoguePlan[]; warning: string | null }> {
   const raw = await dependencies.complete([{
@@ -695,7 +698,7 @@ async function recoverMissingDialoguePlans(
 async function planDialogueSceneEvents(
   events: DialogueSceneEvent[],
   markdown: string,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  dependencies: ResolvedGddV2GeneratorDependencies,
   signal?: AbortSignal,
 ): Promise<DialoguePlan[]> {
   const { controller, unlink } = linkedAbortController(signal);
@@ -764,7 +767,7 @@ function completionAsStream(complete: Completion): TextStream {
   };
 }
 
-function resolveDependencies(input: Completion | GddV2GeneratorDependencies): Required<GddV2GeneratorDependencies> {
+function resolveDependencies(input: Completion | GddV2GeneratorDependencies): ResolvedGddV2GeneratorDependencies {
   if (typeof input === 'function') {
     return { complete: input, stream: completionAsStream(input), planScene: planDialogueScene, usageBinding: undefined };
   }
@@ -835,7 +838,7 @@ function linkedAbortController(parent?: AbortSignal): { controller: AbortControl
 async function consumeGddStream(
   messages: ChatMessage[],
   maxCompletionTokens: number,
-  dependencies: Required<GddV2GeneratorDependencies>,
+  dependencies: ResolvedGddV2GeneratorDependencies,
   parentSignal?: AbortSignal,
   operation = 'quick_generate',
 ): Promise<{ raw: string; dialoguePlans: DialoguePlan[]; finishReason?: string }> {
