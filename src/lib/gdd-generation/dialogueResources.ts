@@ -120,26 +120,26 @@ function deterministicUuid(seed: string): string {
 export function normalizeDialoguePlans(value: unknown): DialoguePlan[] {
   if (!Array.isArray(value)) throw new Error('Generated dialogue plan must be an array.');
   const plans = value.map((item) => dialoguePlanSchema.parse(item));
-  const reservedKeys = new Set(plans.map((plan) => plan.chapterKey.toLocaleLowerCase()));
-  const usedKeys = new Set<string>();
-  return plans.map((plan) => {
+  const merged = new Map<string, DialoguePlan>();
+  for (const plan of plans) {
     const key = plan.chapterKey.toLocaleLowerCase();
-    if (!usedKeys.has(key)) {
-      usedKeys.add(key);
-      return plan;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, plan);
+      continue;
     }
-
-    let suffix = 2;
-    let candidate = '';
-    do {
-      const suffixText = `-${suffix}`;
-      candidate = `${plan.chapterKey.slice(0, 120 - suffixText.length).trimEnd()}${suffixText}`;
-      suffix += 1;
-    } while (usedKeys.has(candidate.toLocaleLowerCase()) || reservedKeys.has(candidate.toLocaleLowerCase()));
-
-    usedKeys.add(candidate.toLocaleLowerCase());
-    return { ...plan, chapterKey: candidate };
-  });
+    const content = existing.content === plan.content
+      ? existing.content
+      : `${existing.content}\n\n${plan.content}`;
+    const branchSummary = [...new Set([...existing.branchSummary, ...plan.branchSummary])];
+    merged.set(key, dialoguePlanSchema.parse({
+      ...existing,
+      content: content.slice(0, 120_000),
+      hasChoices: existing.hasChoices || plan.hasChoices,
+      branchSummary: branchSummary.slice(0, 50),
+    }));
+  }
+  return [...merged.values()];
 }
 
 export function extractDialoguePlanMarker(raw: string): {
@@ -233,8 +233,34 @@ export function applyDialogueResourceReferences(
   resources: DialogueResource[],
 ): string {
   if (resources.length === 0) return markdown;
-  const section = `## Dialogue Resources\n\n${renderDialogueReferences(projectId, resources)}`;
-  const pattern = /^## Dialogue Resources[ \t]*$[\s\S]*?(?=^##(?!#)[ \t]+|\s*$)/m;
-  if (pattern.test(markdown)) return markdown.replace(pattern, `${section}\n\n`).trimEnd();
+  const body = renderDialogueReferences(projectId, resources);
+  const lines = markdown.split(/\r?\n/);
+  const headings = lines.flatMap((line, index) => {
+    const match = /^(#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line);
+    if (!match) return [];
+    const title = match[2]!
+      .replace(/^(?:<BlockAnchor\b[^>]*\/>[ \t]*)+/i, '')
+      .replace(/[ \t]+#+[ \t]*$/, '')
+      .trim();
+    return [{ index, level: match[1]!.length, title }];
+  });
+  const sections = headings.filter((heading) => (
+    heading.level === 2 && heading.title.toLocaleLowerCase() === 'dialogue resources'
+  ));
+  if (sections.length > 0) {
+    const firstIndex = sections[0]!.index;
+    for (const section of [...sections].reverse()) {
+      const end = headings.find((heading) => (
+        heading.index > section.index && heading.level <= section.level
+      ))?.index ?? lines.length;
+      lines.splice(
+        section.index,
+        end - section.index,
+        ...(section.index === firstIndex ? [lines[section.index]!, '', body] : []),
+      );
+    }
+    return lines.join('\n').trimEnd();
+  }
+  const section = `## Dialogue Resources\n\n${body}`;
   return `${markdown.trimEnd()}\n\n${section}\n`;
 }

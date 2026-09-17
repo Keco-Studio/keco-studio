@@ -21,14 +21,31 @@ export async function replaceDialogueReference(
   if (current.projectId !== input.projectId) throw new DocumentAccessError();
   if (!current.yjsStateBase64) return false;
 
-  const escapedJobId = input.dialogueJobId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const marker = new RegExp(`(^[ \\t]*- GDD dialogue job: ${escapedJobId}\\s*$\\n)[ \\t]*- Script: [^\\n]*`, 'm');
-  if (!marker.test(current.markdown)) return false;
+  const lines = current.markdown.split(/\r?\n/);
+  const bullet = /^([ \t]*[-*+][ \t]+)((?:<BlockAnchor\b[^>]*\/>[ \t]*)?)(.*)$/i;
+  const jobIndex = lines.findIndex((line) => {
+    const match = bullet.exec(line);
+    return match?.[3]?.trim() === `GDD dialogue job: ${input.dialogueJobId}`;
+  });
+  if (jobIndex < 0) return false;
+  let scriptIndex = -1;
+  let scriptPrefix = '';
+  for (let index = jobIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (/^#{1,6}[ \t]+/.test(line)) break;
+    const match = bullet.exec(line);
+    const content = match?.[3]?.trim() ?? '';
+    if (content.startsWith('GDD dialogue job:')) break;
+    if (content.startsWith('Script:')) {
+      scriptIndex = index;
+      scriptPrefix = `${match![1]}${match![2]}`;
+      break;
+    }
+  }
+  if (scriptIndex < 0) return false;
   const scriptHref = `/script-system/${encodeURIComponent(input.projectId)}/script/${encodeURIComponent(input.scriptLibraryId)}`;
-  const replacementMarkdown = coerceSanctionedMdx(current.markdown.replace(
-    marker,
-    `$1  - Script: Completed - [Script](${scriptHref})`,
-  ));
+  lines[scriptIndex] = `${scriptPrefix}Script: Completed - [Script](${scriptHref})`;
+  const replacementMarkdown = coerceSanctionedMdx(lines.join('\n'));
   const currentYjsState = mergeYjsState(
     current.yjsStateBase64,
     current.updateTail.map((update) => update.updateBase64),
@@ -65,7 +82,12 @@ type DialogueSnapshotReplacementInput = {
 };
 
 function normalizeChapter(value: string): string {
-  return value.toLocaleLowerCase().replace(/[`*_#[\]()-]/g, '').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/<BlockAnchor\b[^>]*\/>/gi, '')
+    .toLocaleLowerCase()
+    .replace(/[`*_#[\]()-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function headingMatches(heading: string, chapterKey: string, chapterTitle: string): boolean {
@@ -145,7 +167,7 @@ function insertSnapshotInChapter(
   ));
   if (jobLine >= 0) {
     let end = jobLine;
-    while (end + 1 < lines.length && /^[ \t]+- /.test(lines[end + 1] ?? '')) end += 1;
+    while (end + 1 < lines.length && /^[ \t]+[-*+] /.test(lines[end + 1] ?? '')) end += 1;
     return insertAfterLine(markdown, end, input.snapshotMarkdown);
   }
 

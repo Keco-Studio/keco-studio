@@ -65,6 +65,15 @@ function tableColumnWidth(
   return Math.min(320, Math.max(96, 28 + contentUnits * 7));
 }
 
+function InlineTableMarkdown({ value }: { value: string }) {
+  return value.split(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g).map((part, index) => {
+    const emphasized = /^(?:\*\*([^*\n]+)\*\*|__([^_\n]+)__)$/.exec(part);
+    return emphasized
+      ? <strong key={`${index}:${part}`}>{emphasized[1] ?? emphasized[2]}</strong>
+      : part;
+  });
+}
+
 function ReferenceKindIcon({ kind }: { kind: string }) {
   if (kind === 'table-row') return <TableOutlined />;
   return (
@@ -148,7 +157,7 @@ export function TableReferenceProjection({
                     role="cell"
                     key={field.id}
                   >
-                    {cellDisplayString(row.values[field.id])}
+                    <InlineTableMarkdown value={cellDisplayString(row.values[field.id])} />
                   </span>
                 ))}
               </span>

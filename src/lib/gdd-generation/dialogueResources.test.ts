@@ -1,4 +1,5 @@
 import {
+  applyDialogueResourceReferences,
   coerceDialoguePlanInput,
   extractDialoguePlanMarker,
   materializeDialogueResources,
@@ -71,27 +72,47 @@ describe('GDD dialogue resources', () => {
     });
   });
 
-  it('keeps every dialogue plan by deterministically disambiguating duplicate chapter keys', () => {
+  it('merges dialogue plans that target the same chapter', () => {
     const result = extractDialoguePlanMarker(
-      `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([validPlan, { ...validPlan, title: 'Again' }])} -->`,
+      `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([
+        validPlan,
+        {
+          ...validPlan,
+          title: 'Arrival follow-up',
+          content: 'The conductor explains the final clue.',
+          branchSummary: ['Inspect the timetable'],
+        },
+      ])} -->`,
     );
-    expect(result.plans).toEqual([
-      validPlan,
-      { ...validPlan, chapterKey: 'chapter-1-2', title: 'Again' },
-    ]);
+    expect(result.plans).toEqual([{
+      ...validPlan,
+      content: `${validPlan.content}\n\nThe conductor explains the final clue.`,
+      branchSummary: [...validPlan.branchSummary, 'Inspect the timetable'],
+    }]);
     expect(result.warning).toBeNull();
   });
 
-  it('does not overwrite an explicit chapter key while disambiguating an earlier duplicate', () => {
+  it('keeps explicitly distinct chapter keys separate while merging case-insensitive duplicates', () => {
     expect(normalizeDialoguePlans([
       validPlan,
-      { ...validPlan, title: 'Duplicate' },
+      { ...validPlan, chapterKey: 'CHAPTER-1', content: 'Follow-up.', hasChoices: false, branchSummary: [] },
       { ...validPlan, chapterKey: 'chapter-1-2', title: 'Explicit suffix' },
     ])).toEqual([
-      validPlan,
-      { ...validPlan, chapterKey: 'chapter-1-3', title: 'Duplicate' },
+      { ...validPlan, content: `${validPlan.content}\n\nFollow-up.` },
       { ...validPlan, chapterKey: 'chapter-1-2', title: 'Explicit suffix' },
     ]);
+  });
+
+  it('keeps merged duplicate chapters within dialogue schema limits', () => {
+    const longContent = 'x'.repeat(70_000);
+    const plans = normalizeDialoguePlans([
+      { ...validPlan, content: longContent, branchSummary: Array.from({ length: 30 }, (_, index) => `A${index}`) },
+      { ...validPlan, content: `y${longContent}`, branchSummary: Array.from({ length: 30 }, (_, index) => `B${index}`) },
+    ]);
+
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.content.length).toBeLessThanOrEqual(120_000);
+    expect(plans[0]!.branchSummary).toHaveLength(50);
   });
 
   it('returns a bounded warning and no plans for schema-invalid dialogue entries', () => {
@@ -176,5 +197,35 @@ describe('GDD dialogue resources', () => {
 
     expect(markdown).toContain('Completed');
     expect(markdown).toContain('[Script](/script-system/project-1/script/script-1)');
+  });
+
+  it('replaces an anchored legacy Dialogue Resources section instead of appending to it', () => {
+    const [resource] = materializeDialogueResources('gdd-job-1', [validPlan]);
+    const markdown = applyDialogueResourceReferences([
+      '# <BlockAnchor id="root" />GDD',
+      '',
+      '## <BlockAnchor id="dialogue" />Dialogue Resources',
+      '',
+      '* Old chapter: [Old dialogue](/project-1/doc/old-document)',
+      '  * <BlockAnchor id="job" />GDD dialogue job: old-job',
+      '',
+      '<GddScriptBranchSnapshot dialogueJobId="old-job" chapterKey="old" title="Old" projectId="project-1" dialogueDocumentId="old-document" scriptLibraryId="old-script" tree="[]" />',
+      '',
+      '* <BlockAnchor id="status" />Script: Generating',
+      '* <BlockAnchor id="placeholder" />Document: Old dialogue',
+      '  * <BlockAnchor id="generating" />Status: Generating',
+      '',
+      '## <BlockAnchor id="maps" />Maps and Levels',
+      '',
+      'Map body.',
+    ].join('\n'), 'project-1', [resource]);
+
+    expect(markdown.match(/Dialogue Resources/g)).toHaveLength(1);
+    expect(markdown).toContain(`GDD dialogue job: ${resource.dialogueJobId}`);
+    expect(markdown).toContain('## <BlockAnchor id="maps" />Maps and Levels');
+    expect(markdown).not.toContain('old-job');
+    expect(markdown).not.toContain('Old dialogue');
+    expect(markdown).not.toContain('GddScriptBranchSnapshot');
+    expect(markdown).not.toContain('Document:');
   });
 });

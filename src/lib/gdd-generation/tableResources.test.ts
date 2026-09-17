@@ -231,6 +231,26 @@ describe('GDD table resources', () => {
     expect(markdown).toContain('<ResourceReference kind="table-row"');
   });
 
+  it('strips an anchored Markdown heading that duplicates the projected table link', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: '\u91cc\u7a0b\u7891\u5212\u5206', purpose: 'Schedule.', fields: ['name'],
+      rows: [{ name: '**\u539f\u578b**', values: { name: '**\u539f\u578b**' } }],
+    }]));
+    const markdown = applyInlineTableResourceReferences([
+      '# GDD',
+      '',
+      '### <BlockAnchor id="heading" />\u91cc\u7a0b\u7891\u5212\u5206',
+      '',
+      '<BlockAnchor id="marker" />',
+      '\u200B<!-- KECO_TABLE_REF \u91cc\u7a0b\u7891\u5212\u5206 -->',
+    ].join('\n'), resources);
+
+    expect(markdown).not.toContain('### <BlockAnchor id="heading" />\u91cc\u7a0b\u7891\u5212\u5206');
+    expect(markdown).toContain('<ResourceReference kind="table-row"');
+    expect(markdown).toContain('fallbackLabel="\u539f\u578b"');
+    expect(markdown).not.toContain('fallbackLabel="**\u539f\u578b**"');
+  });
+
   it('assigns deterministic table, row, and field IDs from the series seed', () => {
     const plans = normalizeTablePlans([{
       table: 'Skills', purpose: 'Actions.', fields: ['name', 'cost'],

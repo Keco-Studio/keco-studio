@@ -185,6 +185,16 @@ function serializeTableRowReference(input: {
     .join(' ')} />`;
 }
 
+function stripInlineMarkdown(value: string): string {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
 export function renderTableResourceReferences(resources: GeneratedTableResource[]): string {
   if (resources.length === 0) return '';
   return resources.map((table) => {
@@ -202,7 +212,7 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
         libraryId: table.id,
         assetId: row.id,
         displayFieldId,
-        fallbackLabel: row.name,
+        fallbackLabel: stripInlineMarkdown(row.name),
       });
     }).join(' ');
     return `\u200B${chips}`;
@@ -463,25 +473,40 @@ export function renderPendingTableResourceReferences(
   });
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function visibleTableTitle(line: string): string {
+  const heading = /^(?:#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line.trim());
+  return (heading?.[1] ?? line)
+    .replace(/^(?:<BlockAnchor\b[^>]*\/>[ \t]*)+/i, '')
+    .replace(/\u200B/g, '')
+    .replace(/^\d+(?:\.\d+)*[.、)]?[ \t]*/, '')
+    .replace(/[ \t]+#+[ \t]*$/, '')
+    .replace(/[ \t]*[:：][ \t]*$/, '')
+    .trim();
 }
 
-/** Drop a lone "TableName:" line immediately before its KECO_TABLE_REF marker. */
+/** Drop a title or heading immediately before its KECO_TABLE_REF marker. */
 function stripRedundantTableTitlesBeforeMarkers(
   markdown: string,
   resources: GeneratedTableResource[],
 ): string {
-  let result = markdown;
-  for (const resource of resources) {
-    const name = escapeRegExp(resource.table.trim());
-    const pattern = new RegExp(
-      `(^|\\n)[ \\t]*${name}[ \\t]*[:：]?[ \\t]*\\n(?=[ \\t]*<!--\\s*KECO_TABLE_REF\\s+${name}\\s*-->)`,
-      'gi',
+  const tableNames = new Set(resources.map((resource) => normalizeTableRefName(resource.table)));
+  const lines = markdown.split(/\r?\n/);
+  for (let markerIndex = 0; markerIndex < lines.length; markerIndex += 1) {
+    const marker = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/i.exec(
+      (lines[markerIndex] ?? '').replace(/\u200B/g, ''),
     );
-    result = result.replace(pattern, '$1');
+    const markerName = normalizeTableRefName(marker?.[1] ?? '');
+    if (!markerName || !tableNames.has(markerName)) continue;
+    let titleIndex = markerIndex - 1;
+    while (
+      titleIndex >= 0
+      && (!(lines[titleIndex]?.trim()) || !visibleTableTitle(lines[titleIndex]!))
+    ) titleIndex -= 1;
+    if (titleIndex >= 0 && normalizeTableRefName(visibleTableTitle(lines[titleIndex]!)) === markerName) {
+      lines[titleIndex] = '';
+    }
   }
-  return result;
+  return lines.join('\n');
 }
 
 export function stripOrphanTableRefMarkers(markdown: string): string {

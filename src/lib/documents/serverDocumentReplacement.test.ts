@@ -17,7 +17,7 @@ describe('server dialogue reference replacement', () => {
     jest.mocked(documentStateGateway.read).mockResolvedValue({
       documentId: '11111111-1111-4111-8111-111111111111',
       projectId: '22222222-2222-4222-8222-222222222222',
-      markdown: '- Arrival\n  - GDD dialogue job: job-1\n  - Script: Generating\n\nUser note',
+      markdown: '* Arrival\n  * <BlockAnchor id="job" />GDD dialogue job: job-1\n  * <BlockAnchor id="script" />Script: Generating\n\nUser note',
       yjsStateBase64: 'head-yjs', updateTail: [{ id: '33333333-3333-4333-8333-333333333333', updateBase64: 'tail' }],
       token: { epoch: 2, revision: 4 }, mode: 'collaborative', epochReason: 'initialize', updatedAt: '',
     } as any);
@@ -36,6 +36,7 @@ describe('server dialogue reference replacement', () => {
     }));
     const markdown = ((rpc as jest.Mock).mock.calls[0][1] as { p_replacement_markdown: string }).p_replacement_markdown;
     expect(markdown).toContain('User note');
+    expect(markdown).toContain('<BlockAnchor id="script" />Script: Completed');
   });
 
   it('does nothing when the generated marker no longer exists', async () => {
@@ -98,6 +99,24 @@ describe('server dialogue reference replacement', () => {
     const markdown = ((rpc as jest.Mock).mock.calls[0][1] as { p_replacement_markdown: string }).p_replacement_markdown;
     expect(markdown).toContain('### Opening dialogue\nAuntie talks.\n\n<GddScriptBranchSnapshot');
     expect(markdown.indexOf('GddScriptBranchSnapshot')).toBeLessThan(markdown.indexOf('### Other'));
+  });
+
+  it('places a snapshot in a chapter heading that contains a BlockAnchor', async () => {
+    jest.mocked(documentStateGateway.read).mockResolvedValue({
+      documentId: '11111111-1111-4111-8111-111111111111', projectId: '22222222-2222-4222-8222-222222222222',
+      markdown: '# <BlockAnchor id="root" />GDD\n\n## <BlockAnchor id="chapter" />Arrival\nBody.\n\n## <BlockAnchor id="other" />Other\nKeep.',
+      yjsStateBase64: 'head', updateTail: [], token: { epoch: 1, revision: 1 }, mode: 'collaborative', epochReason: 'initialize', updatedAt: '',
+    } as any);
+    const rpc = jest.fn(async () => ({ data: [{ content: 'updated' }], error: null }));
+    await expect(replaceGddDialogueSnapshot({ rpc } as never, {
+      actorUserId: 'user', projectId: '22222222-2222-4222-8222-222222222222', documentId: 'doc',
+      dialogueJobId: 'job-anchor', chapterKey: 'arrival', chapterTitle: 'Arrival',
+      snapshotMarkdown: '<GddScriptBranchSnapshot dialogueJobId="job-anchor" chapterKey="arrival" title="Arrival" projectId="p" dialogueDocumentId="d" scriptLibraryId="s" tree="[]" />',
+    })).resolves.toEqual({ updated: true });
+    const markdown = ((rpc as jest.Mock).mock.calls[0][1] as { p_replacement_markdown: string }).p_replacement_markdown;
+    expect(markdown).toContain('## <BlockAnchor id="chapter" />Arrival\nBody.\n\n<GddScriptBranchSnapshot');
+    expect(markdown.indexOf('GddScriptBranchSnapshot')).toBeLessThan(markdown.indexOf('## <BlockAnchor id="other" />Other'));
+    expect(markdown).not.toContain('### Script branch:');
   });
 
   it('removes legacy HTML comment snapshots when replacing', async () => {
