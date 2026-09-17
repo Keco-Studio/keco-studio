@@ -14,10 +14,16 @@ function createCleanupClient({
   calls,
   removeError = null,
   settlementErrors = [],
+  legacySnapshot = false,
+  bucketId = 'project-assets',
+  storagePaths = ['owner/project/file.png'],
 }: {
   calls: string[];
   removeError?: StorageError;
   settlementErrors?: StorageError[];
+  legacySnapshot?: boolean;
+  bucketId?: string;
+  storagePaths?: string[];
 }): SupabaseClient {
   let settlementAttempt = 0;
   const query = {
@@ -27,11 +33,13 @@ function createCleanupClient({
       data: {
         id: 'cleanup-1',
         project_id: 'project',
-        bucket_id: 'project-assets',
-        storage_paths: ['owner/project/file.png'],
-        storage_file_ids: ['file-1'],
-        storage_file_owner_ids: ['owner'],
-        storage_file_bytes: [12],
+        bucket_id: bucketId,
+        storage_paths: storagePaths,
+        ...(legacySnapshot ? {} : {
+          storage_file_ids: ['file-1'],
+          storage_file_owner_ids: ['owner'],
+          storage_file_bytes: [12],
+        }),
       },
       error: null,
     }),
@@ -114,6 +122,19 @@ describe('accounted storage deletion settlement', () => {
       'rpc:service_settle_project_storage_file_deletion:project-assets:owner/project/file.png',
       'delete-job',
     ]);
+  });
+
+  it('accepts legacy map cleanup jobs created before registry snapshots existed', async () => {
+    const calls: string[] = [];
+    const client = createCleanupClient({
+      calls,
+      legacySnapshot: true,
+      bucketId: 'map-assets',
+      storagePaths: ['references/project/file.png'],
+    });
+    await processProjectStorageCleanupJob({ cleanupJobId: 'cleanup-1', serviceClient: client });
+    expect(calls).toContain('storage:map-assets');
+    expect(calls).toContain('rpc:service_settle_project_storage_file_deletion:map-assets:references/project/file.png');
   });
 
   it('settles an individual media object only after Storage confirms removal', async () => {

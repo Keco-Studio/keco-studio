@@ -72,25 +72,29 @@ function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRo
   const fileIds = row.storage_file_ids;
   const ownerIds = row.storage_file_owner_ids;
   const bytes = row.storage_file_bytes;
+  const legacySnapshot = fileIds == null && ownerIds == null && bytes == null;
   if (
     row.id !== expectedId
     || typeof row.project_id !== 'string'
     || !isAccountedStorageBucket(row.bucket_id)
     || !Array.isArray(paths)
-    || !Array.isArray(fileIds)
-    || !Array.isArray(ownerIds)
-    || !Array.isArray(bytes)
     || paths.length === 0
-    || paths.length !== fileIds.length
-    || paths.length !== ownerIds.length
-    || paths.length !== bytes.length
-    || fileIds.some((id) => typeof id !== 'string')
-    || ownerIds.some((ownerId) => typeof ownerId !== 'string')
-    || bytes.some((size) => typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0)
+    || (!legacySnapshot && (
+      !Array.isArray(fileIds)
+      || !Array.isArray(ownerIds)
+      || !Array.isArray(bytes)
+      || paths.length !== fileIds.length
+      || paths.length !== ownerIds.length
+      || paths.length !== bytes.length
+      || fileIds.some((id) => typeof id !== 'string')
+      || ownerIds.some((ownerId) => typeof ownerId !== 'string')
+      || bytes.some((size) => typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0)
+    ))
+    || (legacySnapshot && row.bucket_id !== 'map-assets' && row.bucket_id !== 'character-assets')
     || paths.some((path, index) => !isCleanupPathForProject({
       bucketId: row.bucket_id as AccountedStorageBucket,
       projectId: row.project_id as string,
-      ownerId: ownerIds[index] as string,
+      ownerId: legacySnapshot ? '' : ownerIds[index] as string,
       path,
     }))
   ) {
@@ -101,9 +105,9 @@ function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRo
     project_id: row.project_id as string,
     bucket_id: row.bucket_id as AccountedStorageBucket,
     storage_paths: paths as string[],
-    storage_file_ids: fileIds as string[],
-    storage_file_owner_ids: ownerIds as string[],
-    storage_file_bytes: bytes as number[],
+    storage_file_ids: (legacySnapshot ? [] : fileIds) as string[],
+    storage_file_owner_ids: (legacySnapshot ? [] : ownerIds) as string[],
+    storage_file_bytes: (legacySnapshot ? [] : bytes) as number[],
   };
 }
 
