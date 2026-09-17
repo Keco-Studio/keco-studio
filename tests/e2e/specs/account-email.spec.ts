@@ -32,8 +32,8 @@ test.describe('Account email settings', () => {
     await expect(page).toHaveURL(/\/account$/);
     await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
     await expect(page.getByText(user.email, { exact: true })).toBeVisible();
-    await expect(page.getByLabel('New email')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Change email' })).toBeVisible();
+    await expect(page.getByLabel('New email')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Change email' })).toHaveCount(0);
 
     await page.waitForTimeout(2000);
     await expect(page).toHaveURL(/\/account$/);

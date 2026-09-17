@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make current account emails normalized and unique, synchronize profile email from Supabase Auth, bind invitations to user UUIDs, add link-confirmed email changes, and repair the existing password-recovery flow without implementing six-digit OTP entry.
+**Goal:** Make current account emails normalized and unique, synchronize profile email from Supabase Auth, bind invitations to user UUIDs, show the current email as read-only, and repair the existing password-recovery flow without implementing six-digit OTP entry or email changes.
 
-**Architecture:** Supabase Auth remains the identity source and `auth.users.id` remains the authorization key. A migration enforces normalized current-email uniqueness and projects Auth email changes into `public.profiles`; UI code only normalizes inputs and reports provider outcomes. Pending invitations gain a recipient UUID so email reuse cannot transfer access, while account settings use Supabase's existing email-change confirmation links.
+**Architecture:** Supabase Auth remains the identity source and `auth.users.id` remains the authorization key. A migration enforces normalized current-email uniqueness and projects the effective Auth email into `public.profiles`; UI code normalizes registration/login inputs and the Account page reads the current Auth email without offering a change action. Pending invitations gain a recipient UUID so email reuse cannot transfer access.
 
 **Tech Stack:** Next.js 16 App Router, React 19, TypeScript, Supabase Auth/PostgreSQL, Jest, Playwright
 
@@ -16,7 +16,8 @@
 - Normalize with `trim().toLowerCase()` only; do not remove dots, plus suffixes, or otherwise rewrite provider-specific addresses.
 - `auth.users.id` owns authorization and resources; email is never an authorization key.
 - `auth.users.email` is authoritative; `profiles.email` is a synchronized copy and cannot be directly edited by authenticated clients.
-- An old email is released after a completed email change or account deletion; no history or reservation table is created.
+- The Account page is read-only and must not call the Auth email-update API.
+- Account deletion releases the current email; no history or reservation table is created.
 - Password recovery remains a one-time Supabase recovery link.
 - Preserve all unrelated dirty-worktree changes, especially the in-progress Keco Admin work.
 
@@ -149,7 +150,7 @@ git add supabase/migrations/20260915120000_current_email_identity.sql tests/unit
 git commit -m "feat: enforce current email identity"
 ```
 
-### Task 3: Account Email-Change Page
+### Task 3: Read-Only Account Email Page
 
 **Files:**
 - Create: `src/app/(dashboard)/account/page.tsx`
@@ -163,21 +164,13 @@ git commit -m "feat: enforce current email identity"
 
 **Interfaces:**
 - Consumes: `normalizeEmail(value: string): string`
-- Consumes: `supabase.auth.getUser()` and `supabase.auth.updateUser({ email }, { emailRedirectTo })`
+- Consumes: `supabase.auth.getUser()`
 - Produces: protected route `/account`
 
 - [ ] **Step 1: Write failing account-page tests**
 
-Test that the component displays the current Auth email, rejects an empty/unchanged address, normalizes the request, calls:
-
-```ts
-supabase.auth.updateUser(
-  { email: 'new@example.com' },
-  { emailRedirectTo: `${window.location.origin}/auth/callback?redirect=/account` },
-);
-```
-
-and reports that confirmation messages were sent without claiming the email already changed. Test duplicate-email and provider-error states.
+Test that the component displays the current Auth email and renders no
+`New email` input or `Change email` button.
 
 - [ ] **Step 2: Verify RED**
 
@@ -187,7 +180,11 @@ Expected: FAIL because the account component does not exist.
 
 - [ ] **Step 3: Implement the account page and menu entry**
 
-Create a restrained account settings view using existing shell typography and spacing. Add `Account` to the avatar menu before Billing, navigate with `router.push('/account')`, and close the menu. The page must load the email from `auth.getUser()`, not trust `profiles.email`, and disable submission while pending.
+Create a restrained account view using existing shell typography and spacing.
+Add `Account` to the avatar menu before Billing, navigate with
+`router.push('/account')`, and close the menu. The page must load the email from
+`auth.getUser()`, not trust `profiles.email`, and expose no email-change form or
+Auth update call.
 
 - [ ] **Step 4: Preserve protected-route behavior**
 
@@ -199,11 +196,11 @@ Run: `npm run test:unit -- --runInBand tests/unit/auth/account-email-settings.te
 
 Expected: PASS, including existing Keco Admin menu ordering and visibility tests.
 
-- [ ] **Step 6: Commit account email changes**
+- [ ] **Step 6: Commit the read-only Account page**
 
 ```bash
 git add 'src/app/(dashboard)/account/page.tsx' src/components/account src/components/layout/TopBar.tsx src/lib/auth/proxyPolicy.ts tests/unit/auth/account-email-settings.test.tsx tests/unit/auth/proxy-policy.test.ts
-git commit -m "feat: add account email change flow"
+git commit -m "feat: add read-only account email view"
 ```
 
 ### Task 4: UUID-Bound Collaboration Invitations
@@ -349,7 +346,8 @@ supabase db reset
 npx playwright test tests/e2e/specs/password-reset.spec.ts --workers=1
 ```
 
-Verify manually that `/account` requests an email change, the confirmation callback returns to `/account`, old email is released only after confirmation, and no six-digit verification control appears in Stage 1.
+Verify that `/account` displays the signed-in user's current Auth email and has
+no new-email input, change-email action, or six-digit verification control.
 
 - [ ] **Step 4: Review the final diff for scope and dirty-worktree preservation**
 
