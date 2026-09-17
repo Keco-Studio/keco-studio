@@ -659,7 +659,7 @@ describe('GameDesignSystemsPage', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{
         id: 'dialogue-job-1', gdd_generation_job_id: 'gdd-job-1', project_id: 'project-1',
-        chapter_key: 'chapter-1', title: '第一章：海岸线', document_id: 'dialogue-document-1',
+        chapter_key: 'chapter-1', title: '\u7b2c\u4e00\u7ae0：\u6d77\u5cb8\u7ebf', document_id: 'dialogue-document-1',
         script_library_id: 'script-1', status: 'completed', attempt_count: 1, max_attempts: 3,
         available_at: '', last_error: null, completed_at: '2026-09-17T08:01:00.000Z',
       }]);
@@ -674,7 +674,7 @@ describe('GameDesignSystemsPage', () => {
 
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
 
-    expect(await screen.findByText('第一章：海岸线')).toBeTruthy();
+    expect(await screen.findByText('\u7b2c\u4e00\u7ae0：\u6d77\u5cb8\u7ebf')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Document' }).getAttribute('href')).toBe('/project-1/doc/dialogue-document-1');
     expect(screen.getByRole('link', { name: 'Script' }).getAttribute('href')).toBe('/script-system/project-1/script/script-1');
     expect(fetchDialogueJobs).toHaveBeenCalledTimes(2);

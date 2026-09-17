@@ -156,11 +156,11 @@ describe('sanctioned MDX validation', () => {
   });
 
   it('neutralizes Chinese angle-bracket placeholders with slashes', () => {
-    const markdown = '建议句式：“<材质/颜色>的碎片应从<方位>延伸至<地形>”。';
+    const markdown = '\u5efa\u8bae\u53e5\u5f0f：“<\u6750\u8d28/\u989c\u8272>\u7684\u788e\u7247\u5e94\u4ece<\u65b9\u4f4d>\u5ef6\u4f38\u81f3<\u5730\u5f62>”。';
 
     const coerced = coerceGeneratedSanctionedMdx(markdown);
 
-    expect(coerced).toBe('建议句式：“&lt;材质/颜色&gt;的碎片应从&lt;方位&gt;延伸至&lt;地形&gt;”。');
+    expect(coerced).toBe('\u5efa\u8bae\u53e5\u5f0f：“&lt;\u6750\u8d28/\u989c\u8272&gt;\u7684\u788e\u7247\u5e94\u4ece&lt;\u65b9\u4f4d&gt;\u5ef6\u4f38\u81f3&lt;\u5730\u5f62&gt;”。');
     expect(() => validateSanctionedMdx(coerced)).not.toThrow();
   });
 

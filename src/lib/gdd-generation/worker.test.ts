@@ -522,7 +522,7 @@ describe('GDD generation worker', () => {
       resourceMode: 'async' as const,
       rules: { ...generationInput.rules, genres: ['Puzzle'], tableGuidance: [] },
     };
-    const markdown = '# 拼图游戏 GDD\n\n## 第一章\n每章包含一段解锁对话序列。';
+    const markdown = '# \u62fc\u56fe\u6e38\u620f GDD\n\n## \u7b2c\u4e00\u7ae0\n\u6bcf\u7ae0\u5305\u542b\u4e00\u6bb5\u89e3\u9501\u5bf9\u8bdd\u5e8f\u5217。';
 
     await persistGeneratedGddV2Document(
       { rpc, from } as never,

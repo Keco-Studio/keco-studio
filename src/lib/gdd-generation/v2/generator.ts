@@ -642,8 +642,8 @@ function mergeRepairedTablePlans(
   ];
 }
 
-const NARRATIVE_INTENT = /(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b|叙事|故事|对话|剧情|角色关系)/i;
-const NARRATIVE_EXCLUSION = /(?:(?:\bno\b|\bwithout\b|\bexclude\b|\bavoid\b)[^.!?;\n]{0,40}(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b)|(?:无|不含|不要|避免)[^。！？；\n]{0,20}(?:叙事|故事|对话|剧情|角色关系))/i;
+const NARRATIVE_INTENT = /(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b|\u53d9\u4e8b|\u6545\u4e8b|\u5bf9\u8bdd|\u5267\u60c5|\u89d2\u8272\u5173\u7cfb)/i;
+const NARRATIVE_EXCLUSION = /(?:(?:\bno\b|\bwithout\b|\bexclude\b|\bavoid\b)[^.!?;\n]{0,40}(?:\bnarrative\b|\bstory\b|\bdialogue\b|\bvisual novel\b|\bcharacter relationship\b)|(?:\u65e0|\u4e0d\u542b|\u4e0d\u8981|\u907f\u514d)[^。！？；\n]{0,20}(?:\u53d9\u4e8b|\u6545\u4e8b|\u5bf9\u8bdd|\u5267\u60c5|\u89d2\u8272\u5173\u7cfb))/i;
 
 function hasPositiveNarrativeSignal(value: string): boolean {
   return value
@@ -654,7 +654,7 @@ function hasPositiveNarrativeSignal(value: string): boolean {
 function hasNarrativeTableDefinitions(definitions: Array<{ table?: string; fields?: string[] }>): boolean {
   return definitions.some((guidance) => {
     const tableName = typeof guidance.table === 'string' ? guidance.table : '';
-    if (/(?:对话|剧情|台词)/.test(tableName)) return true;
+    if (/(?:\u5bf9\u8bdd|\u5267\u60c5|\u53f0\u8bcd)/.test(tableName)) return true;
     const table = tableName.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
     const fields = new Set((guidance.fields ?? []).map((field) => field.toLocaleLowerCase().replace(/[^a-z0-9]/g, '')));
     if (/^(?:dialogues?|dialoguenodes?|conversations?|storynodes?)$/.test(table)) return true;
@@ -669,7 +669,7 @@ function hasNarrativeTableDefinitions(definitions: Array<{ table?: string; field
   });
 }
 
-const CONCRETE_DIALOGUE_REQUIREMENT = /(?:dialoguenodes?|unlock dialogue|dialogue sequence|spoken (?:scene|interaction)|对话节点|解锁对话|对话序列|对话台词)/i;
+const CONCRETE_DIALOGUE_REQUIREMENT = /(?:dialoguenodes?|unlock dialogue|dialogue sequence|spoken (?:scene|interaction)|\u5bf9\u8bdd\u8282\u70b9|\u89e3\u9501\u5bf9\u8bdd|\u5bf9\u8bdd\u5e8f\u5217|\u5bf9\u8bdd\u53f0\u8bcd)/i;
 
 function hasConcreteDialogueRequirement(value: string): boolean {
   return value

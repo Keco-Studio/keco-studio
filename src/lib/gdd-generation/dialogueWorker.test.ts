@@ -95,7 +95,7 @@ describe('dialogue generation worker', () => {
       heartbeat: jest.fn(async () => undefined),
       complete: jest.fn(async () => true),
       read: jest.fn(async () => ({
-        markdown: '<BlockAnchor id="11111111-1111-4111-8111-111111111111" />\\[Oend | 收束]\n\n守夜人：去吧。',
+        markdown: '<BlockAnchor id="11111111-1111-4111-8111-111111111111" />\\[Oend | \u6536\u675f]\n\n\u5b88\u591c\u4eba：\u53bb\u5427。',
         token: { epoch: 1, revision: 1 },
         updateTail: [],
       } as any)),
@@ -109,7 +109,7 @@ describe('dialogue generation worker', () => {
       retry: jest.fn(async () => 'queued' as const),
     })).resolves.toBe('completed');
 
-    expect(resolve).toHaveBeenCalledWith('[Oend | 收束]\n\n守夜人：去吧。', expect.any(Object));
+    expect(resolve).toHaveBeenCalledWith('[Oend | \u6536\u675f]\n\n\u5b88\u591c\u4eba：\u53bb\u5427。', expect.any(Object));
   });
 
   it('repairs the GDD reference when recovering an already imported Script', async () => {
