@@ -38,6 +38,64 @@ function candidate(title: string, sourceHeading: string, priority = 0) {
 }
 
 describe('GDD map brief compiler', () => {
+  it('keeps a large Art Style contract within the map artifact storage limit', () => {
+    const largeStyle = {
+      ...style,
+      specification: {
+        ...style.specification,
+        pixelTechnique: '像素'.repeat(1_000),
+        shapeLanguage: '轮廓'.repeat(1_000),
+        paletteAndLighting: '色彩'.repeat(1_000),
+        environmentDirection: '环境'.repeat(1_000),
+        propDirection: '道具'.repeat(1_000),
+        effectsDirection: '特效'.repeat(1_000),
+      },
+      customization: {
+        direction: '方向'.repeat(1_000),
+        referenceGames: Array.from({ length: 8 }, (_, index) => ({
+          name: `参考${index}`,
+          borrow: '借鉴'.repeat(250),
+        })),
+        avoid: '避免'.repeat(500),
+      },
+    } as GameArtStyleSnapshot;
+
+    const contract = compileGddMapStyleContract(largeStyle);
+
+    expect(contract).not.toBeNull();
+    expect(new TextEncoder().encode(JSON.stringify(contract)).byteLength).toBeLessThanOrEqual(15_000);
+  });
+
+  it('budgets JSON-escaped Art Style text for map artifact storage', () => {
+    const controlText = '\u0001'.repeat(2_000);
+    const escapedStyle = {
+      ...style,
+      specification: {
+        ...style.specification,
+        pixelTechnique: controlText,
+        shapeLanguage: controlText,
+        paletteAndLighting: controlText,
+        environmentDirection: controlText,
+        propDirection: controlText,
+        effectsDirection: controlText,
+      },
+      customization: {
+        direction: controlText,
+        referenceGames: Array.from({ length: 8 }, () => ({
+          name: '\u0001'.repeat(120),
+          borrow: '\u0001'.repeat(500),
+        })),
+        avoid: '\u0001'.repeat(1_000),
+      },
+    } as GameArtStyleSnapshot;
+
+    const contract = compileGddMapStyleContract(escapedStyle);
+    const serializedContract = JSON.stringify(contract);
+
+    expect(serializedContract).toContain('\\u0001');
+    expect(new TextEncoder().encode(serializedContract).byteLength).toBeLessThanOrEqual(15_000);
+  });
+
   it('lets the map extraction agent return no maps when the GDD has no map', async () => {
     const complete = jest.fn(async () => '[]');
     await expect(compileGddMapBriefs({ markdown: '# Core Loop\nA character explores a forest.', artStyle: null, complete })).resolves.toEqual([]);
