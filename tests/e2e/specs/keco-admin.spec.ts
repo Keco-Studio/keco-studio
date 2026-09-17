@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { KecoAdminOverview } from '@/lib/types/kecoAdmin';
 import { LoginPage } from '../pages/login.page';
 import { users } from '../fixures/users';
 
@@ -8,6 +9,35 @@ async function login(page: Page) {
   await loginPage.login(users.seedEmpty4);
   await loginPage.expectLoginSuccess();
 }
+
+const mockedOverview = {
+  totalUsers: 9,
+  creditUsage: {
+    allocated: 100_000_000,
+    used: 7,
+    remaining: 99_999_993,
+    overage: 0,
+    deepseekTokens: 21,
+    incompleteCount: 1,
+    trackedFrom: '2026-09-15T00:00:00.000Z',
+  },
+  refreshedAt: '2026-09-11T10:00:00.000Z',
+  users: [
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'alice@example.com',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastSignInAt: '2026-09-01T00:00:00.000Z',
+      status: 'active',
+      creditAllocated: 100_000_000,
+      creditUsed: 7,
+      creditRemaining: 99_999_993,
+      creditOverage: 0,
+      deepseekTokens: 21,
+      creditUsageIncompleteCount: 1,
+    },
+  ],
+} satisfies KecoAdminOverview;
 
 test.describe('Keco Admin workspace', () => {
   test('hides privileged navigation and denies overview to another account', async ({ page }) => {
@@ -42,19 +72,7 @@ test.describe('Keco Admin workspace', () => {
       status: 200,
       contentType: 'application/json',
       headers: { 'Cache-Control': 'private, no-store' },
-      body: JSON.stringify({
-        totalUsers: 9,
-        refreshedAt: '2026-09-11T10:00:00.000Z',
-        users: [
-          {
-            id: '11111111-1111-4111-8111-111111111111',
-            email: 'alice@example.com',
-            createdAt: '2026-01-01T00:00:00.000Z',
-            lastSignInAt: '2026-09-01T00:00:00.000Z',
-            status: 'active',
-          },
-        ],
-      }),
+      body: JSON.stringify(mockedOverview),
     }));
     await login(page);
 
@@ -71,13 +89,15 @@ test.describe('Keco Admin workspace', () => {
       page.getByRole('heading', { name: 'Keco Admin', exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId('keco-admin-total-users')).toHaveText('9');
+    await expect(page.getByTestId('keco-admin-credit-used')).toHaveText('7');
+    await expect(page.getByTestId('keco-admin-credit-remaining')).toHaveText('99,999,993');
     await expect(page.getByText('alice@example.com')).toBeVisible();
     await expect(page.getByText('Active')).toBeVisible();
     await expect(
       page
         .getByRole('region', { name: 'Resource overview' })
         .getByText('Not connected', { exact: true }),
-    ).toHaveCount(2);
+    ).toHaveCount(1);
     await expect(
       page.getByRole('table', { name: 'User resource details' }),
     ).toBeVisible();
@@ -97,19 +117,7 @@ test.describe('Keco Admin workspace', () => {
     await page.route('**/api/keco-admin/overview', (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        totalUsers: 9,
-        refreshedAt: '2026-09-11T10:00:00.000Z',
-        users: [
-          {
-            id: '11111111-1111-4111-8111-111111111111',
-            email: 'alice@example.com',
-            createdAt: '2026-01-01T00:00:00.000Z',
-            lastSignInAt: null,
-            status: 'active',
-          },
-        ],
-      }),
+      body: JSON.stringify(mockedOverview),
     }));
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
