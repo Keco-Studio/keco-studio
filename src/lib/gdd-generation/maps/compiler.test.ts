@@ -43,20 +43,20 @@ describe('GDD map brief compiler', () => {
       ...style,
       specification: {
         ...style.specification,
-        pixelTechnique: '像素'.repeat(1_000),
-        shapeLanguage: '轮廓'.repeat(1_000),
-        paletteAndLighting: '色彩'.repeat(1_000),
-        environmentDirection: '环境'.repeat(1_000),
-        propDirection: '道具'.repeat(1_000),
-        effectsDirection: '特效'.repeat(1_000),
+        pixelTechnique: 'pixel-technique '.repeat(120),
+        shapeLanguage: 'shape-language '.repeat(120),
+        paletteAndLighting: 'palette-lighting '.repeat(110),
+        environmentDirection: 'environment-direction '.repeat(90),
+        propDirection: 'prop-direction '.repeat(130),
+        effectsDirection: 'effects-direction '.repeat(120),
       },
       customization: {
-        direction: '方向'.repeat(1_000),
+        direction: 'custom-map-direction '.repeat(90),
         referenceGames: Array.from({ length: 8 }, (_, index) => ({
-          name: `参考${index}`,
-          borrow: '借鉴'.repeat(250),
+          name: `reference-game-${index}`,
+          borrow: 'borrowed visual direction '.repeat(20),
         })),
-        avoid: '避免'.repeat(500),
+        avoid: 'avoid this visual direction '.repeat(30),
       },
     } as GameArtStyleSnapshot;
 
