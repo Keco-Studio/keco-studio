@@ -8,6 +8,18 @@ const migrationPath = path.join(
 );
 
 describe('project storage cleanup outbox migration', () => {
+  it('allows detached storage rows while preserving legacy source invariants', () => {
+    const detachMigration = fs.readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/20260918010000_allow_pending_storage_cleanup_detach.sql'),
+      'utf8',
+    );
+
+    expect(detachMigration).toMatch(/drop constraint if exists project_storage_files_check/i);
+    expect(detachMigration).toMatch(/add constraint project_storage_files_check check/i);
+    expect(detachMigration).toMatch(/project_id\s+is\s+null/i);
+    expect(detachMigration).toMatch(/source_kind\s*<>\s*'legacy_unassigned'/i);
+  });
+
   it('marks registered objects pending and snapshots every accounted bucket before deleting the project', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
