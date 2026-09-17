@@ -226,9 +226,9 @@ describe('CI workflow gates', () => {
     expect(checkMigrationsJob).not.toContain(
       'Migration files detected (no changes, but unapplied migrations may exist)'
     );
-    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/main'");
-    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/master'");
-    expect(migrateDatabaseJob).toContain(
+    expect(migrateDatabaseJob).not.toContain("github.ref == 'refs/heads/main'");
+    expect(migrateDatabaseJob).not.toContain("github.ref == 'refs/heads/master'");
+    expect(migrateDatabaseJob).not.toContain(
       "startsWith(github.ref, 'refs/heads/release/')"
     );
     expect(migrateDatabaseJob).toContain('supabase db push --include-all');
@@ -239,7 +239,7 @@ describe('CI workflow gates', () => {
     expect(deployJob).toContain("needs.migrate-database.result == 'skipped'");
   });
 
-  it('only pushes migrations to remote databases from branch push events', () => {
+  it('only pushes migrations when a branch push changes migration files', () => {
     const condition = migrateDatabaseJob.match(
       /\n    if: \|\n(?<condition>(?: {6}.*\n)+)/
     )?.groups?.condition;
@@ -247,12 +247,8 @@ describe('CI workflow gates', () => {
     expect(condition?.replace(/^ {6}/gm, '').trim()).toBe(
       [
         "(github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&",
-        "github.event_name == 'push' && (",
-        "    needs.check-migrations.outputs.has-migrations == 'true' ||",
-        "    github.ref == 'refs/heads/main' ||",
-        "    github.ref == 'refs/heads/master' ||",
-        "    startsWith(github.ref, 'refs/heads/release/')",
-        '  )',
+        "github.event_name == 'push' &&",
+        "needs.check-migrations.outputs.has-migrations == 'true'",
       ].join('\n')
     );
   });
