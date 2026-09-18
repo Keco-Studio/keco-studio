@@ -11,28 +11,16 @@ import {
   attachStripeSession,
   createPaymentOrder,
 } from '@/lib/supabase-payments';
-import {
-  AuthorizationError,
-  getUserProjectRole,
-} from '@/lib/services/authorizationService';
 
 export const runtime = 'nodejs';
 
 const checkoutHandler = async (
   request: NextRequest,
   _context: unknown,
-  { supabase, user }: AuthedRequest
+  { user }: AuthedRequest
 ) => {
   try {
     const input = validateCheckoutInput(await request.json());
-    try {
-      await getUserProjectRole(supabase, input.projectId, user.id);
-    } catch (error) {
-      if (error instanceof AuthorizationError) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      throw error;
-    }
 
     const catalogPlan = getStudioPlanById(input.planId);
     if (!catalogPlan || !catalogPlan.checkoutEnabled || catalogPlan.amountCents <= 0) {
@@ -47,7 +35,7 @@ const checkoutHandler = async (
     await createPaymentOrder({
       id: paymentId,
       reference,
-      projectId: input.projectId,
+      projectId: null,
       userId: user.id,
       planId: plan.id,
       planLabel: plan.label,
@@ -80,12 +68,11 @@ const checkoutHandler = async (
       metadata: {
         paymentId,
         paymentReference: reference,
-        projectId: input.projectId,
         planId: plan.id,
         userId: user.id,
       },
-      success_url: `${siteUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}&project_id=${encodeURIComponent(input.projectId)}`,
-      cancel_url: `${siteUrl}/payment/cancel?payment_id=${encodeURIComponent(paymentId)}&project_id=${encodeURIComponent(input.projectId)}`,
+      success_url: `${siteUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${siteUrl}/payment/cancel?payment_id=${encodeURIComponent(paymentId)}`,
     });
 
     if (!session.url) {
@@ -96,9 +83,6 @@ const checkoutHandler = async (
     return NextResponse.json({ url: session.url, paymentId });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to start checkout';
-    if (/Project not found|not a collaborator|Forbidden/i.test(message)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
     const status = /required|valid|not found|only USD/i.test(message)
       ? 400
       : /not configured|Could not find the table/i.test(message)

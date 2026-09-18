@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   readRecentVisits,
@@ -132,15 +132,19 @@ describe('Recent / Admin sidebar wiring', () => {
     expect(adminSettings).not.toContain('StripeCheckoutPanel');
   });
 
-  it('hosts billing plans from the avatar menu', () => {
-    const billingPage = read('src/app/(dashboard)/[projectId]/billing/page.tsx');
+  it('hosts account billing plans from the avatar menu', () => {
+    const billingPage = read('src/app/(dashboard)/billing/page.tsx');
     const billingUi = read('src/components/billing/BillingPlansPage.tsx');
     const topBar = read('src/components/layout/TopBar.tsx');
     expect(billingPage).toContain('BillingPlansPage');
+    expect(
+      existsSync(path.join(process.cwd(), 'src/app/(dashboard)/[projectId]/billing/page.tsx'))
+    ).toBe(false);
     expect(billingUi).toContain('Most popular');
     expect(billingUi).not.toContain('Top up credits');
     expect(topBar).toContain('handleBillingNavigation');
     expect(topBar).toContain('user-menu-billing');
+    expect(topBar).toContain("router.push('/billing')");
   });
 
   it('treats admin and recent as special project routes', () => {
