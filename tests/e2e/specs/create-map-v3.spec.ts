@@ -965,7 +965,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await createSavedMap(page);
     await generateReadyMap(page);
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
-    const viewports = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
+    const viewports = [{ width: 1440, height: 900 }, { width: 1024, height: 900 }, { width: 390, height: 844 }];
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       const workbench = page.getByTestId('create-map-workbench');
@@ -973,6 +973,27 @@ test.describe('Create Map V3 mocked workflow', () => {
       await expect(workbench).toBeVisible();
       await expectWithin(page.locator('[data-status="saved"]'), workbench);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+      if (viewport.width === 1024) {
+        const sourcePanel = page.getByLabel('Map source and references');
+        const inspector = page.getByLabel('Map plan and generation');
+        const [workbenchBox, sourcePanelBox, canvasBox, inspectorBox] = await Promise.all([
+          workbench.boundingBox(),
+          sourcePanel.boundingBox(),
+          canvas.boundingBox(),
+          inspector.boundingBox(),
+        ]);
+
+        expect(workbenchBox).not.toBeNull();
+        expect(sourcePanelBox).not.toBeNull();
+        expect(canvasBox).not.toBeNull();
+        expect(inspectorBox).not.toBeNull();
+        expect(sourcePanelBox?.x).toBeGreaterThanOrEqual(workbenchBox?.x ?? 0);
+        expect(canvasBox?.x).toBeGreaterThanOrEqual((sourcePanelBox?.x ?? 0) + (sourcePanelBox?.width ?? 0) - 1);
+        expect(inspectorBox?.x).toBeGreaterThanOrEqual((canvasBox?.x ?? 0) + (canvasBox?.width ?? 0) - 1);
+        expect((inspectorBox?.x ?? 0) + (inspectorBox?.width ?? 0)).toBeLessThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) + 1,
+        );
+      }
       if (viewport.width === 390) {
         const inspector = page.getByLabel('Map plan and generation');
         const [workbenchBox, canvasBox] = await Promise.all([

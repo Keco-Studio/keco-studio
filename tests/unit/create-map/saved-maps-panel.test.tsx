@@ -65,13 +65,13 @@ describe('SavedMapsPanel', () => {
     expect(markup).toContain('disabled=""');
   });
 
-  it('keeps the active map row visually neutral', () => {
+  it('fills the active map row with the sidebar selection surface', () => {
     const css = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
       'utf8',
     );
 
-    expect(css).toMatch(/\.savedMapButtonActive\s*\{[^}]*border-color:\s*transparent[^}]*background:\s*transparent/s);
+    expect(css).toMatch(/\.savedMapButtonActive\s*\{[^}]*border-color:\s*transparent[^}]*background:\s*#f3f6f8/s);
   });
 
   it('renders retryable error and empty states without map rows', () => {

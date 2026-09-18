@@ -1622,7 +1622,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             <button
               type="button"
               className={styles.sidebarToggleButton}
-              aria-label="Open source panel"
+              aria-label="Toggle source panel"
               onClick={handleSidebarToggle}
             >
               <Image src={topBarBreadCrumbIcon} alt="" width={24} height={24} className="icon-24" />
