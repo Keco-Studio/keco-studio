@@ -19,6 +19,10 @@
   margin-bottom: -4rem;
 }
 
+.headerCreateMap.headerCreateMapCollapsed {
+  margin-left: 0;
+}
+
 .headerSimulation .left {
   flex: 0 0 auto;
   min-width: max-content;

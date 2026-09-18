@@ -2,15 +2,17 @@
 
 import {
   ArrowLeftOutlined,
+  ArrowUpOutlined,
   CloseOutlined,
-  FilterOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
   PlusOutlined,
   SearchOutlined,
-  SendOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import paperIcon from '@/assets/images/paper.svg';
+import mapPlanIcon from '@/assets/images/simulator/map-plan.svg';
 import {
   containsUnsafeDescriptionContent,
   DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
@@ -26,6 +28,23 @@ export type MapChatMessage = {
 export type MapChatAttachedDocument = {
   id: string;
   name: string;
+};
+
+export type MapGenerationHistoryEntry = {
+  revisionId: string;
+  label: string;
+  isCurrent: boolean;
+};
+
+export type MapPlanCard = {
+  title: string;
+  versionLabel: string;
+};
+
+export type MapImageCard = {
+  title: string;
+  versionLabel: string;
+  downloadUrl: string;
 };
 
 type MapChatPanelProps = {
@@ -45,6 +64,10 @@ type MapChatPanelProps = {
   onClearAttachedDocument?: () => void;
   onAttachFile?: (file: File) => void;
   onAttachKecoDocument?: () => void;
+  generationHistory?: MapGenerationHistoryEntry[];
+  mapPlan?: MapPlanCard | null;
+  mapImage?: MapImageCard | null;
+  onViewMapPlan?: () => void;
   fileAccept?: string;
 };
 
@@ -79,12 +102,16 @@ export function MapChatPanel({
   onClearAttachedDocument,
   onAttachFile,
   onAttachKecoDocument,
+  generationHistory = [],
+  mapPlan = null,
+  mapImage = null,
+  onViewMapPlan,
   fileAccept = '.txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }: MapChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
-  const [filterOpen, setFilterOpen] = useState(false);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const attachWrapRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -106,7 +133,7 @@ export function MapChatPanel({
     const node = listRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [visibleMessages, showGenerate, filterOpen]);
+  }, [visibleMessages, showGenerate]);
 
   useEffect(() => {
     if (!attachMenuOpen) return;
@@ -133,7 +160,47 @@ export function MapChatPanel({
     onAsk(prompt);
   };
 
-  const showSearch = filterOpen || messages.length > 0;
+  const showSearch = messages.length > 0;
+  const hasPlanMessage = messages.some((message) => message.role === 'assistant' && message.text.includes('map plan'));
+
+  const renderMapPlanCard = () => mapPlan ? (
+    <div className={styles.mapResourceCard}>
+      <FileTextOutlined className={styles.mapPlanDocumentIcon} aria-hidden="true" />
+      <span className={styles.mapResourceCardCopy}>
+        <strong>{mapPlan.title}</strong>
+        <small>{mapPlan.versionLabel}</small>
+      </span>
+      <button
+        type="button"
+        className={styles.mapResourceAction}
+        aria-label="View map plan"
+        title="View map plan"
+        disabled={!onViewMapPlan}
+        onClick={onViewMapPlan}
+      >
+        <Image src="/assets/create-map/eye-outline.png" alt="" width={20} height={20} aria-hidden="true" />
+      </button>
+    </div>
+  ) : null;
+
+  const renderMapImageCard = () => mapImage ? (
+    <div className={styles.mapResourceCard}>
+      <Image src={mapPlanIcon} alt="" width={22} height={22} aria-hidden="true" />
+      <span className={styles.mapResourceCardCopy}>
+        <strong>{mapImage.title}</strong>
+        <small>{mapImage.versionLabel}</small>
+      </span>
+      <a
+        className={styles.mapResourceAction}
+        aria-label="Download map"
+        title="Download map"
+        href={mapImage.downloadUrl}
+        download
+      >
+        <DownloadOutlined aria-hidden="true" />
+      </a>
+    </div>
+  ) : null;
 
   return (
     <section className={styles.chatPanel} aria-label="Map conversation">
@@ -153,16 +220,40 @@ export function MapChatPanel({
           >
             <PlusOutlined />
           </button>
-          <button
-            type="button"
-            className={styles.chatHeaderIconButton}
-            aria-label="Filter messages"
-            aria-pressed={filterOpen}
-            title="Filter messages"
-            onClick={() => setFilterOpen((open) => !open)}
-          >
-            <FilterOutlined />
-          </button>
+          <div className={styles.mapHistoryWrap}>
+            <button
+              type="button"
+              className={styles.chatHeaderIconButton}
+              aria-label="Show map generation history"
+              aria-expanded={historyOpen}
+              aria-controls="map-generation-history"
+              title="Map generation history"
+              disabled={generationHistory.length === 0}
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              <Image className={styles.mapHistoryIcon} src="/assets/create-map/map-history.png" width={19} height={14} alt="" />
+            </button>
+            <div id="map-generation-history" className={styles.mapHistoryMenu} hidden={!historyOpen}>
+              <p className={styles.mapHistoryLabel}>Map</p>
+              {generationHistory.map((entry) => (
+                <div
+                  key={entry.revisionId}
+                  className={entry.isCurrent ? styles.mapHistoryItemCurrent : styles.mapHistoryItem}
+                  aria-current={entry.isCurrent || undefined}
+                  data-history-version={entry.label}
+                >
+                  <Image
+                    src={mapPlanIcon}
+                    width={21}
+                    height={21}
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <span>{entry.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -184,22 +275,38 @@ export function MapChatPanel({
             />
           </label>
         ) : null}
-        {visibleMessages.map((message) => (
-          <div
-            key={message.id}
-            className={message.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAssistant}
-          >
-            {message.text}
-          </div>
-        ))}
-        {showGenerate ? (
+        {visibleMessages.map((message) => {
+          const isPlanMessage = message.role === 'assistant' && message.text.includes('map plan');
+          const isMapMessage = message.role === 'assistant' && message.text.includes('created map') && !isPlanMessage;
+          return (
+            <div key={message.id} className={styles.chatMessageGroup}>
+              <div className={message.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAssistant}>
+                {message.text}
+              </div>
+              {isPlanMessage ? renderMapPlanCard() : null}
+              {isPlanMessage && showGenerate ? (
+                <button
+                  type="button"
+                  className={styles.chatGenerateButton}
+                  disabled={!canGenerate || busy || readOnly}
+                  onClick={onGenerate}
+                >
+                  Generate Map
+                </button>
+              ) : null}
+              {isMapMessage ? renderMapImageCard() : null}
+            </div>
+          );
+        })}
+        {!hasPlanMessage ? renderMapPlanCard() : null}
+        {!hasPlanMessage && showGenerate ? (
           <button
             type="button"
             className={styles.chatGenerateButton}
             disabled={!canGenerate || busy || readOnly}
             onClick={onGenerate}
           >
-            Generate map
+            Generate Map
           </button>
         ) : null}
         {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
@@ -226,6 +333,24 @@ export function MapChatPanel({
           </div>
         ) : null}
         <div className={styles.chatInputBar}>
+          <textarea
+            className={styles.chatInput}
+            rows={1}
+            placeholder="Ask AI to help..."
+            aria-label="Ask AI to help"
+            aria-invalid={draftInvalid || undefined}
+            value={draft}
+            disabled={busy || readOnly}
+            maxLength={4000}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <div className={styles.chatInputActions}>
           <div className={styles.chatAttachWrap} ref={attachWrapRef}>
             <input
               ref={fileInputRef}
@@ -291,23 +416,6 @@ export function MapChatPanel({
               </div>
             ) : null}
           </div>
-          <textarea
-            className={styles.chatInput}
-            rows={1}
-            placeholder="Ask AI to help..."
-            aria-label="Ask AI to help"
-            aria-invalid={draftInvalid || undefined}
-            value={draft}
-            disabled={busy || readOnly}
-            maxLength={4000}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
           <button
             type="button"
             className={styles.chatSendButton}
@@ -315,8 +423,9 @@ export function MapChatPanel({
             disabled={!canSend}
             onClick={submit}
           >
-            <SendOutlined />
+            <ArrowUpOutlined />
           </button>
+          </div>
         </div>
         {draftInvalid ? (
           <p className={styles.inlineError} role="alert">

@@ -28,7 +28,7 @@ const summary: SavedMapSummary = {
 };
 
 describe('SavedMapsPanel', () => {
-  it('renders map identity, project context, update time, and selected state', () => {
+  it('renders map identity, update time, and selected state without duplicating the project name', () => {
     const markup = renderToStaticMarkup(<SavedMapsPanel
       maps={[summary]}
       isLoading={false}
@@ -42,7 +42,7 @@ describe('SavedMapsPanel', () => {
 
     expect(markup).toContain('Saved maps');
     expect(markup).toContain('River Town');
-    expect(markup).toContain('Adventure');
+    expect(markup).not.toContain('Adventure');
     expect(markup).toContain('v3');
     expect(markup).toContain('dateTime="2026-08-10T01:00:00.000Z"');
     expect(markup).toContain('aria-current="true"');
@@ -63,6 +63,15 @@ describe('SavedMapsPanel', () => {
     />);
 
     expect(markup).toContain('disabled=""');
+  });
+
+  it('keeps the active map row visually neutral', () => {
+    const css = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
+      'utf8',
+    );
+
+    expect(css).toMatch(/\.savedMapButtonActive\s*\{[^}]*border-color:\s*transparent[^}]*background:\s*transparent/s);
   });
 
   it('renders retryable error and empty states without map rows', () => {

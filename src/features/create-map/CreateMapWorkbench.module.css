@@ -11,18 +11,38 @@
   position: relative;
   display: grid;
   width: 100%;
-  min-width: 998px;
+  min-width: 0;
   height: 100%;
   min-height: 620px;
-  grid-template-columns: 300px minmax(480px, 1fr) minmax(300px, 351px);
+  grid-template-columns: 300px minmax(0, 1fr) minmax(300px, 351px);
   overflow: hidden;
   color: var(--create-map-ink);
   background: var(--create-map-surface);
   font-family: 'Roboto', sans-serif;
 }
 
-.workbenchBrowse {
-  grid-template-columns: 300px minmax(480px, 1fr);
+.workbenchCanvasOnly {
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.workbenchCanvasOnly .directCanvasPanel {
+  grid-column: 2 / -1;
+}
+
+.workbenchLeftCollapsed {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 351px);
+}
+
+.workbenchLeftCollapsed.workbenchCanvasOnly {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workbenchLeftCollapsed.workbenchCanvasOnly .directCanvasPanel {
+  grid-column: 1 / -1;
+}
+
+.workbenchLeftCollapsed .leftPanel {
+  display: none;
 }
 
 .leftPanel,
@@ -36,7 +56,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   background: #e7eaec;
 }
@@ -214,22 +234,29 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  padding: 8px 12px 16px;
+  margin-top: 16px;
+  padding: 0 8px 16px;
 }
 
 .savedMapsHeadingRow {
   display: flex;
+  width: calc(100% + 16px);
+  height: 50px;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  margin: 0 -8px 12px;
+  padding: 14px 17.5px;
+  border-top: 1px solid var(--create-map-line);
+  border-bottom: 1px solid var(--create-map-line);
 }
 
 .savedMapsHeading {
   margin: 0;
   color: #21272a;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .savedMapsAddButton {
@@ -243,6 +270,66 @@
   background: transparent;
   font-size: 14px;
   cursor: pointer;
+}
+
+.mapHistoryWrap {
+  position: relative;
+}
+
+.mapHistoryIcon {
+  filter: brightness(0);
+}
+
+.mapHistoryMenu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  width: 191px;
+  min-height: 122px;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+  border: 1px solid #cbd3d9;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, 0.16);
+}
+
+.mapHistoryMenu[hidden] {
+  display: none;
+}
+
+.mapHistoryLabel {
+  margin: 8px 12px 0;
+  color: #7b7b7b;
+  font-size: 12px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.mapHistoryItem,
+.mapHistoryItemCurrent {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: #21272a;
+  font-size: 16px;
+}
+
+.mapHistoryItemCurrent {
+  background: #e8f5fd;
+}
+
+.mapHistoryEmpty {
+  margin: 0;
+  padding: 10px 20px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .savedMapsAddButton:hover:not(:disabled) {
@@ -300,6 +387,7 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  margin-top: 16px;
   border-top: 1px solid var(--create-map-line);
 }
 
@@ -418,41 +506,55 @@
 
 .chatBubbleUser,
 .chatBubbleAssistant {
-  max-width: 92%;
-  padding: 10px 12px;
-  border-radius: 14px;
-  font-size: 13px;
-  line-height: 1.4;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.chatMessageGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .chatBubbleUser {
   align-self: flex-end;
+  width: fit-content;
+  max-width: 300px;
+  padding: 12px 16px;
   color: #fff;
   background: var(--create-map-blue);
-  border-bottom-right-radius: 4px;
+  border-radius: 20px;
 }
 
 .chatBubbleAssistant {
   align-self: flex-start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
   color: #1e293b;
   background: #fff;
   border: 1px solid #e8edf2;
-  border-bottom-left-radius: 4px;
+  border-radius: 22px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .chatGenerateButton {
   display: inline-flex;
-  min-height: 40px;
+  width: 100%;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   align-self: stretch;
   margin-top: 4px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 10px;
+  padding: 0 20px;
+  border: 1px solid #0b99ff;
+  border-radius: 8px;
   color: #fff;
   background: var(--create-map-blue);
   font: inherit;
@@ -469,7 +571,7 @@
 .chatComposer {
   display: grid;
   gap: 8px;
-  padding: 10px 12px 14px;
+  padding: 10px 4px 14px;
   border-top: 1px solid var(--create-map-line);
   background: #f5f7f9;
 }
@@ -526,15 +628,21 @@
 }
 
 .chatInputBar {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 34px;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 5px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
+  display: flex;
+  min-height: 96px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 10px 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 18px;
   background: #fff;
+  box-shadow: 0 6px 22px rgba(17, 24, 39, 0.07);
+}
+
+.chatInputActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .chatAttachWrap {
@@ -641,9 +749,9 @@
 
 .chatInput {
   width: 100%;
-  min-height: 32px;
+  min-height: 40px;
   max-height: 96px;
-  padding: 6px 2px;
+  padding: 1px 2px 0;
   resize: none;
   border: 0;
   outline: 0;
@@ -660,6 +768,71 @@
   box-shadow: none;
 }
 
+.mapResourceCard {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid #e3e8f0;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.mapResourceCardCopy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.mapResourceCardCopy strong {
+  color: #0b99ff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mapResourceCardCopy small {
+  color: #68737c;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.mapResourceAction {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #27313a;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mapResourceAction:hover,
+.mapResourceAction:focus-visible {
+  background: #eef2f7;
+  outline: none;
+}
+
+.mapResourceAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mapPlanDocumentIcon {
+  flex: 0 0 auto;
+  color: #0b99ff;
+  font-size: 20px;
+}
+
 .seedLabelStack {
   display: grid;
   gap: 2px;
@@ -667,17 +840,35 @@
 
 .planDetailsHeading {
   display: flex;
+  min-height: 70px;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  margin: 0 -17.5px;
+  padding: 12px 17.5px;
+  border-bottom: 1px solid var(--create-map-line);
+}
+
+.planDetailsCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0;
 }
 
 .planDetailsTitle {
   margin: 0;
   color: #0f172a;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.planDetailsVersion {
+  color: #737b84;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
 }
 
 .planDetailsClose {
@@ -687,7 +878,7 @@
   place-items: center;
   border: 0;
   border-radius: 8px;
-  color: #64748b;
+  color: #0a0a0a;
   background: transparent;
   cursor: pointer;
 }
@@ -761,7 +952,7 @@
   flex-direction: column;
   z-index: 31;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
   background: #fafafa;
   border-right: 0.5px solid #11111133;
 }
@@ -800,7 +991,6 @@
 }
 
 .sectionHeadingRow,
-.canvasHeader,
 .inlineActions,
 .selectedAsset,
 .rangeLabel,
@@ -810,7 +1000,6 @@
 }
 
 .sectionHeadingRow,
-.canvasHeader,
 .rangeLabel,
 .anchorReadout {
   justify-content: space-between;
@@ -828,8 +1017,7 @@
 }
 
 .sectionTitle,
-.sectionTitleSmall,
-.canvasHeader h2 {
+.sectionTitleSmall {
   margin: 0;
   color: var(--create-map-ink);
   letter-spacing: 0;
@@ -844,22 +1032,6 @@
   font-size: 13px;
   font-weight: 700;
   line-height: 1.4;
-}
-
-.canvasHeader {
-  gap: 12px;
-  justify-content: flex-end;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--create-map-line);
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.headerActions {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 12px;
 }
 
 .modeSwitch {
@@ -1029,6 +1201,55 @@
   font: inherit;
   font-size: 12px;
   font-weight: 500;
+}
+
+.directPlanInspector {
+  padding: 0 17.5px 16px;
+}
+
+.directPlanInspector .fieldLabel {
+  gap: 8px;
+  margin-top: 16px;
+  color: #0a0a0a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.directPlanInspector .input,
+.directPlanInspector .select {
+  height: 36px;
+  padding: 0 12px;
+  border-color: #bcbcbc;
+  border-radius: 8px;
+  color: #1a1a1a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.directPlanInspector .textareaCompact,
+.directPlanInspector .directDescription {
+  padding: 8px 12px;
+  border-color: #bcbcbc;
+  border-radius: 8px;
+  color: #1a1a1a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.directPlanInspector .textareaCompact {
+  min-height: 73px;
+  height: 73px;
+}
+
+.directPlanInspector .directDescription {
+  min-height: 73px;
+  height: 73px;
 }
 
 .textareaCompact,
@@ -1922,7 +2143,7 @@
 .savedMapButtonActive {
   display: grid;
   width: 100%;
-  min-height: 72px;
+  min-height: 64px;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 4px;
@@ -1941,9 +2162,9 @@
 }
 
 .savedMapButtonActive {
-  border-color: #93c9f5;
-  background: #edf6fc;
-  box-shadow: inset 0 0 0 1px rgba(11, 153, 255, 0.12);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .savedMapButton:focus-visible,
@@ -1966,8 +2187,9 @@
 
 .savedMapCopy strong {
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1976,15 +2198,16 @@
   display: -webkit-box;
   overflow: hidden;
   color: #6f7a83;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 20px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .savedMapMeta {
   color: #6f7a83;
-  font-size: 11px;
+  font-size: 14px;
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -2292,16 +2515,6 @@
   pointer-events: none;
 }
 
-.saveIndicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #68737c;
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .saveCluster {
   display: flex;
   align-items: flex-end;
@@ -2330,29 +2543,6 @@
   color: #a43d35;
   font-size: 12px;
   line-height: 1.45;
-}
-
-.saveIndicator span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #41805a;
-}
-
-.saveIndicator[data-status='saving'] span {
-  background: #c58a36;
-}
-
-.saveIndicator[data-status='local'] span {
-  background: #7e8992;
-}
-
-.saveIndicator[data-status='dirty'] span {
-  background: #c58a36;
-}
-
-.saveIndicator[data-status='error'] span {
-  background: #b7443c;
 }
 
 .twoColumnFields {
@@ -2471,7 +2661,6 @@
 }
 
 .drawerClose,
-.mobileOnly,
 .drawerScrim {
   display: none;
 }
@@ -2480,6 +2669,14 @@
   .workbench {
     min-width: 0;
     grid-template-columns: minmax(210px, 232px) minmax(420px, 1fr) minmax(248px, 278px);
+  }
+
+  .workbenchLeftCollapsed {
+    grid-template-columns: minmax(420px, 1fr) minmax(248px, 278px);
+  }
+
+  .workbenchLeftCollapsed.workbenchCanvasOnly {
+    grid-template-columns: minmax(420px, 1fr);
   }
 
   .panelSection,
@@ -2530,6 +2727,10 @@
     z-index: 31;
   }
 
+  .workbenchLeftCollapsed .leftPanel {
+    display: flex;
+  }
+
   .drawerScrim {
     position: absolute;
     inset: 0;
@@ -2555,9 +2756,6 @@
     cursor: pointer;
   }
 
-  .mobileOnly {
-    display: inline-grid;
-  }
 }
 
 @media (max-width: 899px) {
@@ -2582,28 +2780,9 @@
     overflow-y: hidden;
   }
 
-  .canvasHeader {
-    padding: 0 12px;
-  }
-
-  .saveIndicator {
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 @media (max-width: 479px) {
-  .canvasHeader {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-  }
-
-  .headerActions {
-    gap: 8px;
-  }
-
   .modeSwitch {
     grid-template-columns: repeat(2, 48px);
   }

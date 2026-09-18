@@ -105,6 +105,11 @@ export type SavedMapSummary = {
   schemaVersion: 3;
 };
 
+export type MapGenerationHistoryRevision = {
+  revisionId: string;
+  revisionNumber: number;
+};
+
 export type SavedMapWorkspace = {
   identity: MapDraftIdentity;
   plan: MapPlan;
@@ -387,6 +392,24 @@ export function createMapService(supabase: SupabaseClient) {
           name: String(row.name), currentRevisionId: String(row.current_revision_id),
           updatedAt: String(row.updated_at), schemaVersion,
         }];
+      });
+    },
+
+    async listGenerationHistoryV3(mapId: string): Promise<MapGenerationHistoryRevision[]> {
+      const { data, error } = await supabase
+        .from('map_revisions')
+        .select('id, revision_number, map_assets!inner(id)')
+        .eq('map_project_id', mapId)
+        .eq('schema_version', 3)
+        .eq('map_assets.kind', 'map_image')
+        .eq('map_assets.status', 'ready')
+        .order('revision_number', { ascending: false });
+      if (error) throw new CreateMapServiceError(error.code ?? 'map_history_failed', error.message);
+      return (data ?? []).flatMap((row) => {
+        const revisionNumber = Number(row.revision_number);
+        return typeof row.id === 'string' && Number.isInteger(revisionNumber)
+          ? [{ revisionId: row.id, revisionNumber }]
+          : [];
       });
     },
 
