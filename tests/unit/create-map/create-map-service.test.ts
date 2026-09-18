@@ -229,6 +229,32 @@ describe('Create Map browser service', () => {
     expect(limit).toHaveBeenCalledWith(50);
   });
 
+  it('lists ready V3 map-image revisions as generation history', async () => {
+    const order = jest.fn(async () => ({
+      data: [
+        { id: 'revision-4', revision_number: 4 },
+        { id: 'revision-2', revision_number: 2 },
+      ],
+      error: null,
+    }));
+    const query = {
+      eq: jest.fn(),
+      order,
+    };
+    query.eq.mockReturnValue(query);
+    const from = jest.fn(() => ({ select: jest.fn(() => query) }));
+
+    await expect(createMapService({ from } as never).listGenerationHistoryV3('map-1')).resolves.toEqual([
+      { revisionId: 'revision-4', revisionNumber: 4 },
+      { revisionId: 'revision-2', revisionNumber: 2 },
+    ]);
+    expect(query.eq).toHaveBeenCalledWith('map_project_id', 'map-1');
+    expect(query.eq).toHaveBeenCalledWith('schema_version', 3);
+    expect(query.eq).toHaveBeenCalledWith('map_assets.kind', 'map_image');
+    expect(query.eq).toHaveBeenCalledWith('map_assets.status', 'ready');
+    expect(order).toHaveBeenCalledWith('revision_number', { ascending: false });
+  });
+
   it('creates V2 asset plans with explicit generation and fingerprint identity', async () => {
     const rpc = jest.fn(async () => ({ data: [{ asset_id: 'asset-v2', status: 'planned' }], error: null }));
     const fingerprint = 'a'.repeat(64);

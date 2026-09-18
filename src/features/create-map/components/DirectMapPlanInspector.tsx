@@ -8,6 +8,7 @@ type DirectMapPlanInspectorProps = {
   onChange: (plan: MapPlanV3) => void;
   disabled?: boolean;
   onClose?: () => void;
+  versionLabel?: string;
 };
 
 export function DirectMapPlanInspector({
@@ -16,14 +17,18 @@ export function DirectMapPlanInspector({
   onChange,
   disabled = false,
   onClose,
+  versionLabel,
 }: DirectMapPlanInspectorProps) {
   const profileValue = `${plan.map.width}x${plan.map.height}`;
   const descriptionIssues = issues.filter((issue) => issue.path[0] === 'description');
 
   return (
-    <section className={styles.inspectorSection} aria-labelledby="direct-plan-heading">
+    <section className={`${styles.inspectorSection} ${styles.directPlanInspector}`} aria-labelledby="direct-plan-heading">
       <div className={styles.planDetailsHeading}>
-        <h2 id="direct-plan-heading" className={styles.planDetailsTitle}>Map plan details</h2>
+        <div className={styles.planDetailsCopy}>
+          <h2 id="direct-plan-heading" className={styles.planDetailsTitle}>Map plan details</h2>
+          {versionLabel ? <span className={styles.planDetailsVersion}>{versionLabel}</span> : null}
+        </div>
         {onClose ? (
           <button type="button" className={styles.planDetailsClose} aria-label="Close map plan details" onClick={onClose}>
             <CloseOutlined />

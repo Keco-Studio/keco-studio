@@ -52,6 +52,9 @@ jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
     installRestore: jest.fn(),
   }),
 }));
+jest.mock('@/features/create-map/hooks/useMapGenerationHistory', () => ({
+  useMapGenerationHistory: () => ({ revisions: [], refetch: jest.fn() }),
+}));
 jest.mock('@/features/create-map/hooks/useDirectMapCollisionGrid', () => ({
   useDirectMapCollisionGrid: () => ({
     phase: 'idle',
@@ -85,7 +88,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(markup).toContain('Manage and config game assets for game designers.');
     expect(markup).toContain('Select project');
     expect(markup).toContain('Saved maps');
-    expect(markup).toContain('Local plan');
+    expect(markup).not.toContain('Local plan');
     expect(markup).toContain('Map preview');
     expect(markup).not.toContain('Save draft');
     expect(markup).not.toContain('Prepare map generation');
@@ -124,7 +127,7 @@ describe('Create Map V3 direct workbench', () => {
       path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
       'utf8'
     );
-    expect(css).toContain('grid-template-columns: 300px minmax(480px, 1fr)');
+    expect(css).toContain('grid-template-columns: 300px minmax(0, 1fr)');
     expect(css).toContain('.chatAttachMenu');
   });
 
@@ -148,6 +151,12 @@ describe('Create Map V3 direct workbench', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*680px\)[\s\S]*?\.headerCreateMap \.searchContainer\s*\{[\s\S]*?display:\s*none/);
   });
 
+  it('does not render library Create or view controls in the Map top bar', () => {
+    const topBar = readFileSync(path.join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
+
+    expect(topBar).toMatch(/if \(onCreateMap\) \{\s*return null;\s*\}/);
+  });
+
   it('keeps the Map Generator sidebar full-height and aligned with Libraries controls', () => {
     const workbenchCss = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
@@ -161,8 +170,33 @@ describe('Create Map V3 direct workbench', () => {
     expect(topBarCss).toMatch(/\.headerCreateMap\s*\{[^}]*margin-left:\s*300px[^}]*margin-bottom:\s*-4rem/s);
     expect(workbenchCss).toMatch(/\.leftPanel\s*\{[^}]*background:\s*#fafafa[^}]*border-right:\s*0\.5px solid #11111133/s);
     expect(workbenchCss).toMatch(/\.directCanvasPanel,\s*\.rightPanel\s*\{[^}]*margin-top:\s*4rem[^}]*height:\s*calc\(100% - 4rem\)/s);
-    expect(workbenchCss).toMatch(/\.savedMapsSection\s*\{[^}]*padding:\s*8px 12px 16px/s);
+    expect(workbenchCss).toMatch(/\.savedMapsSection\s*\{[^}]*margin-top:\s*16px[^}]*padding:\s*0 8px 16px/s);
     expect(workbenchCss).toMatch(/\.savedMapsSearch\s*\{[^}]*height:\s*30px[^}]*border:\s*0[^}]*border-radius:\s*88px[^}]*background:\s*#f1f5f9/s);
+  });
+
+  it('notifies the TopBar of sidebar state only after the Map workbench commits', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
+      'utf8',
+    );
+
+    expect(workbench).not.toMatch(/setLeftCollapsed\(\(collapsed\)\s*=>\s*\{[\s\S]*?window\.dispatchEvent/);
+    expect(workbench).toMatch(/useEffect\(\(\)\s*=>\s*\{[\s\S]*?CREATE_MAP_SIDEBAR_STATE_EVENT[\s\S]*?\},\s*\[leftCollapsed\]\)/);
+  });
+
+  it('removes the right grid track when Map plan details are closed', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
+      'utf8',
+    );
+    const css = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
+      'utf8',
+    );
+
+    expect(workbench).toContain("showRightPanel ? '' : styles.workbenchCanvasOnly");
+    expect(css).toMatch(/\.workbenchLeftCollapsed\.workbenchCanvasOnly\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+    expect(css).toMatch(/\.workbenchCanvasOnly \.directCanvasPanel\s*\{[^}]*grid-column:\s*2 \/ -1/s);
   });
 
   it('installs V3 browser failure observers before the first navigation', () => {
