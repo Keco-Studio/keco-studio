@@ -6,8 +6,9 @@ const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets'
 const HELP = `Usage:\n  npm run storage:reconcile -- [--apply]\n\nReport mode is the default. --apply expires abandoned reservations and repairs cached totals only.\n\nRequired environment variables:\n  NEXT_PUBLIC_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY`;
 
 export type RegisteredStorageFile = { id: string; bucketId: string; objectPath: string; ownerId: string; sizeBytes: number; lifecycleStatus: 'active' | 'pending_cleanup' };
+export type RegisteredLogicalFile = { ownerId: string; sizeBytes: number };
 export type StorageReservation = { id: string; ownerId: string; expectedBytes: number; status: string; expiresAt: string };
-export type StorageQuota = { ownerId: string; usedBytes: number; reservedBytes: number };
+export type StorageQuota = { ownerId: string; usedBytes: number; logicalUsedBytes: number; reservedBytes: number };
 export type ReconciliationReport = {
   registeredObjects: number;
   physicalObjects: number;
@@ -16,6 +17,8 @@ export type ReconciliationReport = {
   sizeMismatches: number;
   ambiguousObjects: number;
   expiredReservations: number;
+  physicalQuotaMismatches: number;
+  logicalQuotaMismatches: number;
   quotaMismatches: number;
   repairedReservations: number;
   repairedQuotas: number;
@@ -23,6 +26,7 @@ export type ReconciliationReport = {
 export type ReconciliationClient = {
   listPhysicalStorageObjects?: () => Promise<Array<{ bucketId: string; objectPath: string; sizeBytes: number }>>;
   listRegisteredStorageFiles?: () => Promise<RegisteredStorageFile[]>;
+  listRegisteredLogicalFiles?: () => Promise<RegisteredLogicalFile[]>;
   listStorageReservations?: () => Promise<StorageReservation[]>;
   listStorageQuotas?: () => Promise<StorageQuota[]>;
   listAmbiguousStorageObjects?: () => Promise<Array<{ bucketId: string; objectPath: string }>>;
@@ -83,6 +87,15 @@ async function registeredFiles(client: ReconciliationClient): Promise<Registered
       : [];
   });
 }
+async function registeredLogicalFiles(client: ReconciliationClient): Promise<RegisteredLogicalFile[]> {
+  if (client.listRegisteredLogicalFiles) return client.listRegisteredLogicalFiles();
+  return (await rows(client, 'project_storage_logical_files', 'owner_id,size_bytes')).flatMap(row => {
+    const sizeBytes = numberValue(row.size_bytes);
+    return typeof row.owner_id === 'string' && sizeBytes !== null
+      ? [{ ownerId: row.owner_id, sizeBytes }]
+      : [];
+  });
+}
 async function reservations(client: ReconciliationClient): Promise<StorageReservation[]> {
   if (client.listStorageReservations) return client.listStorageReservations();
   return (await rows(client, 'storage_upload_reservations', 'id,owner_id,expected_bytes,status,expires_at')).flatMap(row => {
@@ -94,9 +107,13 @@ async function reservations(client: ReconciliationClient): Promise<StorageReserv
 }
 async function quotas(client: ReconciliationClient): Promise<StorageQuota[]> {
   if (client.listStorageQuotas) return client.listStorageQuotas();
-  return (await rows(client, 'account_storage_quotas', 'owner_id,used_bytes,reserved_bytes')).flatMap(row => {
-    const usedBytes = numberValue(row.used_bytes); const reservedBytes = numberValue(row.reserved_bytes);
-    return typeof row.owner_id === 'string' && usedBytes !== null && reservedBytes !== null ? [{ ownerId: row.owner_id, usedBytes, reservedBytes }] : [];
+  return (await rows(client, 'account_storage_quotas', 'owner_id,used_bytes,logical_used_bytes,reserved_bytes')).flatMap(row => {
+    const usedBytes = numberValue(row.used_bytes);
+    const logicalUsedBytes = numberValue(row.logical_used_bytes);
+    const reservedBytes = numberValue(row.reserved_bytes);
+    return typeof row.owner_id === 'string' && usedBytes !== null && logicalUsedBytes !== null && reservedBytes !== null
+      ? [{ ownerId: row.owner_id, usedBytes, logicalUsedBytes, reservedBytes }]
+      : [];
   });
 }
 async function applyExpiredReservations(client: ReconciliationClient): Promise<number> {
@@ -120,8 +137,8 @@ async function applyQuotaRebuild(client: ReconciliationClient): Promise<number> 
 }
 
 export async function reconcileAccountStorage(client: ReconciliationClient, { applySafeRepairs }: { applySafeRepairs: boolean }): Promise<ReconciliationReport> {
-  const [physical, registered, pendingReservations, cachedQuotas, ambiguous] = await Promise.all([
-    physicalObjects(client), registeredFiles(client), reservations(client), quotas(client), client.listAmbiguousStorageObjects ? client.listAmbiguousStorageObjects() : Promise.resolve([]),
+  const [physical, registered, logical, pendingReservations, cachedQuotas, ambiguous] = await Promise.all([
+    physicalObjects(client), registeredFiles(client), registeredLogicalFiles(client), reservations(client), quotas(client), client.listAmbiguousStorageObjects ? client.listAmbiguousStorageObjects() : Promise.resolve([]),
   ]);
   const physicalByKey = new Map(physical.map(item => [key(item.bucketId, item.objectPath), item]));
   const registeredByKey = new Map(registered.map(item => [key(item.bucketId, item.objectPath), item]));
@@ -136,21 +153,34 @@ export async function reconcileAccountStorage(client: ReconciliationClient, { ap
   const now = Date.now();
   const activePending = pendingReservations.filter(reservation => reservation.status === 'pending');
   const expiredReservations = activePending.filter(reservation => Number.isFinite(Date.parse(reservation.expiresAt)) && Date.parse(reservation.expiresAt) <= now);
-  const expected = new Map<string, { usedBytes: number; reservedBytes: number }>();
+  const expected = new Map<string, { usedBytes: number; logicalUsedBytes: number; reservedBytes: number }>();
   for (const file of registered) {
-    const value = expected.get(file.ownerId) ?? { usedBytes: 0, reservedBytes: 0 };
+    const value = expected.get(file.ownerId) ?? { usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 };
     value.usedBytes += file.sizeBytes; expected.set(file.ownerId, value);
   }
+  for (const file of logical) {
+    const value = expected.get(file.ownerId) ?? { usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 };
+    value.logicalUsedBytes += file.sizeBytes; expected.set(file.ownerId, value);
+  }
   for (const reservation of activePending.filter(reservation => !expiredReservations.includes(reservation))) {
-    const value = expected.get(reservation.ownerId) ?? { usedBytes: 0, reservedBytes: 0 };
+    const value = expected.get(reservation.ownerId) ?? { usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 };
     value.reservedBytes += reservation.expectedBytes; expected.set(reservation.ownerId, value);
   }
   const cached = new Map(cachedQuotas.map(quota => [quota.ownerId, quota]));
   const owners = new Set([...expected.keys(), ...cached.keys()]);
-  const quotaMismatches = [...owners].filter(ownerId => {
-    const actual = cached.get(ownerId); const wanted = expected.get(ownerId) ?? { usedBytes: 0, reservedBytes: 0 };
-    return !actual || actual.usedBytes !== wanted.usedBytes || actual.reservedBytes !== wanted.reservedBytes;
-  }).length;
+  let physicalQuotaMismatches = 0;
+  let logicalQuotaMismatches = 0;
+  let quotaMismatches = 0;
+  for (const ownerId of owners) {
+    const actual = cached.get(ownerId);
+    const wanted = expected.get(ownerId) ?? { usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 };
+    const physicalMismatch = !actual || actual.usedBytes !== wanted.usedBytes;
+    const logicalMismatch = !actual || actual.logicalUsedBytes !== wanted.logicalUsedBytes;
+    const reservationMismatch = !actual || actual.reservedBytes !== wanted.reservedBytes;
+    if (physicalMismatch) physicalQuotaMismatches += 1;
+    if (logicalMismatch) logicalQuotaMismatches += 1;
+    if (physicalMismatch || logicalMismatch || reservationMismatch) quotaMismatches += 1;
+  }
   let repairedReservations = 0; let repairedQuotas = 0;
   const parityFailure = missingObjects > 0 || unexpectedObjects > 0 || sizeMismatches > 0 || ambiguous.length > 0;
   if (applySafeRepairs && parityFailure) {
@@ -160,7 +190,7 @@ export async function reconcileAccountStorage(client: ReconciliationClient, { ap
     if (expiredReservations.length > 0) repairedReservations = await applyExpiredReservations(client);
     if (quotaMismatches > 0) repairedQuotas = await applyQuotaRebuild(client);
   }
-  return { registeredObjects: registered.length, physicalObjects: physical.length, missingObjects, unexpectedObjects, sizeMismatches, ambiguousObjects: ambiguous.length, expiredReservations: expiredReservations.length, quotaMismatches, repairedReservations, repairedQuotas };
+  return { registeredObjects: registered.length, physicalObjects: physical.length, missingObjects, unexpectedObjects, sizeMismatches, ambiguousObjects: ambiguous.length, expiredReservations: expiredReservations.length, physicalQuotaMismatches, logicalQuotaMismatches, quotaMismatches, repairedReservations, repairedQuotas };
 }
 
 export function parseReconciliationArguments(arguments_: readonly string[]): { help: boolean; applySafeRepairs: boolean } {
@@ -176,7 +206,7 @@ export async function runReconcileAccountStorageCommand(arguments_: readonly str
   dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: false, quiet: true });
   const client = createClient(requiredEnvironment('NEXT_PUBLIC_SUPABASE_URL'), requiredEnvironment('SUPABASE_SERVICE_ROLE_KEY'), { auth: { autoRefreshToken: false, persistSession: false } }) as unknown as ReconciliationClient;
   const report = await reconcileAccountStorage(client, parsed);
-  console.info(`Storage reconciliation: mode=${parsed.applySafeRepairs ? 'apply' : 'report'} registered=${report.registeredObjects} physical=${report.physicalObjects} missing=${report.missingObjects} unexpected=${report.unexpectedObjects} size_mismatches=${report.sizeMismatches} ambiguous=${report.ambiguousObjects} expired=${report.expiredReservations} quota_mismatches=${report.quotaMismatches} repaired_reservations=${report.repairedReservations} repaired_quotas=${report.repairedQuotas}`);
+  console.info(`Storage reconciliation: mode=${parsed.applySafeRepairs ? 'apply' : 'report'} registered=${report.registeredObjects} physical=${report.physicalObjects} missing=${report.missingObjects} unexpected=${report.unexpectedObjects} size_mismatches=${report.sizeMismatches} ambiguous=${report.ambiguousObjects} expired=${report.expiredReservations} physical_quota_mismatches=${report.physicalQuotaMismatches} logical_quota_mismatches=${report.logicalQuotaMismatches} quota_mismatches=${report.quotaMismatches} repaired_reservations=${report.repairedReservations} repaired_quotas=${report.repairedQuotas}`);
 }
 if (path.basename(process.argv[1] ?? '') === 'reconcile-account-storage.ts') {
   runReconcileAccountStorageCommand(process.argv.slice(2)).catch(() => { console.error('Storage reconciliation failed'); process.exitCode = 1; });

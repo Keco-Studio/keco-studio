@@ -11,6 +11,7 @@ export type StorageSourceKind =
   | 'map_asset'
   | 'character_asset'
   | 'document_content'
+  | 'library_table'
   | 'legacy_unassigned';
 
 export type AccountStorageSort =
@@ -33,8 +34,11 @@ export type AccountStorageProject = {
 export type AccountStorageSummary = {
   quotaBytes: number;
   usedBytes: number;
+  physicalUsedBytes: number;
+  logicalUsedBytes: number;
   reservedBytes: number;
   remainingBytes: number;
+  overageBytes: number;
   ownedProjects: AccountStorageProject[];
   sharedProjects: AccountStorageProject[];
   unassigned: { fileCount: number; usedBytes: number } | null;

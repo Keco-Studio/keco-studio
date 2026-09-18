@@ -34,7 +34,7 @@ export type BackfillReport = {
   unassignedObjects: number;
   conflicts: number;
   insertedFiles: number;
-  totalBytes: number;
+  physicalBytes: number;
 };
 
 export type BackfillClient = {
@@ -261,7 +261,7 @@ async function rebuildAccountStorageTotals(client: BackfillClient): Promise<void
 export async function backfillAccountStorage(client: BackfillClient, { apply }: { apply: boolean }): Promise<BackfillReport> {
   const projects = await knownProjects(client);
   const nativeReferences = client.findStorageAttributions ? null : await nativeAttributions(client, projects);
-  const report: BackfillReport = { scannedObjects: 0, attributableObjects: 0, unassignedObjects: 0, conflicts: 0, insertedFiles: 0, totalBytes: 0 };
+  const report: BackfillReport = { scannedObjects: 0, attributableObjects: 0, unassignedObjects: 0, conflicts: 0, insertedFiles: 0, physicalBytes: 0 };
   const plannedImports: Array<StorageObject & StorageAttribution> = [];
   for (const bucketId of ACCOUNTED_BUCKETS) {
     for (const object of await listObjects(client, bucketId)) {
@@ -281,7 +281,7 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
       }
       if (resolution.status === 'unassigned') report.unassignedObjects += 1;
       else report.attributableObjects += 1;
-      report.totalBytes += object.sizeBytes;
+      report.physicalBytes += object.sizeBytes;
       plannedImports.push({ ...object, ...resolution.attribution });
     }
   }
@@ -316,7 +316,7 @@ export async function runBackfillAccountStorageCommand(arguments_: readonly stri
   const serviceRoleKey = requiredEnvironment(process.env, 'SUPABASE_SERVICE_ROLE_KEY');
   const client = createClient(url, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } }) as unknown as BackfillClient;
   const report = await backfillAccountStorage(client, { apply: parsed.apply });
-  console.info(`Storage backfill: mode=${parsed.apply ? 'apply' : 'report'} scanned=${report.scannedObjects} attributable=${report.attributableObjects} unassigned=${report.unassignedObjects} conflicts=${report.conflicts} inserted=${report.insertedFiles} bytes=${report.totalBytes}`);
+  console.info(`Storage backfill: mode=${parsed.apply ? 'apply' : 'report'} scanned=${report.scannedObjects} attributable=${report.attributableObjects} unassigned=${report.unassignedObjects} conflicts=${report.conflicts} inserted=${report.insertedFiles} physical_bytes=${report.physicalBytes}`);
 }
 
 if (path.basename(process.argv[1] ?? '') === 'backfill-account-storage.ts') {

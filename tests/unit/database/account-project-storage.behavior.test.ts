@@ -63,6 +63,8 @@ describeDb('account project storage real Postgres behavior', () => {
   });
 
   beforeEach(async () => {
+    await fx.svc.from('documents').delete().eq('project_id', fx.projectId);
+    await fx.svc.from('libraries').delete().eq('project_id', fx.projectId).neq('id', fx.libraryId);
     await fx.svc.from('project_storage_file_locations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('storage_upload_reservations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('project_storage_files').delete().eq('project_id', fx.projectId);
@@ -73,6 +75,8 @@ describeDb('account project storage real Postgres behavior', () => {
       reserved_bytes: 0,
     });
     if (quota.error) throw new Error(`reset storage quota failed: ${quota.error.message}`);
+    const rebuild = await fx.svc.rpc('service_rebuild_account_storage_quota_totals');
+    if (rebuild.error) throw new Error(`rebuild storage quota failed: ${rebuild.error.message}`);
   });
 
   afterAll(async () => {
@@ -430,6 +434,185 @@ describeDb('account project storage real Postgres behavior', () => {
       .resolves.toMatchObject({ reused: false, expectedBytes: 16 });
   });
 
+  it('accounts UTF-8 documents and complete library tables without blocking logical writes', async () => {
+    const documentContent = `# \u903b\u8f91\u6587\u4ef6\n${'x'.repeat(1100)}`;
+    const document = await fx.editor.client.from('documents').insert({
+      project_id: fx.projectId,
+      name: `storage-document-${fx.suffix}`,
+      content: documentContent,
+      created_by: fx.editor.id,
+    }).select('id').single();
+    expect(document.error).toBeNull();
+    const documentId = document.data?.id as string;
+
+    const documentLogical = await fx.svc.from('project_storage_logical_files')
+      .select('project_id,owner_id,source_kind,size_bytes')
+      .eq('source_kind', 'document_content').eq('source_entity_id', documentId).single();
+    expect(documentLogical.error).toBeNull();
+    expect(documentLogical.data).toMatchObject({
+      project_id: fx.projectId,
+      owner_id: fx.owner.id,
+      source_kind: 'document_content',
+      size_bytes: Buffer.byteLength(documentContent, 'utf8'),
+    });
+
+    const updatedDocumentContent = `${documentContent}\n\u6570\u636e`;
+    const updatedDocument = await fx.svc.from('documents')
+      .update({ content: updatedDocumentContent }).eq('id', documentId);
+    expect(updatedDocument.error).toBeNull();
+    const updatedDocumentLogical = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('source_kind', 'document_content')
+      .eq('source_entity_id', documentId).single();
+    expect(updatedDocumentLogical.error).toBeNull();
+    expect(Number(updatedDocumentLogical.data?.size_bytes)).toBe(
+      Buffer.byteLength(updatedDocumentContent, 'utf8'),
+    );
+
+    const library = await fx.editor.client.from('libraries').insert({
+      project_id: fx.projectId,
+      name: `storage-table-${fx.suffix}`,
+      description: 'Complete logical table',
+    }).select('id').single();
+    expect(library.error).toBeNull();
+    const libraryId = library.data?.id as string;
+    const referenceLibrary = await fx.editor.client.from('libraries').insert({
+      project_id: fx.projectId,
+      name: `reference-${fx.suffix}`,
+    }).select('id').single();
+    expect(referenceLibrary.error).toBeNull();
+    const referenceLibraryId = referenceLibrary.data?.id as string;
+    const fieldIds = [randomUUID(), randomUUID()];
+    const fields = await fx.svc.from('library_field_definitions').insert([
+      {
+        id: fieldIds[0], library_id: libraryId, section: 'main', section_id: 'main',
+        label: 'Name', data_type: 'string', required: true, order_index: 0,
+      },
+      {
+        id: fieldIds[1], library_id: libraryId, section: 'main', section_id: 'main',
+        label: 'Stats', data_type: 'reference', required: false, order_index: 1,
+        reference_libraries: [referenceLibraryId],
+      },
+    ]);
+    expect(fields.error).toBeNull();
+
+    const rowIds = [randomUUID(), randomUUID()];
+    const rows = await fx.svc.from('library_assets').insert([
+      { id: rowIds[0], library_id: libraryId, name: 'Hero', row_index: 0 },
+      { id: rowIds[1], library_id: libraryId, name: 'Guide', row_index: 1 },
+    ]);
+    expect(rows.error).toBeNull();
+    const values = await fx.svc.from('library_asset_values').insert([
+      { asset_id: rowIds[0], field_id: fieldIds[0], value_json: '\u963f\u6f84' },
+      { asset_id: rowIds[0], field_id: fieldIds[1], value_json: { hp: 120, tags: ['lead'] } },
+      { asset_id: rowIds[1], field_id: fieldIds[0], value_json: 'Guide' },
+      { asset_id: rowIds[1], field_id: fieldIds[1], value_json: { hp: 80, tags: ['support'] } },
+    ]);
+    expect(values.error).toBeNull();
+
+    const libraryLogical = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('source_kind', 'library_table')
+      .eq('source_entity_id', libraryId).single();
+    expect(libraryLogical.error).toBeNull();
+    const initialLibraryBytes = Number(libraryLogical.data?.size_bytes);
+    expect(initialLibraryBytes).toBeGreaterThan(0);
+
+    const renamedReference = await fx.svc.from('libraries')
+      .update({ name: `reference-renamed-${fx.suffix}` }).eq('id', referenceLibraryId);
+    expect(renamedReference.error).toBeNull();
+    const libraryAfterReferenceRename = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('source_kind', 'library_table')
+      .eq('source_entity_id', libraryId).single();
+    expect(libraryAfterReferenceRename.error).toBeNull();
+    expect(Number(libraryAfterReferenceRename.data?.size_bytes)).toBeGreaterThan(initialLibraryBytes);
+
+    const updateValues = await fx.svc.from('library_asset_values').update({
+      value_json: { hp: 125, tags: ['lead', 'updated'] },
+    }).eq('asset_id', rowIds[0]).eq('field_id', fieldIds[1]);
+    expect(updateValues.error).toBeNull();
+    const updatedLibraryLogical = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('source_kind', 'library_table')
+      .eq('source_entity_id', libraryId).single();
+    expect(updatedLibraryLogical.error).toBeNull();
+    expect(Number(updatedLibraryLogical.data?.size_bytes)).toBeGreaterThan(initialLibraryBytes);
+
+    const secondProject = await fx.svc.from('projects').insert({
+      owner_id: fx.owner.id,
+      name: `storage-move-${fx.suffix}`,
+    }).select('id').single();
+    expect(secondProject.error).toBeNull();
+    const secondProjectId = secondProject.data?.id as string;
+    const moved = await fx.svc.from('documents').update({ project_id: secondProjectId })
+      .eq('id', documentId);
+    expect(moved.error).toBeNull();
+    const movedLogical = await fx.svc.from('project_storage_logical_files')
+      .select('project_id,size_bytes').eq('source_kind', 'document_content')
+      .eq('source_entity_id', documentId).single();
+    expect(movedLogical.error).toBeNull();
+    expect(movedLogical.data).toMatchObject({
+      project_id: secondProjectId,
+      size_bytes: Buffer.byteLength(updatedDocumentContent, 'utf8'),
+    });
+
+    const quota = await fx.svc.from('account_storage_quotas')
+      .select('used_bytes,logical_used_bytes').eq('owner_id', fx.owner.id).single();
+    const logicalRows = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('owner_id', fx.owner.id);
+    expect(quota.error).toBeNull();
+    expect(logicalRows.error).toBeNull();
+    expect(Number(quota.data?.used_bytes)).toBe(0);
+    expect(Number(quota.data?.logical_used_bytes)).toBe(
+      (logicalRows.data ?? []).reduce((total, row) => total + Number(row.size_bytes), 0),
+    );
+
+    const summary = await fx.owner.client.rpc('account_storage_summary');
+    expect(summary.error).toBeNull();
+    expect(summary.data).toMatchObject({
+      physicalUsedBytes: 0,
+      remainingBytes: 0,
+    });
+    expect(Number(summary.data.logicalUsedBytes)).toBeGreaterThan(QUOTA_BYTES);
+    expect(Number(summary.data.overageBytes)).toBeGreaterThan(0);
+
+    const listed = await fx.owner.client.rpc('account_storage_project_files', {
+      p_project_id: fx.projectId,
+      p_query: null,
+      p_sort: 'size_desc',
+      p_limit: 50,
+      p_offset: 0,
+    });
+    expect(listed.error).toBeNull();
+    expect(listed.data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceKind: 'library_table', sourceEntityId: libraryId }),
+    ]));
+
+    const deletedReferenceLibrary = await fx.svc.from('libraries').delete().eq('id', referenceLibraryId);
+    expect(deletedReferenceLibrary.error).toBeNull();
+    const libraryAfterReferenceDelete = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('source_kind', 'library_table')
+      .eq('source_entity_id', libraryId).single();
+    expect(libraryAfterReferenceDelete.error).toBeNull();
+    expect(Number(libraryAfterReferenceDelete.data?.size_bytes)).toBeLessThan(
+      Number(updatedLibraryLogical.data?.size_bytes),
+    );
+    const deletedLibrary = await fx.svc.from('libraries').delete().eq('id', libraryId);
+    expect(deletedLibrary.error).toBeNull();
+    const deletedProject = await fx.svc.from('projects').delete().eq('id', secondProjectId);
+    expect(deletedProject.error).toBeNull();
+    const deletedLogicalRows = await fx.svc.from('project_storage_logical_files')
+      .select('id').in('source_entity_id', [documentId, libraryId]);
+    expect(deletedLogicalRows.error).toBeNull();
+    expect(deletedLogicalRows.data).toEqual([]);
+    const finalQuota = await fx.svc.from('account_storage_quotas')
+      .select('logical_used_bytes').eq('owner_id', fx.owner.id).single();
+    const finalLogicalRows = await fx.svc.from('project_storage_logical_files')
+      .select('size_bytes').eq('owner_id', fx.owner.id);
+    expect(finalQuota.error).toBeNull();
+    expect(finalLogicalRows.error).toBeNull();
+    expect(Number(finalQuota.data?.logical_used_bytes)).toBe(
+      (finalLogicalRows.data ?? []).reduce((total, row) => total + Number(row.size_bytes), 0),
+    );
+  });
+
   it('keeps shared project usage out of the collaborator account counters', async () => {
     const quota = await fx.svc.from('account_storage_quotas').upsert({
       owner_id: secondOwner.id,
@@ -445,7 +628,8 @@ describeDb('account project storage real Postgres behavior', () => {
 
     const result = await fx.editor.client.rpc('account_storage_summary');
     if (result.error) throw new Error(result.error.message);
-    expect(result.data).toMatchObject({ usedBytes: 0, reservedBytes: 0 });
+    expect(result.data).toMatchObject({ physicalUsedBytes: 0, reservedBytes: 0 });
+    expect(Number(result.data.usedBytes)).toBe(Number(result.data.logicalUsedBytes));
     expect((result.data as { sharedProjects: Array<{ id: string }> }).sharedProjects)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: sharedProjectId })]));
   });

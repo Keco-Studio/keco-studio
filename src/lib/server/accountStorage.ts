@@ -16,8 +16,11 @@ import { StorageQuotaError } from './storageQuota';
 const SUMMARY_FIELDS = [
   'quotaBytes',
   'usedBytes',
+  'physicalUsedBytes',
+  'logicalUsedBytes',
   'reservedBytes',
   'remainingBytes',
+  'overageBytes',
   'ownedProjects',
   'sharedProjects',
   'unassigned',
@@ -36,6 +39,7 @@ const SOURCE_KINDS: readonly StorageSourceKind[] = [
   'map_asset',
   'character_asset',
   'document_content',
+  'library_table',
   'legacy_unassigned',
 ];
 const SORTS: readonly AccountStorageSort[] = [
@@ -136,8 +140,11 @@ function readSummary(data: unknown): AccountStorageSummary {
   return {
     quotaBytes: readCount(data.quotaBytes, 'quotaBytes'),
     usedBytes: readCount(data.usedBytes, 'usedBytes'),
+    physicalUsedBytes: readCount(data.physicalUsedBytes, 'physicalUsedBytes'),
+    logicalUsedBytes: readCount(data.logicalUsedBytes, 'logicalUsedBytes'),
     reservedBytes: readCount(data.reservedBytes, 'reservedBytes'),
     remainingBytes: readCount(data.remainingBytes, 'remainingBytes'),
+    overageBytes: readCount(data.overageBytes, 'overageBytes'),
     ownedProjects: readProjects(data.ownedProjects, true),
     sharedProjects: readProjects(data.sharedProjects, false),
     unassigned: readUnassigned(data.unassigned),

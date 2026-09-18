@@ -18,6 +18,12 @@ function clientFixture() {
         { id: 'three', bucketId: 'project-assets', objectPath: 'size-mismatch.png', ownerId: 'owner-a', sizeBytes: 20, lifecycleStatus: 'active' as const },
       ];
     },
+    async listRegisteredLogicalFiles() {
+      return [
+        { ownerId: 'owner-a', sizeBytes: 70 },
+        { ownerId: 'owner-b', sizeBytes: 30 },
+      ];
+    },
     async listStorageReservations() {
       return [
         { id: 'expired', ownerId: 'owner-a', expectedBytes: 30, status: 'pending', expiresAt: '2020-01-01T00:00:00.000Z' },
@@ -26,8 +32,8 @@ function clientFixture() {
     },
     async listStorageQuotas() {
       return [
-        { ownerId: 'owner-a', usedBytes: 0, reservedBytes: 30 },
-        { ownerId: 'owner-b', usedBytes: 0, reservedBytes: 10 },
+        { ownerId: 'owner-a', usedBytes: 0, logicalUsedBytes: 70, reservedBytes: 30 },
+        { ownerId: 'owner-b', usedBytes: 0, logicalUsedBytes: 30, reservedBytes: 10 },
       ];
     },
     async listAmbiguousStorageObjects() { return [{ bucketId: 'project-assets', objectPath: 'ambiguous.png' }]; },
@@ -47,6 +53,8 @@ describe('account storage reconciliation', () => {
       sizeMismatches: 1,
       ambiguousObjects: 1,
       expiredReservations: 1,
+      physicalQuotaMismatches: 1,
+      logicalQuotaMismatches: 0,
       quotaMismatches: 1,
       repairedReservations: 0,
       repairedQuotas: 0,
@@ -65,8 +73,9 @@ describe('account storage reconciliation', () => {
     const client = clientFixture();
     client.listPhysicalStorageObjects = async () => [{ bucketId: 'project-assets', objectPath: 'present.png', sizeBytes: 100 }];
     client.listRegisteredStorageFiles = async () => [{ id: 'one', bucketId: 'project-assets', objectPath: 'present.png', ownerId: 'owner-a', sizeBytes: 100, lifecycleStatus: 'active' as const }];
+    client.listRegisteredLogicalFiles = async () => [{ ownerId: 'owner-a', sizeBytes: 25 }];
     client.listStorageReservations = async () => [];
-    client.listStorageQuotas = async () => [{ ownerId: 'owner-a', usedBytes: 0, reservedBytes: 0 }];
+    client.listStorageQuotas = async () => [{ ownerId: 'owner-a', usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 }];
     client.listAmbiguousStorageObjects = async () => [];
     delete (client as { rebuildStorageQuotaTotals?: () => Promise<number> }).rebuildStorageQuotaTotals;
     const rpc = jest.fn(async (name: string) => name === 'service_rebuild_account_storage_quota_totals'
@@ -77,9 +86,32 @@ describe('account storage reconciliation', () => {
       .resolves.toMatchObject({ repairedReservations: 0, repairedQuotas: 3 });
   });
 
+  it('reports physical and logical counter drift independently', async () => {
+    const client = clientFixture();
+    client.listPhysicalStorageObjects = async () => [];
+    client.listRegisteredStorageFiles = async () => [];
+    client.listRegisteredLogicalFiles = async () => [
+      { ownerId: 'owner-a', sizeBytes: 40 },
+      { ownerId: 'owner-b', sizeBytes: 60 },
+    ];
+    client.listStorageReservations = async () => [];
+    client.listStorageQuotas = async () => [
+      { ownerId: 'owner-a', usedBytes: 10, logicalUsedBytes: 40, reservedBytes: 0 },
+      { ownerId: 'owner-b', usedBytes: 0, logicalUsedBytes: 0, reservedBytes: 0 },
+    ];
+    client.listAmbiguousStorageObjects = async () => [];
+
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: false })).resolves.toMatchObject({
+      physicalQuotaMismatches: 1,
+      logicalQuotaMismatches: 1,
+      quotaMismatches: 2,
+    });
+  });
+
   it('fails closed when registry state cannot be queried', async () => {
     const client = {
       async listPhysicalStorageObjects() { return []; },
+      async listRegisteredLogicalFiles() { return []; },
       from(table: string) {
         return {
           async select() {

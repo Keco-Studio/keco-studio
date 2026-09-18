@@ -47,6 +47,7 @@ function isSourceKind(value: unknown): value is StorageSourceKind {
     || value === 'map_asset'
     || value === 'character_asset'
     || value === 'document_content'
+    || value === 'library_table'
     || value === 'legacy_unassigned';
 }
 
@@ -78,8 +79,11 @@ function isAccountStorageSummary(value: unknown): value is AccountStorageSummary
 
   return isNonNegativeSafeInteger(candidate.quotaBytes)
     && isNonNegativeSafeInteger(candidate.usedBytes)
+    && isNonNegativeSafeInteger(candidate.physicalUsedBytes)
+    && isNonNegativeSafeInteger(candidate.logicalUsedBytes)
     && isNonNegativeSafeInteger(candidate.reservedBytes)
     && isNonNegativeSafeInteger(candidate.remainingBytes)
+    && isNonNegativeSafeInteger(candidate.overageBytes)
     && isProjectList(candidate.ownedProjects)
     && isProjectList(candidate.sharedProjects)
     && hasValidUnassigned;
@@ -173,6 +177,7 @@ function sourceLabel(kind: StorageSourceKind): string {
     case 'map_asset': return 'Assets';
     case 'character_asset': return 'Assets';
     case 'document_content': return 'Document';
+    case 'library_table': return 'Table';
     case 'legacy_unassigned': return 'Unassigned legacy file';
   }
 }
@@ -191,6 +196,8 @@ function sourceDestination(file: AccountStorageFile, projectId: string): string 
       return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
     case 'document_content':
       return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
+    case 'library_table':
+      return file.sourceEntityId ? `/${projectId}/${file.sourceEntityId}` : `/${projectId}`;
     case 'library_media':
       return `/${projectId}`;
     case 'legacy_unassigned':
@@ -198,19 +205,20 @@ function sourceDestination(file: AccountStorageFile, projectId: string): string 
   }
 }
 
-function storagePercentage(summary: AccountStorageSummary): number {
-  if (summary.quotaBytes === 0) return 0;
-  return Math.min(100, Math.max(0, Math.round(summary.usedBytes * 100 / summary.quotaBytes)));
+function storagePercentage(bytes: number, quotaBytes: number): number {
+  if (quotaBytes === 0) return 0;
+  return Math.min(100, Math.max(0, Math.round(bytes * 100 / quotaBytes)));
 }
 
-function usageWarning(percent: number): string | null {
-  if (percent >= 100) {
+function usageWarning(physicalUsedBytes: number, quotaBytes: number): string | null {
+  const rawPercent = quotaBytes === 0 ? 0 : physicalUsedBytes / quotaBytes * 100;
+  if (rawPercent >= 100) {
     return 'Storage is full. New uploads are blocked until space is released or your allowance is increased.';
   }
-  if (percent >= ACCOUNT_STORAGE_CRITICAL_PERCENT) {
+  if (rawPercent >= ACCOUNT_STORAGE_CRITICAL_PERCENT) {
     return 'Storage is 95% full. Free space soon to avoid blocked uploads.';
   }
-  if (percent >= ACCOUNT_STORAGE_WARNING_PERCENT) {
+  if (rawPercent >= ACCOUNT_STORAGE_WARNING_PERCENT) {
     return 'Storage is 80% full. Consider freeing space before your projects reach their allowance.';
   }
   return null;
@@ -271,8 +279,16 @@ export function AccountStorageSection() {
 
   const firstLoadFailed = Boolean(summaryQuery.error && !summaryQuery.data);
   const refreshFailed = Boolean(summaryQuery.error && summaryQuery.data);
-  const percent = summaryQuery.data ? storagePercentage(summaryQuery.data) : 0;
-  const warning = summaryQuery.data ? usageWarning(percent) : null;
+  const percent = summaryQuery.data
+    ? storagePercentage(summaryQuery.data.usedBytes, summaryQuery.data.quotaBytes)
+    : 0;
+  const physicalUsageIsCritical = summaryQuery.data
+    ? summaryQuery.data.quotaBytes > 0
+      && summaryQuery.data.physicalUsedBytes / summaryQuery.data.quotaBytes * 100 >= ACCOUNT_STORAGE_CRITICAL_PERCENT
+    : false;
+  const warning = summaryQuery.data
+    ? usageWarning(summaryQuery.data.physicalUsedBytes, summaryQuery.data.quotaBytes)
+    : null;
   const filePage = filesQuery.data;
 
   function selectProject(project: AccountStorageProject) {
@@ -289,7 +305,7 @@ export function AccountStorageSection() {
         <span className={styles.icon} aria-hidden="true">▣</span>
         <div>
           <h2 id="account-storage-heading">Storage</h2>
-          <p>Physical files stored by your projects.</p>
+          <p>Files and content stored by your projects.</p>
         </div>
       </div>
 
@@ -330,13 +346,24 @@ export function AccountStorageSection() {
               </div>
               {summaryQuery.data ? <span>{percent}% used</span> : null}
             </div>
+            {summaryQuery.data ? (
+              <div className={styles.usageBreakdown} aria-label="Storage usage breakdown">
+                <span>Files {formatStorageBytes(summaryQuery.data.physicalUsedBytes)}</span>
+                <span>Documents and tables {formatStorageBytes(summaryQuery.data.logicalUsedBytes)}</span>
+              </div>
+            ) : null}
             {refreshFailed ? (
               <div className={styles.refreshError} role="alert">
                 <span>Storage data could not be refreshed. Showing the last loaded values.</span>
                 <button type="button" onClick={() => void summaryQuery.refetch()}>Retry</button>
               </div>
             ) : null}
-            {warning ? <p className={percent >= 95 ? styles.criticalWarning : styles.warning} role="alert">{warning}</p> : null}
+            {summaryQuery.data && summaryQuery.data.overageBytes > 0 ? (
+              <p className={styles.criticalWarning} role="alert">
+                Stored content exceeds the allowance by {formatStorageBytes(summaryQuery.data.overageBytes)}.
+              </p>
+            ) : null}
+            {warning ? <p className={physicalUsageIsCritical ? styles.criticalWarning : styles.warning} role="alert">{warning}</p> : null}
           </div>
 
           <div className={styles.explorer} data-testid="account-storage-explorer" data-stacks-on-mobile="true">
