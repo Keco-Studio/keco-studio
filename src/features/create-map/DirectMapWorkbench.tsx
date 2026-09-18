@@ -318,8 +318,12 @@ export function DirectMapWorkbench() {
           : []),
       ]);
       setViewMode('detail');
-      setPlanDetailsOpen(false);
-      closeDrawers();
+      // Opening a saved map should restore the inspector so the loaded plan,
+      // generation state, and collision grid are immediately available. The
+      // mobile drawer also needs to be open; otherwise the collision status
+      // exists in state but is not rendered for the user.
+      setPlanDetailsOpen(true);
+      setRightOpen(true);
     } catch (cause) {
       if (savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) {
         setError(cause instanceof Error ? cause.message : 'Could not open the saved map.');
