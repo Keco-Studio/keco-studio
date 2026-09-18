@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { parseDesktopSessionHash } from '@/lib/desktopSessionHandoff';
 
 export default function DesktopSessionPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const [error, setError] = useState<string | null>(null);
 
@@ -29,11 +27,9 @@ export default function DesktopSessionPage() {
           setError('Unable to complete desktop sign-in.');
           return;
         }
-        if (!cancelled) router.replace('/projects');
+        if (!cancelled) window.location.replace('/projects?desktop=1');
       } catch {
         if (!cancelled) setError('Unable to complete desktop sign-in.');
-      } finally {
-        history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
       }
     };
 
@@ -41,7 +37,7 @@ export default function DesktopSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabase]);
+  }, [supabase]);
 
   if (error) {
     return (

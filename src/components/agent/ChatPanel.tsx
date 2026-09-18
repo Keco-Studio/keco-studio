@@ -336,6 +336,7 @@ export function ChatPanel() {
 
           <ChatInput
             userId={userProfile?.id}
+            projectId={currentProjectId ?? undefined}
             isStreaming={isStreaming}
             autoExecute={autoExecute}
             focusRequest={inputFocusRequest}

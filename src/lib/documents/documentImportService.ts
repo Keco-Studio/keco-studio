@@ -138,7 +138,9 @@ export async function createImportedDocument(
       uploadedImages = await uploadDocumentImagesAtomically(
         client,
         parsed.images,
-        userId
+        userId,
+        input.projectId,
+        documentId,
       );
       assertUploadedImagePositions(parsed.images, uploadedImages);
     }

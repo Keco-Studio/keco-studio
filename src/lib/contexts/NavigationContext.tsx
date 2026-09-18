@@ -676,6 +676,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       ];
     }
 
+    if (pathname === '/billing') {
+      return [{ label: 'Billing', path: '/billing' }];
+    }
+
     if (onCreateMap) {
       if (createMapProject?.projectName) {
         nextBreadcrumbs.push({ label: createMapProject.projectName, path: '/create-map' });
@@ -725,14 +729,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       nextBreadcrumbs.push({
         label: 'Settings',
         path: `/${currentProjectId}/admin`,
-      });
-      return nextBreadcrumbs;
-    }
-
-    if (currentProjectId && pathname?.startsWith(`/${currentProjectId}/billing`)) {
-      nextBreadcrumbs.push({
-        label: 'Billing',
-        path: `/${currentProjectId}/billing`,
       });
       return nextBreadcrumbs;
     }

@@ -48,10 +48,15 @@ jobs:
             BASE_COMMIT="${{ github.event.pull_request.base.sha }}"
             IS_PULL_REQUEST=true
           else
-            BASE_COMMIT="origin/main"
+            # On a push checkout, origin/main already points at the pushed
+            # commit. Compare against the event's previous commit instead.
+            BASE_COMMIT="${{ github.event.before }}"
             IS_PULL_REQUEST=false
-            if ! git rev-parse --verify "$BASE_COMMIT^{commit}" >/dev/null 2>&1; then
-              BASE_COMMIT="origin/master"
+            if [[ -z "$BASE_COMMIT" || "$BASE_COMMIT" =~ ^0+$ ]] || ! git rev-parse --verify "$BASE_COMMIT^{commit}" >/dev/null 2>&1; then
+              BASE_COMMIT="origin/main"
+              if ! git rev-parse --verify "$BASE_COMMIT^{commit}" >/dev/null 2>&1; then
+                BASE_COMMIT="origin/master"
+              fi
             fi
           fi
 

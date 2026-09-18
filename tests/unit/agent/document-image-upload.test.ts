@@ -49,6 +49,7 @@ function makeSupabase(opts: {
             ? { data: null, error: { message: 'cleanup boom' } }
             : { data: paths, error: null };
         },
+        info: async () => ({ data: null, error: { message: 'not found' } }),
       }),
     },
   } as unknown as SupabaseClient;

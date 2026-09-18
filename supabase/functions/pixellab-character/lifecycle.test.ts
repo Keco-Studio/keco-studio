@@ -3,6 +3,7 @@ import { runCharacterLifecycle } from "./lifecycle.ts";
 import { PixelLabCharacterError, type AuthorizedCharacterAttempt, type CharacterCapability } from "./types.ts";
 
 const IDS = {
+  actorUserId: "55555555-5555-4555-8555-555555555555",
   projectId: "11111111-1111-4111-8111-111111111111",
   assetId: "22222222-2222-4222-8222-222222222222",
   attemptId: "33333333-3333-4333-8333-333333333333",
@@ -19,6 +20,7 @@ function fixture(overrides: Partial<AuthorizedCharacterAttempt> = {}) {
   const transitions: Array<{ from: string; to: string; details: Record<string, unknown> }> = [];
   const submissions: Record<string, unknown>[] = [];
   const state: AuthorizedCharacterAttempt = {
+    actorUserId: IDS.actorUserId,
     projectId: IDS.projectId, assetId: IDS.assetId, attemptId: IDS.attemptId,
     generationId: IDS.generationId, planFingerprint: "c".repeat(64), attemptCount: 0,
     status: "planned", lastErrorCode: null, providerJobId: null, metadata: {},

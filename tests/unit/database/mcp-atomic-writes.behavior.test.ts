@@ -223,6 +223,19 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     }], rowId);
     expect(table.error).toBeNull();
 
+    const reservation = await fx.editor.client.rpc('reserve_project_storage_upload', {
+      p_project_id: fx.projectId,
+      p_bucket_id: 'library-media-files',
+      p_object_path: path,
+      p_expected_bytes: bytes.byteLength,
+      p_display_name: fileName,
+      p_mime_type: 'image/png',
+      p_source_kind: 'library_media',
+      p_source_entity_id: null,
+    });
+    expect(reservation.error).toBeNull();
+    const reservationId = (reservation.data as { reservationId: string }).reservationId;
+
     const bucket = fx.editor.client.storage.from('library-media-files');
     const uploaded = await bucket.upload(path, bytes, {
       contentType: 'image/png',
@@ -262,6 +275,10 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       expect(persisted.data?.value_json).toEqual(image);
     } finally {
       await bucket.remove([path]);
+      const released = await fx.editor.client.rpc('release_project_storage_upload', {
+        p_reservation_id: reservationId,
+      });
+      expect(released.error).toBeNull();
     }
   });
 

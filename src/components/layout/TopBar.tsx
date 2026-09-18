@@ -1619,12 +1619,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <Image src={topBarBreadCrumbIcon}
-              alt="Breadcrumb"
-              width={24} height={24} className="icon-24"
-              style={{ marginRight: '5px', cursor: 'pointer' }}
+            <button
+              type="button"
+              className={styles.sidebarToggleButton}
+              aria-label="Open source panel"
               onClick={handleSidebarToggle}
-            />
+            >
+              <Image src={topBarBreadCrumbIcon} alt="" width={24} height={24} className="icon-24" />
+            </button>
             {onSimulationSystem ? (
               <div className={styles.simulationHeaderSlot} data-simulation-header-slot />
             ) : (

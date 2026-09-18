@@ -85,7 +85,7 @@ describeDb('AI usage accounting real Postgres behavior', () => {
       },
       requestKind: overrides.requestKind ?? 'chat_completion',
       provider: overrides.provider ?? 'deepseek',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       attempt: 1,
       providerRequestId: `request-${eventKey}`,
       outcome: overrides.outcome ?? 'succeeded',
@@ -205,7 +205,7 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     )).toEqual({ count: 0 });
   });
 
-  it('rounds aggregate DeepSeek tokens once and excludes non-billable events', async () => {
+  it('aggregates priced DeepSeek costs as three Credits per USD and excludes non-billable events', async () => {
     const billable = [
       event({ usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 } }),
       event({ usage: { inputTokens: 5, outputTokens: 6, totalTokens: 11 } }),
@@ -223,12 +223,14 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     ]);
     expect(aggregate).toEqual(expect.objectContaining({
       deepseekTokens: 21,
-      credits: 7,
       unknownEventCount: 0,
       users: expect.objectContaining({
-        [fx.owner.id]: expect.objectContaining({ deepseekTokens: 21, credits: 7 }),
+        [fx.owner.id]: expect.objectContaining({ deepseekTokens: 21 }),
       }),
     }));
+    expect(Number(aggregate.credits)).toBeCloseTo(0.00002565, 12);
+    const users = aggregate.users as Record<string, Record<string, unknown>>;
+    expect(Number(users[fx.owner.id].credits)).toBeCloseTo(0.00002565, 12);
   });
 
   it('retains deleted-user usage in account totals but removes it from current-user totals', async () => {
@@ -239,9 +241,10 @@ describeDb('AI usage accounting real Postgres behavior', () => {
 
     expect(await summary()).toEqual(expect.objectContaining({
       deepseekTokens: 6,
-      credits: 2,
       users: {},
     }));
+    const aggregate = await summary();
+    expect(Number(aggregate.credits)).toBeCloseTo(0.00000675, 12);
     expect(queryJson(
       `select json_build_object('userId', user_id) from public.ai_usage_events where event_key = '${payload.eventKey}'`,
     )).toEqual({ userId: null });

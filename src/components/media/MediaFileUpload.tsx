@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Tooltip, App } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import {
   uploadMediaFile,
   deleteMediaFile,
@@ -30,6 +33,8 @@ interface MediaFileUploadProps {
   onBlur?: () => void;
   // Optional parent-controlled toast, such as LibraryAssetsTable's TableToast.
   onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
+  projectId?: string;
+  sourceKind?: 'library_media' | 'document_image';
 }
 
 export function MediaFileUpload({
@@ -41,9 +46,14 @@ export function MediaFileUpload({
   onFocus,
   onBlur,
   onShowToast,
+  projectId: projectIdProp,
+  sourceKind = 'library_media',
 }: MediaFileUploadProps) {
+  const params = useParams<{ projectId?: string }>();
+  const projectId = projectIdProp ?? params?.projectId;
   const supabase = useSupabase();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, userProfile } = useAuth();
+  const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
@@ -154,7 +164,12 @@ export function MediaFileUpload({
     try {
       // Get user ID from auth, not from userProfile
       const userId = await getCurrentUserId(supabase);
-      const metadata = await uploadMediaFile(supabase, file, userId);
+      if (!projectId) throw new Error('Project context is required for file uploads');
+      const metadata = await uploadMediaFile(supabase, file, {
+        userId,
+        projectId,
+        sourceKind,
+      });
       onChange(metadata);
       setUploadProgress('Upload complete!');
       setTimeout(() => {
@@ -165,7 +180,9 @@ export function MediaFileUpload({
         onBlur?.();
       }, 2000);
     } catch (e: any) {
-      const msg = e?.message || 'Upload failed';
+      const msg = e?.message === 'STORAGE_QUOTA_EXCEEDED'
+        ? storageQuotaMessage(roleQuery.data?.isOwner === true)
+        : e?.message || 'Upload failed';
       setError(msg);
       if (onShowToast) {
         onShowToast(msg, 'error');

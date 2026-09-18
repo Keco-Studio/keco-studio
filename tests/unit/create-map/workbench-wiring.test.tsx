@@ -151,6 +151,12 @@ describe('Create Map V3 direct workbench', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*680px\)[\s\S]*?\.headerCreateMap \.searchContainer\s*\{[\s\S]*?display:\s*none/);
   });
 
+  it('exposes an accessible source-panel toggle in the compact Create Map header', () => {
+    const topBar = readFileSync(path.join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
+
+    expect(topBar).toMatch(/<button[^>]*aria-label="Open source panel"[^>]*onClick=\{handleSidebarToggle\}/s);
+  });
+
   it('does not render library Create or view controls in the Map top bar', () => {
     const topBar = readFileSync(path.join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
 

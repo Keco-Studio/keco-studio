@@ -7,13 +7,9 @@ import { listSubscriptionPlans, type StudioPlan } from '@/lib/studio-plans';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import styles from './BillingPlansPage.module.css';
 
-type BillingPlansPageProps = {
-  projectId: string;
-};
-
 const SALES_EMAIL = 'sales@keco.studio';
 
-export function BillingPlansPage({ projectId }: BillingPlansPageProps) {
+export function BillingPlansPage() {
   const { userProfile } = useAuth();
   const subscriptionPlans = useMemo(() => listSubscriptionPlans(), []);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -36,7 +32,6 @@ export function BillingPlansPage({ projectId }: BillingPlansPageProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId,
           planId: plan.id,
           customerEmail: email,
         }),

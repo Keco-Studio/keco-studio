@@ -808,6 +808,23 @@
   align-items: center;
 }
 
+.sidebarToggleButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebarToggleButton:focus-visible {
+  outline: 2px solid #8ecfff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .simulationHeaderSlot {
   display: flex;
   min-width: max-content;

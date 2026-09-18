@@ -77,6 +77,19 @@ describe('AccountCreditsSection', () => {
     expect(screen.getByText('Usage tracked since Sep 17, 2026')).toBeTruthy();
   });
 
+  it('shows cost-based Credit usage without rounding a small balance to zero', async () => {
+    global.fetch = jest.fn(async () => response(200, {
+      ...summary,
+      used: 0.0000819,
+      remaining: 99_999_999.9999181,
+    })) as never;
+
+    renderCredits();
+
+    expect((await screen.findByTestId('account-credits-used')).textContent).toBe('0.000082');
+    expect(screen.getByTestId('account-credits-remaining').textContent).toBe('99,999,999.999918');
+  });
+
   it('keeps three fixed Credit placeholders while loading', () => {
     global.fetch = jest.fn(() => new Promise(() => undefined)) as never;
 

@@ -342,6 +342,7 @@ export async function composeAndPersistBackground(authorized: AuthorizedAsset) {
     const ready = await persistValidatedAsset(
       {
         serviceClient: authorized.serviceClient,
+        actorUserId: authorized.userId,
         projectId: authorized.projectId,
         mapId: authorized.mapId,
         revisionId: authorized.revisionId,

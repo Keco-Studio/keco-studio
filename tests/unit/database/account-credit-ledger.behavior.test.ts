@@ -96,7 +96,7 @@ describeDb('account credit ledger real Postgres behavior', () => {
       },
       requestKind: overrides.requestKind ?? 'chat_completion',
       provider: overrides.provider ?? 'deepseek',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       attempt: 1,
       providerRequestId: `request-${eventKey}`,
       outcome: 'succeeded',
@@ -140,7 +140,7 @@ describeDb('account credit ledger real Postgres behavior', () => {
     return result.data as Record<string, unknown>;
   }
 
-  it('rounds aggregate DeepSeek usage once while excluding unpriced events', async () => {
+  it('charges three Credits per USD for priced DeepSeek usage while excluding unpriced events', async () => {
     expect((await grant(fx.owner.id, 100_000_000)).error).toBeNull();
     for (const payload of [
       event({ usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 } }),
@@ -151,14 +151,15 @@ describeDb('account credit ledger real Postgres behavior', () => {
       event({ provider: 'pixellab', requestKind: 'provider_generation', usage: null }),
     ]) expect((await record(fx.owner.client, payload)).error).toBeNull();
 
-    expect(await ownSummary(fx.owner.client)).toEqual(expect.objectContaining({
+    const summary = await ownSummary(fx.owner.client);
+    expect(summary).toEqual(expect.objectContaining({
       allocated: 100_000_000,
-      used: 7,
-      remaining: 99_999_993,
       overage: 0,
       deepseekTokens: 21,
       incompleteCount: 1,
     }));
+    expect(Number(summary.used)).toBeCloseTo(0.00002565, 12);
+    expect(Number(summary.remaining)).toBeCloseTo(99_999_999.99997435, 6);
   });
 
   it('combines grants and corrections before calculating a non-exhausted balance', async () => {
@@ -166,26 +167,28 @@ describeDb('account credit ledger real Postgres behavior', () => {
     expect((await grant(fx.owner.id, -20, 'test correction')).error).toBeNull();
     expect((await record(fx.owner.client, event())).error).toBeNull();
 
-    expect(await ownSummary(fx.owner.client)).toEqual(expect.objectContaining({
+    const summary = await ownSummary(fx.owner.client);
+    expect(summary).toEqual(expect.objectContaining({
       allocated: 80,
-      used: 7,
-      remaining: 73,
       overage: 0,
       deepseekTokens: 21,
       incompleteCount: 0,
     }));
+    expect(Number(summary.used)).toBeCloseTo(0.0000243, 12);
+    expect(Number(summary.remaining)).toBeCloseTo(79.9999757, 6);
   });
 
-  it('reports exhausted allocations as zero remaining and positive overage', async () => {
+  it('keeps the remaining balance precise for fractional Credit charges', async () => {
     expect((await grant(fx.owner.id, 5)).error).toBeNull();
     expect((await record(fx.owner.client, event())).error).toBeNull();
 
-    expect(await ownSummary(fx.owner.client)).toEqual(expect.objectContaining({
+    const summary = await ownSummary(fx.owner.client);
+    expect(summary).toEqual(expect.objectContaining({
       allocated: 5,
-      used: 7,
-      remaining: 0,
-      overage: 2,
+      overage: 0,
     }));
+    expect(Number(summary.used)).toBeCloseTo(0.0000243, 12);
+    expect(Number(summary.remaining)).toBeCloseTo(4.9999757, 6);
   });
 
   it('rejects duplicate allocation references', async () => {
@@ -219,27 +222,24 @@ describeDb('account credit ledger real Postgres behavior', () => {
       usage: { inputTokens: 6, outputTokens: 9, totalTokens: 15 },
     }))).error).toBeNull();
 
-    expect(await ownSummary(fx.owner.client)).toEqual(expect.objectContaining({
+    const own = await ownSummary(fx.owner.client);
+    expect(own).toEqual(expect.objectContaining({
       allocated: 100,
-      used: 7,
-      remaining: 93,
       overage: 0,
       deepseekTokens: 21,
       incompleteCount: 0,
     }));
+    expect(Number(own.used)).toBeCloseTo(0.0000243, 12);
+    expect(Number(own.remaining)).toBeCloseTo(99.9999757, 6);
     const after = await adminSummary();
     const allocated = Number(before.allocated) + 300;
-    const used = Number(before.used) + 12;
     expect(after).toEqual(expect.objectContaining({
       allocated,
-      used,
-      remaining: Math.max(allocated - used, 0),
-      overage: Math.max(used - allocated, 0),
       deepseekTokens: Number(before.deepseekTokens) + 36,
       incompleteCount: before.incompleteCount,
       users: expect.objectContaining({
-        [fx.owner.id]: expect.objectContaining({ allocated: 100, used: 7 }),
-        [fx.outsider.id]: expect.objectContaining({ allocated: 200, used: 5 }),
+        [fx.owner.id]: expect.objectContaining({ allocated: 100 }),
+        [fx.outsider.id]: expect.objectContaining({ allocated: 200 }),
         [fx.admin.id]: expect.objectContaining({
           allocated: 0,
           used: 0,
@@ -250,6 +250,12 @@ describeDb('account credit ledger real Postgres behavior', () => {
         }),
       }),
     }));
+    expect(Number(after.used) - Number(before.used)).toBeCloseTo(0.0000432, 12);
+    expect(Number(after.remaining)).toBeCloseTo(allocated - Number(after.used), 6);
+    expect(Number(after.overage)).toBeCloseTo(0, 12);
+    const users = after.users as Record<string, Record<string, unknown>>;
+    expect(Number(users[fx.owner.id].used)).toBeCloseTo(0.0000243, 12);
+    expect(Number(users[fx.outsider.id].used)).toBeCloseTo(0.0000189, 12);
   });
 
   it('denies unauthenticated and browser access to private ledger and admin summary', async () => {

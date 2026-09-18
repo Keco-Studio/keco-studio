@@ -26,9 +26,15 @@ describe('readOwnAccountCredits', () => {
     expect(client.rpc).toHaveBeenCalledWith('account_credit_summary');
   });
 
+  it('accepts decimal cost-based Credit amounts while retaining integer token counts', async () => {
+    const summary = { ...validSummary, used: 0.0000819, remaining: 99.9999181 };
+
+    await expect(readOwnAccountCredits(clientFor(summary) as never)).resolves.toEqual(summary);
+  });
+
   it.each([
     ['negative', 'allocated', -1],
-    ['fractional', 'used', 1.5],
+    ['fractional token count', 'deepseekTokens', 1.5],
     ['unsafe', 'remaining', Number.MAX_SAFE_INTEGER + 1],
     ['missing', 'overage', undefined],
     ['non-numeric', 'deepseekTokens', '120'],

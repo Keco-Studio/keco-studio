@@ -38,12 +38,36 @@ function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalize(value)).digest('hex');
 }
 
-function normalizedAvoid(snapshot: GameArtStyleSnapshot): string[] {
-  const values = [snapshot.customization.avoid.trim()];
-  for (const reference of snapshot.customization.referenceGames) {
-    values.push(`Do not copy ${reference.name} literally; borrow only: ${reference.borrow}`);
+const styleContractEncoder = new TextEncoder();
+
+function jsonStringByteLength(value: string): number {
+  return styleContractEncoder.encode(JSON.stringify(value)).byteLength;
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  const trimmed = value.trim();
+  if (jsonStringByteLength(trimmed) <= maxBytes) return trimmed;
+
+  const suffix = '...';
+  let result = '';
+  for (const character of trimmed) {
+    if (jsonStringByteLength(`${result}${character}${suffix}`) > maxBytes) break;
+    result += character;
   }
-  return values.filter(Boolean).slice(0, 12);
+  return `${result.trimEnd()}${suffix}`;
+}
+
+function combineStyleText(values: string[], maxBytes: number): string {
+  const nonEmptyValues = values.map((value) => value.trim()).filter(Boolean);
+  if (nonEmptyValues.length === 0) return '';
+  const textBytes = maxBytes - (nonEmptyValues.length - 1);
+  const perValueBytes = Math.floor(textBytes / nonEmptyValues.length);
+  return nonEmptyValues.map((value) => truncateUtf8(value, perValueBytes)).join('\n');
+}
+
+function normalizedAvoid(snapshot: GameArtStyleSnapshot): string[] {
+  const avoid = snapshot.customization.avoid.trim();
+  return avoid ? [truncateUtf8(avoid, 400)] : [];
 }
 
 export function compileGddMapStyleContract(
@@ -54,13 +78,26 @@ export function compileGddMapStyleContract(
   const candidate = {
     sourceArtStyleId: snapshot.presetId,
     sourceArtStyleVersion: snapshot.presetVersion,
-    palette: specification.paletteAndLighting,
-    outline: specification.shapeLanguage,
-    detail: `${specification.pixelTechnique}\n${specification.environmentDirection}\n${specification.propDirection}`,
-    shading: `${specification.paletteAndLighting}\n${specification.effectsDirection}`,
-    perspective: specification.environmentDirection,
-    customizationDirection: snapshot.customization.direction,
-    references: snapshot.customization.referenceGames,
+    // The database limits the entire JSON contract to 16KB. These byte
+    // budgets preserve every map-relevant direction while leaving headroom
+    // for JSON structure, hashes, and multi-byte localized text.
+    palette: truncateUtf8(specification.paletteAndLighting, 1_000),
+    outline: truncateUtf8(specification.shapeLanguage, 1_000),
+    detail: combineStyleText([
+      specification.pixelTechnique,
+      specification.environmentDirection,
+      specification.propDirection,
+    ], 1_500),
+    shading: combineStyleText([
+      specification.paletteAndLighting,
+      specification.effectsDirection,
+    ], 1_000),
+    perspective: truncateUtf8(specification.environmentDirection, 1_000),
+    customizationDirection: truncateUtf8(snapshot.customization.direction, 800),
+    references: snapshot.customization.referenceGames.map((reference) => ({
+      name: truncateUtf8(reference.name, 120),
+      borrow: truncateUtf8(reference.borrow, 240),
+    })),
     avoid: normalizedAvoid(snapshot),
     contentHash: '',
   };

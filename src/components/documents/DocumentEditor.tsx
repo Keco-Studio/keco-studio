@@ -158,11 +158,11 @@ function DocumentEditorSession({
 
   const imageUploadHandler = useCallback(
     async (image: File): Promise<string> => {
-      const urls = await uploadImageFiles(supabase, [image], permissions.userId);
+      const urls = await uploadImageFiles(supabase, [image], permissions.userId, projectId, document.id);
       if (urls.length === 0) throw new Error('Image upload failed');
       return urls[0];
     },
-    [permissions.userId, supabase]
+    [document.id, permissions.userId, projectId, supabase]
   );
   const handleRetry = useCallback(async () => {
     if (retrying) return;

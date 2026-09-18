@@ -1,18 +1,7 @@
 import Link from 'next/link';
 import styles from '../payment.module.css';
 
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-export default async function PaymentCancelPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  const params = await searchParams;
-  const projectId =
-    typeof params.project_id === 'string' ? params.project_id : null;
-  const returnHref = projectId ? `/${projectId}/billing` : '/projects';
-
+export default function PaymentCancelPage() {
   return (
     <main className={styles.page}>
       <p className={styles.eyebrowMuted}>Checkout canceled</p>
@@ -21,9 +10,7 @@ export default async function PaymentCancelPage({
         You can return to billing and try Stripe Checkout again whenever you are
         ready.
       </p>
-      <Link href={returnHref} className={styles.link}>
-        {projectId ? 'Return to billing' : 'Return to projects'}
-      </Link>
+      <Link href="/billing" className={styles.link}>Return to billing</Link>
     </main>
   );
 }

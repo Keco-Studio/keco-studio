@@ -58,6 +58,13 @@ function readCount(value: unknown, field: string): number {
   return Number(value);
 }
 
+function readCreditAmount(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`Invalid Keco Admin Credit field: ${field}`);
+  }
+  return value;
+}
+
 function readUserCreditUsage(
   value: unknown,
   userId: string,
@@ -67,10 +74,10 @@ function readUserCreditUsage(
   }
 
   return {
-    allocated: readCount(value.allocated, `users.${userId}.allocated`),
-    used: readCount(value.used, `users.${userId}.used`),
-    remaining: readCount(value.remaining, `users.${userId}.remaining`),
-    overage: readCount(value.overage, `users.${userId}.overage`),
+    allocated: readCreditAmount(value.allocated, `users.${userId}.allocated`),
+    used: readCreditAmount(value.used, `users.${userId}.used`),
+    remaining: readCreditAmount(value.remaining, `users.${userId}.remaining`),
+    overage: readCreditAmount(value.overage, `users.${userId}.overage`),
     deepseekTokens: readCount(value.deepseekTokens, `users.${userId}.deepseekTokens`),
     incompleteCount: readCount(
       value.incompleteCount,
@@ -103,10 +110,10 @@ function readCredits(data: unknown): KecoAdminCredits {
   }
 
   return {
-    allocated: readCount(data.allocated, 'allocated'),
-    used: readCount(data.used, 'used'),
-    remaining: readCount(data.remaining, 'remaining'),
-    overage: readCount(data.overage, 'overage'),
+    allocated: readCreditAmount(data.allocated, 'allocated'),
+    used: readCreditAmount(data.used, 'used'),
+    remaining: readCreditAmount(data.remaining, 'remaining'),
+    overage: readCreditAmount(data.overage, 'overage'),
     deepseekTokens: readCount(data.deepseekTokens, 'deepseekTokens'),
     incompleteCount: readCount(data.incompleteCount, 'incompleteCount'),
     trackedFrom,

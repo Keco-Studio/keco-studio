@@ -79,6 +79,26 @@ it('records service attempts with a duplicate-safe table upsert and snake-case t
   }), { onConflict: 'event_key', ignoreDuplicates: true });
 });
 
+it('records cache-aware input token totals for service attempts', async () => {
+  const upsert = jest.fn(async () => ({ error: null }));
+  const recorder = createServiceAiUsageRecorder({ from: jest.fn(() => ({ upsert })) } as never);
+
+  await recorder(attemptFixture({
+    usage: {
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      inputCacheHitTokens: 40,
+      inputCacheMissTokens: 60,
+    },
+  }));
+
+  expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+    input_cache_hit_tokens: 40,
+    input_cache_miss_tokens: 60,
+  }), { onConflict: 'event_key', ignoreDuplicates: true });
+});
+
 it('bounds persisted diagnostic strings and only retains schema-safe metadata', async () => {
   const upsert = jest.fn(async () => ({ error: null }));
   const recorder = createServiceAiUsageRecorder({ from: jest.fn(() => ({ upsert })) } as never);
