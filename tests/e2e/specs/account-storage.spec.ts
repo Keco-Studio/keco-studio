@@ -20,10 +20,37 @@ test.describe('Account storage', () => {
     await expect(page.getByRole('heading', { name: 'Storage', exact: true })).toBeVisible();
     await expect(page.getByTestId('account-storage-summary')).toContainText('1 TB');
     await expect(page.getByTestId('account-storage-used')).toContainText('512 GB');
-    await expect(page.getByRole('button', { name: /Owned Storage Fixture/ })).toContainText('3 files');
+    await expect(page.getByLabel('Storage usage breakdown')).toContainText('Files 500 GB');
+    await expect(page.getByLabel('Storage usage breakdown')).toContainText('Documents and tables 12 GB');
+    await expect(page.getByRole('button', { name: /Owned Storage Fixture/ })).toContainText('5 files');
     await expect(page.getByRole('button', { name: /Shared Storage Fixture/ })).toContainText('Owned by Another Owner');
     await expect(page.getByText('Excluded from your allowance')).toBeVisible();
     await expect(page.getByText('Unassigned legacy files')).toBeVisible();
+  });
+
+  test('shows logical documents and tables and opens the table source', async ({ page }) => {
+    const backend = new AccountStorageMockBackend();
+    await loginToAccount(page, backend);
+
+    await page.getByRole('button', { name: /Owned Storage Fixture/ }).click();
+    await expect(page.getByRole('cell', { name: 'Story outline', exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Characters', exact: true })).toBeVisible();
+
+    const targetPath = `/${OWNED_PROJECT_ID}/84000000-0000-4000-8000-000000000008`;
+    const navigation = page.waitForRequest((request) => new URL(request.url()).pathname === targetPath);
+    await page.getByRole('button', { name: 'Open Characters location' }).click();
+    expect(new URL((await navigation).url()).pathname).toBe(targetPath);
+  });
+
+  test('shows zero remaining and logical overage without reporting physical storage as full', async ({ page }) => {
+    const backend = new AccountStorageMockBackend();
+    backend.setLogicalOverage(1024 ** 3);
+    await loginToAccount(page, backend);
+
+    const storage = page.getByRole('region', { name: 'Storage', exact: true });
+    await expect(storage.getByText('Stored content exceeds the allowance by 1 GB.')).toBeVisible();
+    await expect(storage.getByText('Remaining').locator('..')).toContainText('0 B');
+    await expect(storage.getByText(/Storage is full/)).toHaveCount(0);
   });
 
   test('loads selected project files, forwards search and sort, exposes unavailable sources, and opens available locations', async ({ page }) => {

@@ -61,6 +61,7 @@ export async function uploadDocumentImagesAtomically(
   images: readonly ExtractedImage[],
   userId: string,
   projectId?: string,
+  documentId?: string,
 ): Promise<UploadedDocumentImage[]> {
   const placeholders = images.map((image) => image.placeholder?.trim() ?? '');
   if (placeholders.some((placeholder) => !placeholder)) {
@@ -81,7 +82,7 @@ export async function uploadDocumentImagesAtomically(
         { type: image.contentType }
       );
       const metadata = await uploadMediaFile(supabase, file, projectId
-        ? { userId, projectId, sourceKind: 'document_image' }
+        ? { userId, projectId, sourceKind: 'document_image', sourceEntityId: documentId ?? null }
         : userId);
       uploaded.push({
         placeholder: placeholders[index]!,
@@ -113,6 +114,7 @@ export async function uploadDocumentImages(
   images: ExtractedImage[],
   userId: string,
   projectId?: string,
+  documentId?: string,
 ): Promise<string[]> {
   const files = images.map((img, i) => {
     const ext = extFromContentType(img.contentType);
@@ -120,7 +122,7 @@ export async function uploadDocumentImages(
       type: img.contentType,
     });
   });
-  return uploadImageFiles(supabase, files, userId, projectId);
+  return uploadImageFiles(supabase, files, userId, projectId, documentId);
 }
 
 /**
@@ -133,13 +135,14 @@ export async function uploadImageFiles(
   files: File[],
   userId: string,
   projectId?: string,
+  documentId?: string,
 ): Promise<string[]> {
   const urls: string[] = [];
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     try {
       const meta = await uploadMediaFile(supabase, file, projectId
-        ? { userId, projectId, sourceKind: 'document_image' }
+        ? { userId, projectId, sourceKind: 'document_image', sourceEntityId: documentId ?? null }
         : userId);
       urls.push(meta.url);
     } catch {

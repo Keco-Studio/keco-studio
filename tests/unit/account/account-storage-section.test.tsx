@@ -27,13 +27,16 @@ const GIB = 1024 ** 3;
 const summary = {
   quotaBytes: ACCOUNT_STORAGE_QUOTA_BYTES,
   usedBytes: Math.round(348.6 * GIB),
+  physicalUsedBytes: 300 * GIB,
+  logicalUsedBytes: Math.round(48.6 * GIB),
   reservedBytes: 0,
   remainingBytes: ACCOUNT_STORAGE_QUOTA_BYTES - Math.round(348.6 * GIB),
+  overageBytes: 0,
   ownedProjects: [{
     id: PROJECT_ID,
     name: 'Rainy Manor',
     ownerName: 'Mina Park',
-    fileCount: 2,
+    fileCount: 3,
     usedBytes: Math.round(82.4 * GIB),
     ownedByCurrentUser: true,
   }, {
@@ -56,16 +59,38 @@ const summary = {
 };
 
 const files = {
-  items: [{
-    id: 'file-1',
-    name: 'manor_intro.mp4',
-    mimeType: 'video/mp4',
-    sizeBytes: Math.round(82.4 * GIB),
-    sourceKind: 'project_asset',
-    sourceEntityId: 'asset-1',
-    createdAt: '2026-09-17T12:00:00.000Z',
-    sourceAvailable: true,
-  }],
+  items: [
+    {
+      id: 'file-1',
+      name: 'manor_intro.mp4',
+      mimeType: 'video/mp4',
+      sizeBytes: Math.round(82.4 * GIB),
+      sourceKind: 'project_asset',
+      sourceEntityId: 'asset-1',
+      createdAt: '2026-09-17T12:00:00.000Z',
+      sourceAvailable: true,
+    },
+    {
+      id: 'file-2',
+      name: 'Story outline',
+      mimeType: 'text/markdown',
+      sizeBytes: 2048,
+      sourceKind: 'document_content',
+      sourceEntityId: 'document-1',
+      createdAt: '2026-09-17T11:00:00.000Z',
+      sourceAvailable: true,
+    },
+    {
+      id: 'file-3',
+      name: 'Characters',
+      mimeType: 'application/x-keco-library+json',
+      sizeBytes: 4096,
+      sourceKind: 'library_table',
+      sourceEntityId: 'library-1',
+      createdAt: '2026-09-17T10:00:00.000Z',
+      sourceAvailable: true,
+    },
+  ],
   total: 51,
   limit: 50,
   offset: 0,
@@ -131,6 +156,8 @@ describe('AccountStorageSection', () => {
     expect(screen.getByText('1 TB')).toBeTruthy();
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('34');
     expect(screen.getByRole('progressbar').getAttribute('aria-label')).toBe('Storage used');
+    expect(screen.getByLabelText('Storage usage breakdown').textContent).toContain('Files 300 GB');
+    expect(screen.getByLabelText('Storage usage breakdown').textContent).toContain('Documents and tables 48.6 GB');
     expect(screen.getByText('My projects')).toBeTruthy();
     expect(screen.getByText('Shared with me')).toBeTruthy();
     expect(screen.getByText('Excluded from your allowance')).toBeTruthy();
@@ -155,6 +182,24 @@ describe('AccountStorageSection', () => {
 
     expect(await screen.findByText('manor_intro.mp4')).toBeTruthy();
     expect(screen.getByText('82.4 GB')).toBeTruthy();
+  });
+
+  it('renders and opens a document whose stored name is blank', async () => {
+    const blankDocumentFiles = {
+      ...files,
+      items: [{ ...files.items[1], name: '' }],
+      total: 1,
+    };
+    global.fetch = fetchStorage(summary, blankDocumentFiles) as never;
+
+    renderStorage();
+    await screen.findByTestId('account-storage-used');
+    fireEvent.click(screen.getByRole('button', { name: /Rainy Manor/ }));
+
+    expect(await screen.findByText('Untitled document')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Untitled document location' }));
+    expect(push).toHaveBeenLastCalledWith(`/${PROJECT_ID}/doc/document-1`);
+    expect(screen.queryByText('Files could not be loaded for this project.')).toBeNull();
   });
 
   it('does not render false zero values after a first-load failure and retries', async () => {
@@ -205,16 +250,55 @@ describe('AccountStorageSection', () => {
     [95, 'Storage is 95% full. Free space soon to avoid blocked uploads.'],
     [100, 'Storage is full. New uploads are blocked until space is released or your allowance is increased.'],
   ])('warns at %i percent usage', async (percent, message) => {
-    const usedBytes = Math.round(ACCOUNT_STORAGE_QUOTA_BYTES * percent / 100);
+    const usedBytes = Math.ceil(ACCOUNT_STORAGE_QUOTA_BYTES * percent / 100);
     global.fetch = fetchStorage({
       ...summary,
       usedBytes,
+      physicalUsedBytes: usedBytes,
+      logicalUsedBytes: 0,
       remainingBytes: ACCOUNT_STORAGE_QUOTA_BYTES - usedBytes,
+      overageBytes: 0,
     }) as never;
 
     renderStorage();
 
     expect((await screen.findByRole('alert')).textContent).toContain(message);
+  });
+
+  it('shows a safe zero remaining value and the overage amount', async () => {
+    global.fetch = fetchStorage({
+      ...summary,
+      usedBytes: ACCOUNT_STORAGE_QUOTA_BYTES + GIB,
+      physicalUsedBytes: 300 * GIB,
+      logicalUsedBytes: ACCOUNT_STORAGE_QUOTA_BYTES - 299 * GIB,
+      remainingBytes: 0,
+      overageBytes: GIB,
+    }) as never;
+
+    renderStorage();
+
+    expect((await screen.findByText('Stored content exceeds the allowance by 1 GB.')).getAttribute('role')).toBe('alert');
+    expect(screen.getByText('Remaining').parentElement?.textContent).toContain('0 B');
+    expect(screen.queryByText(/Storage is full/)).toBeNull();
+  });
+
+  it('does not report physical storage as full when rounded display usage is 100 percent', async () => {
+    const physicalUsedBytes = Math.ceil(ACCOUNT_STORAGE_QUOTA_BYTES * 0.995);
+    global.fetch = fetchStorage({
+      ...summary,
+      usedBytes: physicalUsedBytes,
+      physicalUsedBytes,
+      logicalUsedBytes: 0,
+      remainingBytes: ACCOUNT_STORAGE_QUOTA_BYTES - physicalUsedBytes,
+      overageBytes: 0,
+    }) as never;
+
+    renderStorage();
+
+    await screen.findByTestId('account-storage-used');
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+    expect(screen.getByRole('alert').textContent).toContain('Storage is 95% full');
+    expect(screen.queryByText(/Storage is full/)).toBeNull();
   });
 
   it('does not add shared project bytes to the owner summary', async () => {
@@ -286,6 +370,8 @@ describe('AccountStorageSection', () => {
     ['character_asset', 'asset-1', `/${PROJECT_ID}/admin/assets`],
     ['map_reference', 'asset-1', `/create-map?projectId=${PROJECT_ID}`],
     ['document_image', 'document-1', `/${PROJECT_ID}/doc/document-1`],
+    ['document_content', 'document-1', `/${PROJECT_ID}/doc/document-1`],
+    ['library_table', 'library-1', `/${PROJECT_ID}/library-1`],
     ['document_image', null, `/${PROJECT_ID}`],
     ['library_media', 'library-media-1', `/${PROJECT_ID}`],
   ])('opens the approved %s source route', async (sourceKind, sourceEntityId, route) => {

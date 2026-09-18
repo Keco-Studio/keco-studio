@@ -51,7 +51,7 @@ const ownedProject: AccountStorageProject = {
   id: OWNED_PROJECT_ID,
   name: 'Owned Storage Fixture',
   ownerName: 'Storage Owner',
-  fileCount: 3,
+  fileCount: 5,
   usedBytes: 512 * 1024 * 1024 * 1024,
   ownedByCurrentUser: true,
 };
@@ -69,6 +69,22 @@ const ownedFiles = [
   file({ id: '60000000-0000-4000-8000-000000000006', name: 'Zebra large.png', sizeBytes: 3_000, createdAt: '2026-09-18T03:00:00.000Z' }),
   file({ id: '70000000-0000-4000-8000-000000000007', name: 'Alpha small.png', sizeBytes: 100, createdAt: '2026-09-17T03:00:00.000Z' }),
   file({ id: '80000000-0000-4000-8000-000000000008', name: 'Deleted source.png', sizeBytes: 200, sourceAvailable: false, createdAt: '2026-09-16T03:00:00.000Z' }),
+  file({
+    id: '81000000-0000-4000-8000-000000000008',
+    name: 'Story outline',
+    mimeType: 'text/markdown',
+    sizeBytes: 2_048,
+    sourceKind: 'document_content',
+    sourceEntityId: '82000000-0000-4000-8000-000000000008',
+  }),
+  file({
+    id: '83000000-0000-4000-8000-000000000008',
+    name: 'Characters',
+    mimeType: 'application/x-keco-library+json',
+    sizeBytes: 4_096,
+    sourceKind: 'library_table',
+    sourceEntityId: '84000000-0000-4000-8000-000000000008',
+  }),
 ];
 
 const sharedFiles = [
@@ -88,6 +104,7 @@ function compareFiles(sort: AccountStorageSort): (left: AccountStorageFile, righ
 
 export class AccountStorageMockBackend {
   private usageBytes = ownedProject.usedBytes;
+  private physicalUsageBytes = 500 * 1024 * 1024 * 1024;
   private quotaState: 'below-quota' | 'full' = 'below-quota';
   readonly fileRequests: URL[] = [];
 
@@ -114,7 +131,13 @@ export class AccountStorageMockBackend {
   }
 
   setUsagePercent(percent: number): void {
-    this.usageBytes = Math.round(ONE_TB * percent / 100);
+    this.usageBytes = Math.ceil(ONE_TB * percent / 100);
+    this.physicalUsageBytes = this.usageBytes;
+  }
+
+  setLogicalOverage(overageBytes: number): void {
+    this.physicalUsageBytes = 500 * 1024 * 1024 * 1024;
+    this.usageBytes = ONE_TB + overageBytes;
   }
 
   setQuotaFull(): void {
@@ -129,8 +152,11 @@ export class AccountStorageMockBackend {
     return {
       quotaBytes: ONE_TB,
       usedBytes: this.usageBytes,
+      physicalUsedBytes: this.physicalUsageBytes,
+      logicalUsedBytes: this.usageBytes - this.physicalUsageBytes,
       reservedBytes: 0,
       remainingBytes: Math.max(0, ONE_TB - this.usageBytes),
+      overageBytes: Math.max(0, this.usageBytes - ONE_TB),
       ownedProjects: [ownedProject],
       sharedProjects: [sharedProject],
       unassigned: { fileCount: 2, usedBytes: 2048 },

@@ -24,8 +24,11 @@ import { GET } from '@/app/api/account/storage/route';
 const validSummary = {
   quotaBytes: 1_099_511_627_776,
   usedBytes: 100,
+  physicalUsedBytes: 80,
+  logicalUsedBytes: 20,
   reservedBytes: 20,
   remainingBytes: 1_099_511_627_656,
+  overageBytes: 0,
   ownedProjects: [],
   sharedProjects: [],
   unassigned: null,

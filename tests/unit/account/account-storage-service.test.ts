@@ -23,8 +23,11 @@ const validProject = {
 const validSummary = {
   quotaBytes: 1_099_511_627_776,
   usedBytes: 100,
+  physicalUsedBytes: 80,
+  logicalUsedBytes: 20,
   reservedBytes: 20,
   remainingBytes: 1_099_511_627_656,
+  overageBytes: 0,
   ownedProjects: [validProject],
   sharedProjects: [{ ...validProject, id: OTHER_UUID, ownedByCurrentUser: false }],
   unassigned: { fileCount: 1, usedBytes: 5 },
@@ -56,6 +59,21 @@ describe('readOwnAccountStorage', () => {
 
     await expect(readOwnAccountStorage(client as never)).resolves.toEqual(validSummary);
     expect(client.rpc).toHaveBeenCalledWith('account_storage_summary');
+  });
+
+  it('accepts an over-quota summary with zero remaining bytes', async () => {
+    const overQuota = {
+      ...validSummary,
+      quotaBytes: 100,
+      usedBytes: 130,
+      physicalUsedBytes: 90,
+      logicalUsedBytes: 40,
+      reservedBytes: 10,
+      remainingBytes: 0,
+      overageBytes: 40,
+    };
+
+    await expect(readOwnAccountStorage(clientFor(overQuota) as never)).resolves.toEqual(overQuota);
   });
 
   it('rejects fractional, negative, unsafe, missing, and extra summary fields', async () => {
@@ -148,6 +166,21 @@ describe('readProjectStorageFiles', () => {
     await expect(readProjectStorageFiles(clientFor({ ...validPage, extra: true }) as never, {
       projectId: UUID,
     })).rejects.toThrow('Invalid account storage file page');
+  });
+
+  it('accepts library tables as logical project files', async () => {
+    const tablePage = {
+      ...validPage,
+      items: [{
+        ...validPage.items[0],
+        sourceKind: 'library_table',
+        sourceEntityId: OTHER_UUID,
+        mimeType: 'application/x-keco-library+json',
+      }],
+    };
+
+    await expect(readProjectStorageFiles(clientFor(tablePage) as never, { projectId: UUID }))
+      .resolves.toEqual(tablePage);
   });
 
   it.each([

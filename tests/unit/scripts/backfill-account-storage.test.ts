@@ -74,7 +74,7 @@ describe('account storage backfill', () => {
       unassignedObjects: 1,
       conflicts: 1,
       insertedFiles: 0,
-      totalBytes: 4096,
+      physicalBytes: 4096,
     });
     expect(inserts).toHaveLength(0);
 
