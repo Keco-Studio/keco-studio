@@ -97,7 +97,7 @@ describe('streamLlm request options', () => {
     global.fetch = jest.fn(async () => new Response([
       'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',
       '',
-      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":11,"total_tokens":21}}',
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":11,"total_tokens":21,"prompt_cache_hit_tokens":4,"prompt_cache_miss_tokens":6}}',
       '',
       'data: [DONE]',
       '',
@@ -110,7 +110,13 @@ describe('streamLlm request options', () => {
     }));
 
     expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'deepseek', usage: { inputTokens: 10, outputTokens: 11, totalTokens: 21 },
+      provider: 'deepseek', usage: {
+        inputTokens: 10,
+        outputTokens: 11,
+        totalTokens: 21,
+        inputCacheHitTokens: 4,
+        inputCacheMissTokens: 6,
+      },
       outcome: 'succeeded',
     }));
     expect(recorder).toHaveBeenCalledTimes(1);

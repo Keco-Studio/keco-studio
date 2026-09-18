@@ -66,7 +66,7 @@ describe('Keco Admin Credit service', () => {
 
   it.each([
     ['negative root count', { ...validCredits, allocated: -1 }],
-    ['fractional root count', { ...validCredits, used: 1.5 }],
+    ['fractional token count', { ...validCredits, deepseekTokens: 1.5 }],
     ['unsafe root count', { ...validCredits, remaining: Number.MAX_SAFE_INTEGER + 1 }],
     ['missing root count', { ...validCredits, overage: undefined }],
     ['non-numeric token count', { ...validCredits, deepseekTokens: '21' }],
