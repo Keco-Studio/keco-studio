@@ -154,7 +154,19 @@ describe('Create Map V3 direct workbench', () => {
   it('exposes an accessible source-panel toggle in the compact Create Map header', () => {
     const topBar = readFileSync(path.join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
 
-    expect(topBar).toMatch(/<button[^>]*aria-label="Toggle source panel"[^>]*onClick=\{handleSidebarToggle\}/s);
+    expect(topBar).toMatch(/const sourcePanelToggle = \([\s\S]*?<button[^>]*aria-label="Open source panel"[^>]*onClick=\{handleSidebarToggle\}/s);
+  });
+
+  it('keeps the Create Map source-panel toggle outside alternate breadcrumb states', () => {
+    const topBar = readFileSync(path.join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
+    const leftContent = topBar.slice(
+      topBar.indexOf('<div className={styles.left}>'),
+      topBar.indexOf('<div className={styles.searchContainer}'),
+    );
+
+    expect(leftContent).toMatch(
+      /\{onCreateMap \? sourcePanelToggle : null\}[\s\S]*?\{showCreateProjectBreadcrumb \? \(/,
+    );
   });
 
   it('does not render library Create or view controls in the Map top bar', () => {
