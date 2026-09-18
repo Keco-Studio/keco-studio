@@ -12,6 +12,18 @@ const SUMMARY_FIELDS = [
   'trackedFrom',
 ] as const;
 
+function readCreditAmount(value: unknown, field: string): number {
+  if (
+    typeof value !== 'number'
+    || !Number.isFinite(value)
+    || value < 0
+    || value > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error(`Invalid account Credit field: ${field}`);
+  }
+  return value;
+}
+
 function readCount(value: unknown, field: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw new Error(`Invalid account Credit field: ${field}`);
@@ -37,10 +49,10 @@ function readSummary(data: unknown): AccountCreditSummary {
   }
 
   return {
-    allocated: readCount(summary.allocated, 'allocated'),
-    used: readCount(summary.used, 'used'),
-    remaining: readCount(summary.remaining, 'remaining'),
-    overage: readCount(summary.overage, 'overage'),
+    allocated: readCreditAmount(summary.allocated, 'allocated'),
+    used: readCreditAmount(summary.used, 'used'),
+    remaining: readCreditAmount(summary.remaining, 'remaining'),
+    overage: readCreditAmount(summary.overage, 'overage'),
     deepseekTokens: readCount(summary.deepseekTokens, 'deepseekTokens'),
     incompleteCount: readCount(summary.incompleteCount, 'incompleteCount'),
     trackedFrom,

@@ -15,15 +15,19 @@ function isCreditCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isCreditAmount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 function isAccountCreditSummary(value: unknown): value is AccountCreditSummary {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<AccountCreditSummary>;
 
   return (
-    isCreditCount(candidate.allocated) &&
-    isCreditCount(candidate.used) &&
-    isCreditCount(candidate.remaining) &&
-    isCreditCount(candidate.overage) &&
+    isCreditAmount(candidate.allocated) &&
+    isCreditAmount(candidate.used) &&
+    isCreditAmount(candidate.remaining) &&
+    isCreditAmount(candidate.overage) &&
     isCreditCount(candidate.deepseekTokens) &&
     isCreditCount(candidate.incompleteCount) &&
     typeof candidate.trackedFrom === 'string' &&
@@ -41,7 +45,7 @@ async function fetchAccountCredits(): Promise<AccountCreditSummary> {
 }
 
 function formatCredits(value: number): string {
-  return value.toLocaleString('en-US');
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value);
 }
 
 function formatTrackedFrom(value: string): string {
