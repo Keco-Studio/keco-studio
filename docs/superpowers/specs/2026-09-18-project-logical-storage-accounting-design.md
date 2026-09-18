@@ -24,8 +24,11 @@ physical-upload quota decision.
 - Database identifiers, timestamps, ownership metadata, derived job state,
   version history, collaborative editing updates, embeddings, and audit data do
   not count toward a logical file's size.
-- Uploaded attachments and generated media remain independent physical files.
-  Their bytes must not be duplicated inside document or table logical sizes.
+- Physical bytes remain in the physical counter and must not be duplicated in
+  logical counters. In the user-facing file ledger, a document row includes the
+  bytes of physical images whose source entity is that document, so one document
+  appears once with the same aggregate size users expect from a DOCX file.
+- Physical files without a valid parent document remain independent rows.
 - Owned project logical files count toward the signed-in owner's displayed
   usage. Shared project logical files are visible but count only toward the
   project owner's displayed usage.
@@ -53,7 +56,7 @@ physical-upload quota decision.
 - Charging logical bytes to the existing physical upload reservation predicate.
 - Version snapshots, Yjs updates, generated-job records, simulations, chat or
   agent history, audit events, and other internal implementation records.
-- Combining uploaded attachments into a parent document or table row.
+- Combining uploaded attachments into a parent table row.
 
 ## Architecture
 
@@ -141,11 +144,13 @@ double-counting bytes already introduced by the prior document migration.
 - `overageBytes = max(used + reserved - quota, 0)`;
 - owned/shared project totals including both ledgers.
 
-`account_storage_project_files()` returns physical and logical rows through one
-sortable, searchable, paginated result. Logical rows use source kinds
-`document_content` and `library_table`. Document rows open the document editor;
-table rows open the library table. Physical source availability continues to be
-derived rather than hard-coded.
+`account_storage_project_files()` returns one row per user-visible file through
+one sortable, searchable, paginated result. Logical rows use source kinds
+`document_content` and `library_table`. A document row aggregates its Markdown
+bytes and associated physical image bytes; those images are not returned as
+additional rows. Document rows open the document editor and table rows open the
+library table. Physical source availability continues to be derived rather than
+hard-coded.
 
 The Account section shows total, physical, and logical usage without claiming
 that logical content currently participates in upload enforcement. An exceeded
