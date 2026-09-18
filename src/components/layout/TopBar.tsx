@@ -46,8 +46,7 @@ import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
 import {
-  CREATE_MAP_TOOLBAR_CREATE_EVENT,
-  CREATE_MAP_TOOLBAR_VIEW_EVENT,
+  CREATE_MAP_SIDEBAR_STATE_EVENT,
 } from '@/lib/create-map/projectPreference';
 import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
 import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
@@ -162,6 +161,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [topbarDocumentPresenceUsers, setTopbarDocumentPresenceUsers] = useState<PresenceState[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [simulationProjectId, setSimulationProjectId] = useState<string | null>(null);
+  const [createMapSidebarCollapsed, setCreateMapSidebarCollapsed] = useState(false);
   const documentExportItems = useMemo<DocumentExportItem[]>(
     () => [
       { key: 'docx', label: 'Download DOCX' },
@@ -175,6 +175,19 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const displayName =
     userProfile?.username || userProfile?.full_name || userProfile?.email || 'Guest';
   const avatarInitial = displayName.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (!onCreateMap) {
+      setCreateMapSidebarCollapsed(false);
+      return;
+    }
+    const handleCreateMapSidebarState = (event: Event) => {
+      const custom = event as CustomEvent<{ collapsed?: boolean }>;
+      setCreateMapSidebarCollapsed(Boolean(custom.detail?.collapsed));
+    };
+    window.addEventListener(CREATE_MAP_SIDEBAR_STATE_EVENT, handleCreateMapSidebarState as EventListener);
+    return () => window.removeEventListener(CREATE_MAP_SIDEBAR_STATE_EVENT, handleCreateMapSidebarState as EventListener);
+  }, [onCreateMap]);
 
   // Get user avatar color (consistent color based on user ID)
   const userAvatarColor = useMemo(() => {
@@ -917,12 +930,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const handleBillingNavigation = () => {
     setShowUserMenu(false);
-    if (!currentProjectId) {
-      showErrorToast('Open a project to manage billing');
-      router.push('/projects');
-      return;
-    }
-    router.push(`/${currentProjectId}/billing`);
+    router.push('/billing');
   };
 
   const isPredefine = isPredefinePage;
@@ -936,8 +944,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/admin`);
   const onGameAssetsPage =
     !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/admin/assets`);
-  const onBillingPage =
-    !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/billing`);
+  const onBillingPage = pathname === '/billing';
   const isProjectRootPage =
     !!currentProjectId &&
     !currentFolderId &&
@@ -1117,12 +1124,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const handleTopbarViewModeChange = (mode: 'list' | 'grid') => {
     setLibraryViewMode(mode);
     if (typeof window === 'undefined') return;
-    if (onCreateMap) {
-      window.dispatchEvent(
-        new CustomEvent(CREATE_MAP_TOOLBAR_VIEW_EVENT, { detail: { mode } }),
-      );
-      return;
-    }
     if (currentProjectId) {
       window.dispatchEvent(
         new CustomEvent('library-toolbar-view-mode-change', {
@@ -1501,16 +1502,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
 
     if (onCreateMap) {
-      return (
-        <LibraryToolbar
-          mode="create-map"
-          viewMode={libraryViewMode}
-          onViewModeChange={handleTopbarViewModeChange}
-          onCreateMap={() => {
-            window.dispatchEvent(new CustomEvent(CREATE_MAP_TOOLBAR_CREATE_EVENT));
-          }}
-        />
-      );
+      return null;
     }
 
     if (onRecentPage && currentProjectId) {
@@ -1543,22 +1535,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           onImportTable={handleTopbarImportTable}
           onImportDocument={handleTopbarImportDocument}
           onUpload={onGameAssetsPage ? handleTopbarUploadAssets : undefined}
-          userRole={userRole as CollaboratorRole | null}
-          projectId={currentProjectId}
-        />
-      );
-    }
-
-    if (onBillingPage && currentProjectId) {
-      return (
-        <LibraryToolbar
-          mode="admin"
-          title="Billing"
-          onCreateFolder={handleTopbarCreateFolder}
-          onCreateLibrary={handleTopbarCreateLibrary}
-          onCreateDocument={handleTopbarCreateDocument}
-          onImportTable={handleTopbarImportTable}
-          onImportDocument={handleTopbarImportDocument}
           userRole={userRole as CollaboratorRole | null}
           projectId={currentProjectId}
         />
@@ -1634,7 +1610,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   return (
-    <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''} ${onCreateMap ? styles.headerCreateMap : ''}`}>
+    <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''} ${onCreateMap ? styles.headerCreateMap : ''} ${createMapSidebarCollapsed ? styles.headerCreateMapCollapsed : ''}`}>
       <div className={styles.left}>
         {showCreateProjectBreadcrumb ? (
           <div className={styles.createProjectBreadcrumb}>
@@ -1643,12 +1619,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <Image src={topBarBreadCrumbIcon}
-              alt="Breadcrumb"
-              width={24} height={24} className="icon-24"
-              style={{ marginRight: '5px', cursor: 'pointer' }}
+            <button
+              type="button"
+              className={styles.sidebarToggleButton}
+              aria-label="Open source panel"
               onClick={handleSidebarToggle}
-            />
+            >
+              <Image src={topBarBreadCrumbIcon} alt="" width={24} height={24} className="icon-24" />
+            </button>
             {onSimulationSystem ? (
               <div className={styles.simulationHeaderSlot} data-simulation-header-slot />
             ) : (

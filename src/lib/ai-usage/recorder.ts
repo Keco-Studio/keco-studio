@@ -91,6 +91,8 @@ function serviceRow(attempt: AiUsageAttempt): Record<string, unknown> {
     outcome: attempt.outcome,
     usage_status: usage ? 'reported' : 'unknown',
     input_tokens: usage?.inputTokens ?? null,
+    input_cache_hit_tokens: usage?.inputCacheHitTokens ?? null,
+    input_cache_miss_tokens: usage?.inputCacheMissTokens ?? null,
     output_tokens: usage?.outputTokens ?? null,
     total_tokens: usage?.totalTokens ?? null,
     provider_credits: attempt.providerCredits ?? null,

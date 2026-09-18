@@ -12,6 +12,30 @@ it('normalizes provider totals without treating limits as usage', () => {
   expect(normalizeTokenUsage(undefined)).toBeNull();
 });
 
+it('preserves DeepSeek cache hit and miss tokens when they match the input total', () => {
+  expect(normalizeTokenUsage({
+    prompt_tokens: 100,
+    completion_tokens: 20,
+    total_tokens: 120,
+    prompt_cache_hit_tokens: 40,
+    prompt_cache_miss_tokens: 60,
+  })).toEqual({
+    inputTokens: 100,
+    outputTokens: 20,
+    totalTokens: 120,
+    inputCacheHitTokens: 40,
+    inputCacheMissTokens: 60,
+  });
+
+  expect(normalizeTokenUsage({
+    prompt_tokens: 100,
+    completion_tokens: 20,
+    total_tokens: 120,
+    prompt_cache_hit_tokens: 41,
+    prompt_cache_miss_tokens: 60,
+  })).toBeNull();
+});
+
 it('normalizes input-only embedding usage without making embeddings billable', () => {
   expect(normalizeTokenUsage({ prompt_tokens: 8, total_tokens: 8 }, 'embedding'))
     .toEqual({ inputTokens: 8, outputTokens: 0, totalTokens: 8 });

@@ -7,7 +7,7 @@ import { getStudioPlanById } from '@/lib/studio-plans';
 export type PaymentOrderInput = {
   id: string;
   reference: string;
-  projectId: string;
+  projectId: string | null;
   userId: string;
   planId: string;
   planLabel: string;

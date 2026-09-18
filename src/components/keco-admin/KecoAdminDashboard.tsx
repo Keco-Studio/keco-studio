@@ -31,6 +31,10 @@ function isCreditCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isCreditAmount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+}
+
 function isUser(value: unknown): value is KecoAdminUser {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<KecoAdminUser>;
@@ -40,10 +44,10 @@ function isUser(value: unknown): value is KecoAdminUser {
     typeof candidate.createdAt === 'string' &&
     (candidate.lastSignInAt === null || typeof candidate.lastSignInAt === 'string') &&
     (candidate.status === 'active' || candidate.status === 'suspended') &&
-    isCreditCount(candidate.creditAllocated) &&
-    isCreditCount(candidate.creditUsed) &&
-    isCreditCount(candidate.creditRemaining) &&
-    isCreditCount(candidate.creditOverage) &&
+    isCreditAmount(candidate.creditAllocated) &&
+    isCreditAmount(candidate.creditUsed) &&
+    isCreditAmount(candidate.creditRemaining) &&
+    isCreditAmount(candidate.creditOverage) &&
     isCreditCount(candidate.deepseekTokens) &&
     isCreditCount(candidate.creditUsageIncompleteCount)
   );
@@ -59,10 +63,10 @@ function isOverview(value: unknown): value is KecoAdminOverview {
     typeof candidate.refreshedAt === 'string' &&
     Number.isFinite(Date.parse(candidate.refreshedAt)) &&
     Boolean(creditUsage) &&
-    isCreditCount(creditUsage?.allocated) &&
-    isCreditCount(creditUsage?.used) &&
-    isCreditCount(creditUsage?.remaining) &&
-    isCreditCount(creditUsage?.overage) &&
+    isCreditAmount(creditUsage?.allocated) &&
+    isCreditAmount(creditUsage?.used) &&
+    isCreditAmount(creditUsage?.remaining) &&
+    isCreditAmount(creditUsage?.overage) &&
     isCreditCount(creditUsage?.deepseekTokens) &&
     isCreditCount(creditUsage?.incompleteCount) &&
     typeof creditUsage?.trackedFrom === 'string' &&
@@ -123,7 +127,7 @@ function statusLabel(status: KecoAdminUserStatus): string {
 }
 
 function formatCredits(value: number): string {
-  return value.toLocaleString('en-US');
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value);
 }
 
 function incompleteUsageTitle(count: number): string {

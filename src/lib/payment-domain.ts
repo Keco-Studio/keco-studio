@@ -3,13 +3,10 @@ import type Stripe from 'stripe';
 export type InternalPaymentStatus = 'pending' | 'paid' | 'failed';
 
 export type CheckoutInput = {
-  projectId: string;
   planId: string;
   customerEmail: string;
 };
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function validateCheckoutInput(value: unknown): CheckoutInput {
@@ -17,14 +14,10 @@ export function validateCheckoutInput(value: unknown): CheckoutInput {
     throw new Error('Request body is required');
   }
   const input = value as Record<string, unknown>;
-  const projectId = typeof input.projectId === 'string' ? input.projectId.trim() : '';
   const planId = typeof input.planId === 'string' ? input.planId.trim() : '';
   const customerEmail =
     typeof input.customerEmail === 'string' ? input.customerEmail.trim() : '';
 
-  if (!UUID_RE.test(projectId)) {
-    throw new Error('A valid project id is required');
-  }
   if (!planId) {
     throw new Error('A valid plan is required');
   }
@@ -32,7 +25,7 @@ export function validateCheckoutInput(value: unknown): CheckoutInput {
     throw new Error('A valid customer email is required');
   }
 
-  return { projectId, planId, customerEmail };
+  return { planId, customerEmail };
 }
 
 export function normalizeCurrency(currency: string): 'usd' {

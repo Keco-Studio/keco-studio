@@ -1,6 +1,6 @@
 'use client';
 
-import { CloseOutlined, MenuFoldOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloseOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectDocumentModal } from '@/components/script-system/SelectDocumentModal';
@@ -10,7 +10,7 @@ import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectM
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
 import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
 import { DirectMapPlanInspector } from './components/DirectMapPlanInspector';
-import { MapChatPanel, type MapChatMessage } from './components/MapChatPanel';
+import { MapChatPanel, type MapChatMessage, type MapGenerationHistoryEntry } from './components/MapChatPanel';
 import { MapReferencePanel } from './components/MapReferencePanel';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { SavedMapsPanel } from './components/SavedMapsPanel';
@@ -21,6 +21,7 @@ import {
 import { useDirectMapGeneration } from './hooks/useDirectMapGeneration';
 import { useDirectMapCollisionGrid } from './hooks/useDirectMapCollisionGrid';
 import { useMapSources } from './hooks/useMapSources';
+import { useMapGenerationHistory } from './hooks/useMapGenerationHistory';
 import { savedMapOpenIsCurrent, savedMapSwitchBlocked, useSavedMaps } from './hooks/useSavedMaps';
 import {
   containsUnsafeDescriptionContent,
@@ -35,7 +36,11 @@ import {
   type MapReferenceRecord,
   type SavedMapSummary,
 } from './services/createMapService';
-import { readCreateMapProjectPreference, CREATE_MAP_TOOLBAR_CREATE_EVENT } from '@/lib/create-map/projectPreference';
+import {
+  readCreateMapProjectPreference,
+  CREATE_MAP_SIDEBAR_STATE_EVENT,
+  CREATE_MAP_TOOLBAR_CREATE_EVENT,
+} from '@/lib/create-map/projectPreference';
 import styles from './CreateMapWorkbench.module.css';
 
 const INITIAL_DIRECT_PLAN: MapPlanV3 = {
@@ -79,10 +84,11 @@ export function DirectMapWorkbench() {
   const [openingMapId, setOpeningMapId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'browse' | 'detail'>('browse');
   const [chatMessages, setChatMessages] = useState<MapChatMessage[]>([]);
-  const [planDetailsOpen, setPlanDetailsOpen] = useState(true);
+  const [planDetailsOpen, setPlanDetailsOpen] = useState(false);
   const openRequestEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
   const openedRequestedMapId = useRef<string | null>(null);
@@ -91,6 +97,7 @@ export function DirectMapWorkbench() {
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
   const draft = useMapDraft(plan, scene, adapter);
+  const mapGenerationHistory = useMapGenerationHistory(draft.identity?.mapId ?? null);
   const generation = useDirectMapGeneration({
     projectId,
     plan,
@@ -130,6 +137,7 @@ export function DirectMapWorkbench() {
 
   useEffect(() => {
     if (previousGenerationPhase.current !== 'ready' && generation.phase === 'ready') {
+      void mapGenerationHistory.refetch();
       setChatMessages((current) => {
         if (current.some((message) => message.text.includes('Here is the created map') && !message.text.includes('plan'))) {
           return current;
@@ -138,12 +146,30 @@ export function DirectMapWorkbench() {
       });
     }
     previousGenerationPhase.current = generation.phase;
-  }, [generation.phase]);
+  }, [generation.phase, mapGenerationHistory]);
 
   const closeDrawers = useCallback(() => {
     setLeftOpen(false);
     setRightOpen(false);
   }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(CREATE_MAP_SIDEBAR_STATE_EVENT, { detail: { collapsed: leftCollapsed } }));
+  }, [leftCollapsed]);
+
+  const toggleSourcePanel = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth <= 1099) {
+      setLeftOpen((open) => !open);
+      return;
+    }
+    setLeftCollapsed((collapsed) => !collapsed);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('sidebar-toggle', toggleSourcePanel);
+    return () => window.removeEventListener('sidebar-toggle', toggleSourcePanel);
+  }, [toggleSourcePanel]);
 
   const changePlan = useCallback((nextPlan: MapPlanV3) => {
     if (scene.size.width !== nextPlan.map.width || scene.size.height !== nextPlan.map.height) {
@@ -292,8 +318,12 @@ export function DirectMapWorkbench() {
           : []),
       ]);
       setViewMode('detail');
+      // Opening a saved map should restore the inspector so the loaded plan,
+      // generation state, and collision grid are immediately available. The
+      // mobile drawer also needs to be open; otherwise the collision status
+      // exists in state but is not rendered for the user.
       setPlanDetailsOpen(true);
-      closeDrawers();
+      setRightOpen(true);
     } catch (cause) {
       if (savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) {
         setError(cause instanceof Error ? cause.message : 'Could not open the saved map.');
@@ -361,24 +391,29 @@ export function DirectMapWorkbench() {
   });
 
   const actionError = error ?? draft.error ?? generation.error;
-  const saveStatus = draft.status === 'saving' || draft.status === 'creating'
-    ? { label: 'Saving...', status: 'saving' }
-    : draft.status === 'conflict'
-      ? { label: 'Save conflict', status: 'error' }
-      : actionError
-        ? { label: 'Action failed', status: 'error' }
-        : draft.identity && draft.isDirty
-          ? { label: 'Unsaved changes', status: 'dirty' }
-          : draft.identity
-            ? { label: 'All changes saved', status: 'saved' }
-            : { label: projectId ? 'Local plan, ready to save' : 'Local plan', status: 'local' };
+  const saveStatus = draft.identity
+    ? draft.status === 'saving' || draft.status === 'creating'
+      ? { label: 'Saving...', status: 'saving' }
+      : draft.status === 'conflict'
+        ? { label: 'Save conflict', status: 'error' }
+        : actionError
+          ? { label: 'Action failed', status: 'error' }
+          : draft.isDirty
+            ? { label: 'Unsaved changes', status: 'dirty' }
+            : { label: 'All changes saved', status: 'saved' }
+    : null;
+  const generationHistory: MapGenerationHistoryEntry[] = mapGenerationHistory.revisions.map((revision) => ({
+    revisionId: revision.revisionId,
+    label: `V${revision.revisionNumber}`,
+    isCurrent: revision.revisionId === image?.sourceRevisionId,
+  }));
 
   const showGenerateInChat = Boolean(draft.identity) && ['idle', 'awaiting-confirmation', 'failed', 'ready'].includes(generation.phase);
   const showRightPanel = viewMode === 'detail' && planDetailsOpen;
 
   return (
     <main
-      className={`${styles.workbench} ${showRightPanel ? '' : styles.workbenchBrowse}`}
+      className={`${styles.workbench} ${showRightPanel ? '' : styles.workbenchCanvasOnly} ${leftCollapsed ? styles.workbenchLeftCollapsed : ''}`}
       data-testid="create-map-workbench"
       data-mode="direct"
       data-schema-version="3"
@@ -438,6 +473,20 @@ export function DirectMapWorkbench() {
               if (!projectId || readOnly || busy) return;
               setDocumentPickerOpen(true);
             }}
+            generationHistory={generationHistory}
+            mapPlan={draft.identity ? {
+              title: plan.name,
+              versionLabel: `Version${draft.identity.revisionNumber}`,
+            } : null}
+            mapImage={image ? {
+              title: plan.name,
+              versionLabel: `Version${draft.identity?.revisionNumber ?? ''}`,
+              downloadUrl: image.signedUrl,
+            } : null}
+            onViewMapPlan={() => {
+              setPlanDetailsOpen(true);
+              setRightOpen(true);
+            }}
           />
         )}
       </aside>
@@ -457,27 +506,12 @@ export function DirectMapWorkbench() {
       ) : null}
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
-        <header className={styles.canvasHeader}>
-          <div className={styles.headerActions}>
-            <button type="button" className={`${styles.miniIconButton} ${styles.mobileOnly}`} aria-label="Open source panel" onClick={() => setLeftOpen(true)}>
-              <MenuFoldOutlined />
-            </button>
-            <div className={styles.saveIndicator} data-status={saveStatus.status}><span aria-hidden />{saveStatus.label}</div>
-            {viewMode === 'detail' ? (
-              <button
-                type="button"
-                className={styles.miniIconButton}
-                aria-label="Open inspector panel"
-                onClick={() => {
-                  setPlanDetailsOpen(true);
-                  setRightOpen(true);
-                }}
-              >
-                <SettingOutlined />
-              </button>
-            ) : null}
+        {saveStatus ? (
+          <div className={styles.saveIndicator} data-status={saveStatus.status}>
+            <span aria-hidden />
+            {saveStatus.label}
           </div>
-        </header>
+        ) : null}
         <DirectMapCanvas
           plan={plan}
           scene={scene}
@@ -508,6 +542,7 @@ export function DirectMapWorkbench() {
               setPlanDetailsOpen(false);
               setRightOpen(false);
             }}
+            versionLabel={draft.identity ? `Version${draft.identity.revisionNumber}` : undefined}
           />
           <DirectMapGenerationPanel
             phase={generation.phase}

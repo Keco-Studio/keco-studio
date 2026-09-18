@@ -113,7 +113,6 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
                         {dateTime.format(new Date(map.updatedAt))}
                       </time>
                     )}
-                    <small className={styles.savedMapDescription}>{map.projectName}</small>
                   </span>
                 </button>
               </li>

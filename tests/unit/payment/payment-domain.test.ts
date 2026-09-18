@@ -12,30 +12,19 @@ import {
 } from '@/lib/studio-plans';
 
 describe('payment-domain', () => {
-  it('validates checkout input without accepting arbitrary values', () => {
+  it('validates account-level checkout input without accepting arbitrary values', () => {
     expect(
       validateCheckoutInput({
-        projectId: '11111111-1111-4111-8111-111111111111',
         planId: 'plan-pro',
         customerEmail: 'payer@example.com',
       })
     ).toEqual({
-      projectId: '11111111-1111-4111-8111-111111111111',
       planId: 'plan-pro',
       customerEmail: 'payer@example.com',
     });
 
     expect(() =>
       validateCheckoutInput({
-        projectId: 'not-a-uuid',
-        planId: 'plan-pro',
-        customerEmail: 'payer@example.com',
-      })
-    ).toThrow(/valid project id/i);
-
-    expect(() =>
-      validateCheckoutInput({
-        projectId: '11111111-1111-4111-8111-111111111111',
         planId: 'plan-pro',
         customerEmail: 'bad',
       })

@@ -1,5 +1,6 @@
 import React from 'react';
 import { expect, it } from '@jest/globals';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -88,6 +89,15 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
 const navigationContext = read('src/lib/contexts/NavigationContext.tsx');
 
+function renderWorkbenchMarkup(element: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderToStaticMarkup(
+    React.createElement(QueryClientProvider, { client: queryClient }, element)
+  );
+}
+
 it('matches only the Create Map workspace', () => {
   expect(isCreateMapPath('/create-map')).toBe(true);
   expect(isCreateMapPath('/create-map/history')).toBe(true);
@@ -118,7 +128,7 @@ it('keeps global Create Map chrome visible while hiding Studio-only regions', ()
 });
 
 it('renders the Create Map workbench semantic regions', () => {
-  const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
+  const markup = renderWorkbenchMarkup(React.createElement(CreateMapWorkbench));
 
   expect(markup).toContain('data-testid="create-map-workbench"');
   expect(markup).toContain('data-view="browse"');
@@ -137,7 +147,7 @@ it('stacks the workbench regions into one column below 900px', () => {
 });
 
 it('renders Create Map dashboard chrome without Studio Sidebar or ChatPanel', () => {
-  const markup = renderToStaticMarkup(
+  const markup = renderWorkbenchMarkup(
     React.createElement(DashboardLayout, null, React.createElement(CreateMapWorkbench))
   );
 

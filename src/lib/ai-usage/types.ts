@@ -16,6 +16,8 @@ export type NormalizedTokenUsage = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  inputCacheHitTokens?: number;
+  inputCacheMissTokens?: number;
 };
 
 export type AiUsageMetadata = Record<string, string | number | boolean | null>;
