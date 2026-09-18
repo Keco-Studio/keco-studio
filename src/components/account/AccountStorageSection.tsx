@@ -93,7 +93,7 @@ function isFile(value: unknown): value is AccountStorageFile {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<AccountStorageFile>;
   return isNonEmptyString(candidate.id)
-    && isNonEmptyString(candidate.name)
+    && typeof candidate.name === 'string'
     && isNonEmptyString(candidate.mimeType)
     && isNonNegativeSafeInteger(candidate.sizeBytes)
     && isSourceKind(candidate.sourceKind)
@@ -180,6 +180,13 @@ function sourceLabel(kind: StorageSourceKind): string {
     case 'library_table': return 'Table';
     case 'legacy_unassigned': return 'Unassigned legacy file';
   }
+}
+
+function fileDisplayName(file: AccountStorageFile): string {
+  if (file.name.trim().length > 0) return file.name;
+  if (file.sourceKind === 'document_content') return 'Untitled document';
+  if (file.sourceKind === 'library_table') return 'Untitled table';
+  return 'Untitled file';
 }
 
 function sourceDestination(file: AccountStorageFile, projectId: string): string | null {
@@ -441,9 +448,10 @@ export function AccountStorageSection() {
                       <tbody>
                         {filePage.items.map((file) => {
                           const destination = sourceDestination(file, selectedProject.id);
+                          const displayName = fileDisplayName(file);
                           return (
                             <tr key={file.id}>
-                              <td className={styles.fileName}>{file.name}</td>
+                              <td className={styles.fileName}>{displayName}</td>
                               <td>{file.mimeType}</td>
                               <td>{formatStorageBytes(file.sizeBytes)}</td>
                               <td>{formatUploadedAt(file.createdAt)}</td>
@@ -452,7 +460,7 @@ export function AccountStorageSection() {
                                 <button
                                   type="button"
                                   className={styles.openButton}
-                                  aria-label={`Open ${file.name} location`}
+                                  aria-label={`Open ${displayName} location`}
                                   disabled={!destination}
                                   onClick={() => {
                                     if (destination) router.push(destination);

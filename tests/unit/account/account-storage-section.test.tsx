@@ -184,6 +184,24 @@ describe('AccountStorageSection', () => {
     expect(screen.getByText('82.4 GB')).toBeTruthy();
   });
 
+  it('renders and opens a document whose stored name is blank', async () => {
+    const blankDocumentFiles = {
+      ...files,
+      items: [{ ...files.items[1], name: '' }],
+      total: 1,
+    };
+    global.fetch = fetchStorage(summary, blankDocumentFiles) as never;
+
+    renderStorage();
+    await screen.findByTestId('account-storage-used');
+    fireEvent.click(screen.getByRole('button', { name: /Rainy Manor/ }));
+
+    expect(await screen.findByText('Untitled document')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Untitled document location' }));
+    expect(push).toHaveBeenLastCalledWith(`/${PROJECT_ID}/doc/document-1`);
+    expect(screen.queryByText('Files could not be loaded for this project.')).toBeNull();
+  });
+
   it('does not render false zero values after a first-load failure and retries', async () => {
     global.fetch = jest
       .fn()
