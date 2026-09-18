@@ -99,12 +99,17 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Supabase Migrations
     needs: check-migrations
-    # Only branch pushes with changed migration files may mutate a shared remote
-    # database. Pull requests validate migrations through isolated Supabase instances.
+    # Only branch pushes may mutate a shared remote database. Pull requests validate
+    # migrations through isolated Supabase instances. Deployment branches always retry
+    # unapplied migrations so a later push can recover from a failed migration run.
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
-      github.event_name == 'push' &&
-      needs.check-migrations.outputs.has-migrations == 'true'
+      github.event_name == 'push' && (
+          needs.check-migrations.outputs.has-migrations == 'true' ||
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/heads/release/')
+        )
 
     steps:
       - name: Checkout code
