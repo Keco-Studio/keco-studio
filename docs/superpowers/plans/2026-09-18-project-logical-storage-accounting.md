@@ -131,9 +131,10 @@ projects by total bytes descending. Return safe remaining and overage values:
 
 - [ ] **Step 2: Replace project file-list RPC**
 
-Union active physical registry rows with logical registry rows before search,
-sort, count, and pagination. Derive physical `sourceAvailable` with the existing
-location check; logical source availability is guaranteed by foreign-key-backed
+Build one document row from its logical registry row plus associated physical
+document images, then union remaining physical files and other logical files
+before search, sort, count, and pagination. Derive physical `sourceAvailable`
+with the existing location check; logical source availability is guaranteed by
 source triggers.
 
 - [ ] **Step 3: Update strict TypeScript parsers**

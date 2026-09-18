@@ -13,6 +13,10 @@ const logicalSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260918030000_project_logical_storage_accounting.sql',
 ), 'utf8');
+const aggregationSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260918040000_account_storage_logical_file_aggregation.sql',
+), 'utf8');
 
 describe('account project storage migration', () => {
   it('defines private quota, file, location, and reservation tables', () => {
@@ -145,5 +149,21 @@ describe('account project storage migration', () => {
     expect(logicalSql).toMatch(/logical\.source_kind, logical\.source_entity_id, logical\.created_at, true/i);
     expect(sql).toMatch(/used_bytes\s*\+\s*reserved_bytes\s*\+\s*p_expected_bytes\s*>\s*quota_bytes/i);
     expect(logicalSql).not.toMatch(/logical_used_bytes\s*\+\s*reserved_bytes\s*\+\s*p_expected_bytes/i);
+  });
+
+  it('presents document content and owned images as one logical file', () => {
+    expect(aggregationSql).toMatch(
+      /image\.source_kind = 'document_image'[\s\S]*image\.source_entity_id = logical\.source_entity_id/i,
+    );
+    expect(aggregationSql).toMatch(
+      /logical\.size_bytes \+ coalesce\(sum\(image\.size_bytes\), 0\) as size_bytes/i,
+    );
+    expect(aggregationSql).toMatch(
+      /not \(file\.source_kind = 'document_image' and exists \([\s\S]*logical\.source_kind = 'document_content'/i,
+    );
+    expect(aggregationSql).toMatch(/'application\/x-keco-document'/i);
+    expect(aggregationSql).toMatch(
+      /revoke all on function public\.account_storage_project_files[\s\S]*grant execute[\s\S]*to authenticated/i,
+    );
   });
 });

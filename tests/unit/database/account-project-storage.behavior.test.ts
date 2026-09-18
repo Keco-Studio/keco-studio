@@ -98,6 +98,7 @@ describeDb('account project storage real Postgres behavior', () => {
     projectId = fx.projectId,
     bucketId = 'project-assets',
     sourceKind = 'project_asset',
+    sourceEntityId: string | null = null,
   ) {
     const result = await actor.client.rpc('reserve_project_storage_upload', {
       p_project_id: projectId,
@@ -107,7 +108,7 @@ describeDb('account project storage real Postgres behavior', () => {
       p_display_name: `storage-${fx.suffix}.bin`,
       p_mime_type: 'application/octet-stream',
       p_source_kind: sourceKind,
-      p_source_entity_id: null,
+      p_source_entity_id: sourceEntityId,
     });
     if (result.error) storageError(result.error);
     return result.data as Record<string, unknown>;
@@ -118,11 +119,12 @@ describeDb('account project storage real Postgres behavior', () => {
     reservationId: string,
     actualBytes: number | string,
     objectCreatedAt: string | null = null,
+    sourceEntityId: string | null = null,
   ) {
     const result = await actor.client.rpc('finalize_project_storage_upload', {
       p_reservation_id: reservationId,
       p_actual_bytes: actualBytes,
-      p_source_entity_id: null,
+      p_source_entity_id: sourceEntityId,
       p_object_created_at: objectCreatedAt,
     });
     if (result.error) storageError(result.error);
@@ -432,6 +434,81 @@ describeDb('account project storage real Postgres behavior', () => {
 
     await expect(reserve(fx.owner, 16, objectPath))
       .resolves.toMatchObject({ reused: false, expectedBytes: 16 });
+  });
+
+  it('lists a document and its owned images as one logical file', async () => {
+    const content = '# Imported document\n\n| Column |\n| --- |\n| Value |';
+    const name = `aggregated-document-${fx.suffix}`;
+    const document = await fx.owner.client.from('documents').insert({
+      project_id: fx.projectId,
+      name,
+      content,
+      created_by: fx.owner.id,
+    }).select('id').single();
+    expect(document.error).toBeNull();
+    const documentId = document.data?.id as string;
+
+    const imageBytes = 16;
+    const objectPath = `${fx.owner.id}/${fx.projectId}/${randomUUID()}.png`;
+    const reservation = await reserve(
+      fx.owner,
+      imageBytes,
+      objectPath,
+      fx.projectId,
+      'tiptap-images',
+      'document_image',
+      documentId,
+    );
+    expect(await upload(fx.owner, objectPath, imageBytes, 'tiptap-images')).toBeNull();
+    await finalize(
+      fx.owner,
+      reservation.reservationId as string,
+      imageBytes,
+      null,
+      documentId,
+    );
+
+    const listed = await fx.owner.client.rpc('account_storage_project_files', {
+      p_project_id: fx.projectId,
+      p_query: name,
+      p_sort: 'size_desc',
+      p_limit: 50,
+      p_offset: 0,
+    });
+    expect(listed.error).toBeNull();
+    expect(listed.data).toMatchObject({ total: 1 });
+    expect(listed.data.items).toEqual([expect.objectContaining({
+      name,
+      mimeType: 'application/x-keco-document',
+      sizeBytes: Buffer.byteLength(content, 'utf8') + imageBytes,
+      sourceKind: 'document_content',
+      sourceEntityId: documentId,
+    })]);
+
+    const allFiles = await fx.owner.client.rpc('account_storage_project_files', {
+      p_project_id: fx.projectId,
+      p_query: null,
+      p_sort: 'size_desc',
+      p_limit: 100,
+      p_offset: 0,
+    });
+    expect(allFiles.error).toBeNull();
+    expect(allFiles.data.items).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceKind: 'document_image', sourceEntityId: documentId }),
+    ]));
+
+    const summary = await fx.owner.client.rpc('account_storage_summary');
+    expect(summary.error).toBeNull();
+    const project = summary.data.ownedProjects.find(
+      (item: { id: string }) => item.id === fx.projectId,
+    );
+    expect(project.fileCount).toBe(allFiles.data.total);
+    expect(project.usedBytes).toBe(
+      allFiles.data.items.reduce(
+        (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
+        0,
+      ),
+    );
   });
 
   it('accounts UTF-8 documents and complete library tables without blocking logical writes', async () => {

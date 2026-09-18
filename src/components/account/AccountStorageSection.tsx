@@ -56,7 +56,7 @@ function isProject(value: unknown): value is AccountStorageProject {
   const candidate = value as Partial<AccountStorageProject>;
   return isNonEmptyString(candidate.id)
     && isNonEmptyString(candidate.name)
-    && isNonEmptyString(candidate.ownerName)
+    && typeof candidate.ownerName === 'string'
     && isNonNegativeSafeInteger(candidate.fileCount)
     && isNonNegativeSafeInteger(candidate.usedBytes)
     && typeof candidate.ownedByCurrentUser === 'boolean';
@@ -245,7 +245,9 @@ function ProjectButton({ project, selected, onSelect }: {
     >
       <span className={styles.projectName}>{project.name}</span>
       <span className={styles.projectMeta}>{formatFileCount(project.fileCount)} · {formatStorageBytes(project.usedBytes)}</span>
-      {!project.ownedByCurrentUser ? <span className={styles.owner}>Owned by {project.ownerName}</span> : null}
+      {!project.ownedByCurrentUser ? (
+        <span className={styles.owner}>Owned by {project.ownerName.trim() || 'Unknown owner'}</span>
+      ) : null}
     </button>
   );
 }

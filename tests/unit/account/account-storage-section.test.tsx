@@ -164,6 +164,20 @@ describe('AccountStorageSection', () => {
     expect(screen.getByText('Unassigned legacy files')).toBeTruthy();
   });
 
+  it('accepts accounts without a profile display name', async () => {
+    global.fetch = fetchStorage({
+      ...summary,
+      ownedProjects: summary.ownedProjects.map((project) => ({ ...project, ownerName: '' })),
+      sharedProjects: summary.sharedProjects.map((project) => ({ ...project, ownerName: '' })),
+    }) as never;
+
+    renderStorage();
+
+    expect(await screen.findByTestId('account-storage-used')).toBeTruthy();
+    expect(screen.getByText('Owned by Unknown owner')).toBeTruthy();
+    expect(screen.queryByText('Storage data could not be loaded')).toBeNull();
+  });
+
   it('keeps three stable storage placeholders while the summary loads', () => {
     global.fetch = jest.fn(() => new Promise(() => undefined)) as never;
 
