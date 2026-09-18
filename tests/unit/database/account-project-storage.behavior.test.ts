@@ -438,7 +438,7 @@ describeDb('account project storage real Postgres behavior', () => {
     const documentContent = `# \u903b\u8f91\u6587\u4ef6\n${'x'.repeat(1100)}`;
     const document = await fx.editor.client.from('documents').insert({
       project_id: fx.projectId,
-      name: `storage-document-${fx.suffix}`,
+      name: '',
       content: documentContent,
       created_by: fx.editor.id,
     }).select('id').single();
@@ -456,6 +456,16 @@ describeDb('account project storage real Postgres behavior', () => {
       size_bytes: Buffer.byteLength(documentContent, 'utf8'),
     });
 
+    const longDocumentName = `storage-document-${'x'.repeat(300)}`;
+    const renamedDocument = await fx.svc.from('documents')
+      .update({ name: longDocumentName }).eq('id', documentId);
+    expect(renamedDocument.error).toBeNull();
+    const renamedDocumentLogical = await fx.svc.from('project_storage_logical_files')
+      .select('display_name').eq('source_kind', 'document_content')
+      .eq('source_entity_id', documentId).single();
+    expect(renamedDocumentLogical.error).toBeNull();
+    expect(renamedDocumentLogical.data?.display_name).toBe(longDocumentName);
+
     const updatedDocumentContent = `${documentContent}\n\u6570\u636e`;
     const updatedDocument = await fx.svc.from('documents')
       .update({ content: updatedDocumentContent }).eq('id', documentId);
@@ -468,9 +478,10 @@ describeDb('account project storage real Postgres behavior', () => {
       Buffer.byteLength(updatedDocumentContent, 'utf8'),
     );
 
+    const longLibraryName = `storage-table-${'x'.repeat(300)}`;
     const library = await fx.editor.client.from('libraries').insert({
       project_id: fx.projectId,
-      name: `storage-table-${fx.suffix}`,
+      name: longLibraryName,
       description: 'Complete logical table',
     }).select('id').single();
     expect(library.error).toBeNull();
@@ -482,13 +493,14 @@ describeDb('account project storage real Postgres behavior', () => {
     expect(referenceLibrary.error).toBeNull();
     const referenceLibraryId = referenceLibrary.data?.id as string;
     const fieldIds = [randomUUID(), randomUUID()];
+    const sectionId = `${libraryId}::main`;
     const fields = await fx.svc.from('library_field_definitions').insert([
       {
-        id: fieldIds[0], library_id: libraryId, section: 'main', section_id: 'main',
+        id: fieldIds[0], library_id: libraryId, section: 'main', section_id: sectionId,
         label: 'Name', data_type: 'string', required: true, order_index: 0,
       },
       {
-        id: fieldIds[1], library_id: libraryId, section: 'main', section_id: 'main',
+        id: fieldIds[1], library_id: libraryId, section: 'main', section_id: sectionId,
         label: 'Stats', data_type: 'reference', required: false, order_index: 1,
         reference_libraries: [referenceLibraryId],
       },
@@ -516,6 +528,21 @@ describeDb('account project storage real Postgres behavior', () => {
     const initialLibraryBytes = Number(libraryLogical.data?.size_bytes);
     expect(initialLibraryBytes).toBeGreaterThan(0);
 
+    const plotPlan = {
+      version: 1,
+      nodes: [{ id: 'opening', title: '\u5e8f\u5e55', rowIds }],
+      groups: [{ id: 'act-1', title: 'Act 1', nodeIds: ['opening'] }],
+    };
+    const updatedPlotPlan = await fx.svc.from('libraries')
+      .update({ plot_plan: plotPlan }).eq('id', libraryId);
+    expect(updatedPlotPlan.error).toBeNull();
+    const libraryAfterPlotPlan = await fx.svc.from('project_storage_logical_files')
+      .select('display_name,size_bytes').eq('source_kind', 'library_table')
+      .eq('source_entity_id', libraryId).single();
+    expect(libraryAfterPlotPlan.error).toBeNull();
+    expect(libraryAfterPlotPlan.data?.display_name).toBe(longLibraryName);
+    expect(Number(libraryAfterPlotPlan.data?.size_bytes)).toBeGreaterThan(initialLibraryBytes);
+
     const renamedReference = await fx.svc.from('libraries')
       .update({ name: `reference-renamed-${fx.suffix}` }).eq('id', referenceLibraryId);
     expect(renamedReference.error).toBeNull();
@@ -523,7 +550,9 @@ describeDb('account project storage real Postgres behavior', () => {
       .select('size_bytes').eq('source_kind', 'library_table')
       .eq('source_entity_id', libraryId).single();
     expect(libraryAfterReferenceRename.error).toBeNull();
-    expect(Number(libraryAfterReferenceRename.data?.size_bytes)).toBeGreaterThan(initialLibraryBytes);
+    expect(Number(libraryAfterReferenceRename.data?.size_bytes)).toBeGreaterThan(
+      Number(libraryAfterPlotPlan.data?.size_bytes),
+    );
 
     const updateValues = await fx.svc.from('library_asset_values').update({
       value_json: { hp: 125, tags: ['lead', 'updated'] },

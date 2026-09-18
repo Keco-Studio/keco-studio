@@ -5,6 +5,10 @@ const sql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260917010000_account_project_storage_usage.sql',
 ), 'utf8');
+const documentSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260918020000_account_document_content_storage.sql',
+), 'utf8');
 const logicalSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260918030000_project_logical_storage_accounting.sql',
@@ -88,6 +92,7 @@ describe('account project storage migration', () => {
     expect(logicalSql).toMatch(/pg_catalog\.octet_length\(coalesce\(document\.content, ''\)\)/i);
     expect(logicalSql).toMatch(/function private\.storage_library_logical_payload\(p_library_id uuid\)/i);
     for (const editablePart of [
+      /'plotPlan', library\.plot_plan/i,
       /'fields',[\s\S]*public\.library_field_definitions/i,
       /'rows',[\s\S]*public\.library_assets/i,
       /'fieldSection', field\.section,[\s\S]*'fieldLabel', field\.label,[\s\S]*'value', value\.value_json/i,
@@ -101,11 +106,26 @@ describe('account project storage migration', () => {
       /trg_sync_library_asset_insert[\s\S]*on public\.library_assets/i,
       /trg_sync_library_value_insert[\s\S]*on public\.library_asset_values/i,
     ]) expect(logicalSql).toMatch(triggerTarget);
+    expect(logicalSql).toMatch(
+      /after insert or delete or update of project_id, name, description, plot_plan on public\.libraries/i,
+    );
     expect(logicalSql).toMatch(/referencing new table as new_rows for each statement/i);
     expect(logicalSql).toMatch(/old\.name is distinct from new\.name[\s\S]*new\.id = any\(coalesce\(field\.reference_libraries/i);
   });
 
   it('backfills logical rows and converts the old document counter safely', () => {
+    expect(documentSql).toMatch(
+      /if v_owner_id is null then[\s\S]*delete from public\.project_storage_document_content[\s\S]*return new/i,
+    );
+    expect(documentSql).toMatch(
+      /from public\.documents d[\s\S]*where project\.owner_id is not null/i,
+    );
+    expect(documentSql).not.toMatch(
+      /display_name text not null check \(char_length\(btrim\(display_name\)\) between 1 and 255\)/i,
+    );
+    expect(logicalSql).not.toMatch(
+      /display_name text not null check \(char_length\(btrim\(display_name\)\) between 1 and 255\)/i,
+    );
     expect(logicalSql).toMatch(/drop trigger if exists trg_settle_document_content_storage/i);
     expect(logicalSql).toMatch(/insert into public\.project_storage_logical_files[\s\S]*from public\.documents document/i);
     expect(logicalSql).toMatch(/from public\.documents document[\s\S]*where project\.owner_id is not null/i);

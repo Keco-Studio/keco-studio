@@ -282,4 +282,3 @@ Commit implementation and verification changes to `sum-storage`, push to
 
 Create or update the pull request into `main`. Merge only after every required
 check reports success; do not bypass branch protection or required gates.
-

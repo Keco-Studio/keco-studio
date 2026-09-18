@@ -7,7 +7,7 @@ create table public.project_storage_document_content (
   document_id uuid not null unique references public.documents(id) on delete cascade,
   project_id uuid not null references public.projects(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
-  display_name text not null check (char_length(btrim(display_name)) between 1 and 255),
+  display_name text not null,
   mime_type text not null default 'text/markdown',
   size_bytes bigint not null check (size_bytes > 0),
   created_at timestamptz not null default clock_timestamp(),
@@ -43,7 +43,9 @@ begin
   from public.projects project
   where project.id = new.project_id;
   if v_owner_id is null then
-    raise exception 'Document project owner not found';
+    delete from public.project_storage_document_content
+    where document_id = new.id;
+    return new;
   end if;
 
   v_size := pg_catalog.octet_length(coalesce(new.content, ''));
@@ -166,7 +168,8 @@ select d.id, d.project_id, project.owner_id, d.name,
   'text/markdown', pg_catalog.octet_length(d.content)
 from public.documents d
 join public.projects project on project.id = d.project_id
-where pg_catalog.octet_length(d.content) > 0
+where project.owner_id is not null
+  and pg_catalog.octet_length(d.content) > 0
 on conflict (document_id) do update set
   project_id = excluded.project_id,
   owner_id = excluded.owner_id,

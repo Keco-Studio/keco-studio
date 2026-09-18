@@ -11,7 +11,7 @@ create table public.project_storage_logical_files (
   owner_id uuid not null references auth.users(id) on delete cascade,
   source_kind text not null check (source_kind in ('document_content', 'library_table')),
   source_entity_id uuid not null,
-  display_name text not null check (char_length(btrim(display_name)) between 1 and 255),
+  display_name text not null,
   mime_type text not null check (char_length(btrim(mime_type)) between 1 and 200),
   size_bytes bigint not null check (size_bytes >= 0),
   created_at timestamptz not null default clock_timestamp(),
@@ -47,6 +47,7 @@ as $$
   select jsonb_build_object(
     'name', library.name,
     'description', library.description,
+    'plotPlan', library.plot_plan,
     'fields', coalesce((
       select jsonb_agg(jsonb_build_object(
         'section', field.section,
@@ -417,7 +418,7 @@ after insert or delete or update of project_id, name, content on public.document
 for each row execute function private.storage_sync_document_logical_file();
 
 create trigger trg_sync_library_logical_file
-after insert or delete or update of project_id, name, description on public.libraries
+after insert or delete or update of project_id, name, description, plot_plan on public.libraries
 for each row execute function private.storage_sync_library_row();
 
 create trigger trg_sync_library_field_insert

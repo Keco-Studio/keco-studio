@@ -187,4 +187,3 @@ mismatches.
   permits destructive local verification.
 - Repository Chinese-text gate and existing storage-write scanner.
 - Unified review of the complete diff before push.
-
