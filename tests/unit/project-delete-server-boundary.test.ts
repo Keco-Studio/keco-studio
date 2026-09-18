@@ -58,7 +58,7 @@ function createServiceClient(
   calls: string[],
   references: Array<{ storage_path: string }> = [],
   removeError: QueryError | null = null,
-  bucketId: 'map-assets' | 'character-assets' = 'map-assets',
+  bucketId: 'library-media-files' | 'project-assets' | 'map-assets' | 'character-assets' | 'tiptap-images' = 'map-assets',
 ): SupabaseClient {
   let activeTable = '';
   const builder: QueryBuilder = {
@@ -90,6 +90,9 @@ function createServiceClient(
             project_id: 'project-1',
             bucket_id: bucketId,
             storage_paths: references.map((row) => row.storage_path),
+            storage_file_ids: references.map((_, index) => `file-${index + 1}`),
+            storage_file_owner_ids: references.map(() => 'owner-user'),
+            storage_file_bytes: references.map(() => 10),
           },
           error: null,
         }
@@ -99,11 +102,14 @@ function createServiceClient(
 
   return {
     rpc: async (name: string, args: Record<string, unknown>) => {
-      calls.push(`rpc:${name}:${String(args.p_project_id)}`);
+      calls.push(`rpc:${name}:${String(args.p_project_id ?? args.p_bucket_id)}`);
+      if (name === 'service_settle_project_storage_file_deletion') {
+        return { data: { releasedBytes: 10, reused: false }, error: null };
+      }
       return {
         data: references.length > 0
-          ? [{ cleanup_job_id: 'cleanup-1', character_cleanup_job_id: 'cleanup-2', storage_paths: references.map((row) => row.storage_path) }]
-          : [{ cleanup_job_id: null, character_cleanup_job_id: null, storage_paths: [] }],
+          ? [{ cleanup_job_id: 'cleanup-1', storage_paths: references.map((row) => row.storage_path) }]
+          : [],
         error: null,
       };
     },
@@ -169,7 +175,7 @@ describe('deleteProjectWithServerBoundary', () => {
       userId: 'admin-user',
     });
 
-    expect(result).toEqual({ cleanupJobId: 'cleanup-1', cleanupJobIds: ['cleanup-1', 'cleanup-2'] });
+    expect(result).toEqual({ cleanupJobId: 'cleanup-1', cleanupJobIds: ['cleanup-1'] });
     expect(calls).toEqual(['rpc:delete_project_and_enqueue_storage_cleanup:project-1']);
   });
 

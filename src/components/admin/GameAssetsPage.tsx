@@ -20,6 +20,9 @@ import {
   type ProjectGameAsset,
 } from '@/lib/services/gameAssetsService';
 import { projectAssetMimeFromName } from '@/lib/services/projectAssetUploadContract';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { isStorageQuotaResponse, storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import styles from './GameAssetsPage.module.css';
 
 type ApiResponse = { assets: ProjectGameAsset[]; warnings: Array<{ source: string; message: string }> };
@@ -126,6 +129,8 @@ function buildJustifiedRows(
 
 export function GameAssetsPage({ projectId }: { projectId: string }) {
   const { message } = App.useApp();
+  const { userProfile } = useAuth();
+  const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
@@ -241,30 +246,32 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
           index: number;
           ok: boolean;
           path?: string;
+          reservationId?: string;
           file?: typeof metadata[number];
           upload?: { url: string; method: 'PUT'; headers: Record<string, string> };
         }>;
       };
-      if (!prepareResponse.ok || !prepared.items) throw new Error(prepared.error ?? 'Upload preparation failed');
+      if (!prepareResponse.ok || !prepared.items) {
+        if (isStorageQuotaResponse(prepareResponse, prepared)) {
+          throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
+        }
+        throw new Error(prepared.error ?? 'Upload preparation failed');
+      }
 
       let failedCount = prepared.failedCount ?? 0;
       const completionItems = [];
       for (const item of prepared.items) {
-        if (!item.ok || !item.path || !item.file || !item.upload) continue;
+        if (!item.ok || !item.path || !item.reservationId || !item.file || !item.upload) continue;
         try {
           const uploadResponse = await fetch(item.upload.url, {
             method: item.upload.method,
             headers: item.upload.headers,
             body: selectedFiles[item.index],
           });
-          if (!uploadResponse.ok) {
-            failedCount += 1;
-            continue;
-          }
-          completionItems.push({ ...item.file, path: item.path });
-        } catch {
-          failedCount += 1;
-        }
+          // The completion call verifies failed PUTs too, releasing their reservation if no valid object exists.
+          void uploadResponse;
+        } catch { /* Completion below releases the prepared reservation. */ }
+        completionItems.push({ ...item.file, path: item.path, reservationId: item.reservationId });
       }
 
       let completedCount = 0;
@@ -274,8 +281,15 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ action: 'complete', items: completionItems }),
         });
-        const completed = await completeResponse.json() as { completedCount?: number; failedCount?: number; error?: string };
-        if (!completeResponse.ok) throw new Error(completed.error ?? 'Upload completion failed');
+        const completed = await completeResponse.json() as {
+          completedCount?: number; failedCount?: number; error?: string;
+        };
+        if (!completeResponse.ok) {
+          if (isStorageQuotaResponse(completeResponse, completed)) {
+            throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
+          }
+          throw new Error(completed.error ?? 'Upload completion failed');
+        }
         completedCount = completed.completedCount ?? 0;
         failedCount += completed.failedCount ?? 0;
       }

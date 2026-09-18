@@ -282,6 +282,7 @@ async function validateDirectMap(
   const ready = await (options.persistAsset ?? persistValidatedAsset)(
     {
       serviceClient: options.authorized.serviceClient,
+      actorUserId: options.authorized.userId,
       projectId: options.authorized.projectId,
       mapId: options.authorized.mapId,
       revisionId: options.authorized.revisionId,

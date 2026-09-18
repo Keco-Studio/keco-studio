@@ -26,23 +26,109 @@ type ProjectStorageCleanupRow = {
   project_id: string;
   bucket_id: string;
   storage_paths: string[];
+  storage_file_ids: string[];
+  storage_file_owner_ids: string[];
+  storage_file_bytes: number[];
 };
+
+const ACCOUNTED_STORAGE_BUCKETS = [
+  'library-media-files',
+  'project-assets',
+  'map-assets',
+  'character-assets',
+  'tiptap-images',
+] as const;
+
+type AccountedStorageBucket = typeof ACCOUNTED_STORAGE_BUCKETS[number];
+
+function isAccountedStorageBucket(bucketId: unknown): bucketId is AccountedStorageBucket {
+  return typeof bucketId === 'string'
+    && (ACCOUNTED_STORAGE_BUCKETS as readonly string[]).includes(bucketId);
+}
+
+function isCleanupPathForProject({
+  bucketId,
+  projectId,
+  ownerId,
+  path,
+}: {
+  bucketId: AccountedStorageBucket;
+  projectId: string;
+  ownerId: string;
+  path: unknown;
+}): boolean {
+  if (typeof path !== 'string' || path.includes('..')) return false;
+  if (bucketId === 'map-assets') {
+    return path.startsWith(`references/${projectId}/`) || path.startsWith(`${projectId}/`);
+  }
+  if (bucketId === 'character-assets') return path.startsWith(`${projectId}/`);
+  if (bucketId === 'tiptap-images') return path.startsWith(`${ownerId}/${projectId}/`);
+  return path.startsWith(`${ownerId}/${projectId}/`);
+}
 
 function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRow {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const paths = row.storage_paths;
+  const fileIds = row.storage_file_ids;
+  const ownerIds = row.storage_file_owner_ids;
+  const bytes = row.storage_file_bytes;
+  const legacySnapshot = fileIds == null && ownerIds == null && bytes == null;
+  const validatedOwnerIds = legacySnapshot ? [] : ownerIds as unknown[];
   if (
     row.id !== expectedId
     || typeof row.project_id !== 'string'
-    || (row.bucket_id !== 'map-assets' && row.bucket_id !== 'character-assets')
-    || !Array.isArray(row.storage_paths)
-    || row.storage_paths.length === 0
-    || row.storage_paths.some((path) => typeof path !== 'string'
-      || (!path.startsWith(`references/${row.project_id}/`) && !path.startsWith(`${row.project_id}/`))
-      || path.includes('..'))
+    || !isAccountedStorageBucket(row.bucket_id)
+    || !Array.isArray(paths)
+    || paths.length === 0
+    || (!legacySnapshot && (
+      !Array.isArray(fileIds)
+      || !Array.isArray(ownerIds)
+      || !Array.isArray(bytes)
+      || paths.length !== fileIds.length
+      || paths.length !== ownerIds.length
+      || paths.length !== bytes.length
+      || fileIds.some((id) => typeof id !== 'string')
+      || ownerIds.some((ownerId) => typeof ownerId !== 'string')
+      || bytes.some((size) => typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0)
+    ))
+    || (legacySnapshot && row.bucket_id !== 'map-assets' && row.bucket_id !== 'character-assets')
+    || paths.some((path, index) => !isCleanupPathForProject({
+      bucketId: row.bucket_id as AccountedStorageBucket,
+      projectId: row.project_id as string,
+      ownerId: legacySnapshot ? '' : validatedOwnerIds[index] as string,
+      path,
+    }))
   ) {
     throw new Error('Invalid project storage cleanup job');
   }
-  return row as ProjectStorageCleanupRow;
+  return {
+    id: row.id as string,
+    project_id: row.project_id as string,
+    bucket_id: row.bucket_id as AccountedStorageBucket,
+    storage_paths: paths as string[],
+    storage_file_ids: (legacySnapshot ? [] : fileIds) as string[],
+    storage_file_owner_ids: (legacySnapshot ? [] : ownerIds) as string[],
+    storage_file_bytes: (legacySnapshot ? [] : bytes) as number[],
+  };
+}
+
+export async function deleteAccountedStorageFile({
+  client,
+  bucketId,
+  objectPath,
+}: {
+  client: SupabaseClient;
+  bucketId: AccountedStorageBucket;
+  objectPath: string;
+}): Promise<void> {
+  const removal = await client.storage.from(bucketId).remove([objectPath]);
+  if (removal.error) throw new Error(removal.error.message);
+
+  const settlement = await client.rpc('settle_project_storage_file_deletion', {
+    p_bucket_id: bucketId,
+    p_object_path: objectPath,
+  });
+  if (settlement.error) throw new Error(settlement.error.message);
 }
 
 export async function processProjectStorageCleanupJob({
@@ -55,7 +141,7 @@ export async function processProjectStorageCleanupJob({
   const resolvedServiceClient = await resolveServiceClient(serviceClient);
   const { data, error } = await resolvedServiceClient
     .from('project_storage_cleanup_jobs')
-    .select('id, project_id, bucket_id, storage_paths')
+    .select('id, project_id, bucket_id, storage_paths, storage_file_ids, storage_file_owner_ids, storage_file_bytes')
     .eq('id', cleanupJobId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -73,6 +159,13 @@ export async function processProjectStorageCleanupJob({
         .from(job.bucket_id)
         .remove(job.storage_paths.slice(offset, offset + STORAGE_DELETE_BATCH_SIZE));
       if (removal.error) throw new Error(removal.error.message);
+      for (const path of job.storage_paths.slice(offset, offset + STORAGE_DELETE_BATCH_SIZE)) {
+        const settlement = await resolvedServiceClient.rpc('service_settle_project_storage_file_deletion', {
+          p_bucket_id: job.bucket_id,
+          p_object_path: path,
+        });
+        if (settlement.error) throw new Error(settlement.error.message);
+      }
     }
     const deletion = await resolvedServiceClient
       .from('project_storage_cleanup_jobs')
@@ -105,17 +198,11 @@ export async function deleteProjectWithServerBoundary({
     p_project_id: projectId,
   });
   if (error) throw error;
-  const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
-  const cleanupJobId = row?.cleanup_job_id;
-  const characterCleanupJobId = row?.character_cleanup_job_id;
-  if (cleanupJobId !== null && cleanupJobId !== undefined && typeof cleanupJobId !== 'string') {
-    throw new Error('Invalid project deletion response');
-  }
-  if (characterCleanupJobId !== null && characterCleanupJobId !== undefined
-    && typeof characterCleanupJobId !== 'string') {
-    throw new Error('Invalid project deletion response');
-  }
-  const cleanupJobIds = [cleanupJobId, characterCleanupJobId]
-    .filter((value): value is string => typeof value === 'string');
+  if (!Array.isArray(data)) throw new Error('Invalid project deletion response');
+  const cleanupJobIds = data.map((value) => {
+    const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    if (typeof row.cleanup_job_id !== 'string') throw new Error('Invalid project deletion response');
+    return row.cleanup_job_id;
+  });
   return { cleanupJobId: cleanupJobIds[0] ?? null, cleanupJobIds };
 }

@@ -306,7 +306,7 @@ async function handle(request: Request): Promise<Response> {
       throw error;
     }
     const ready = await persistValidatedAsset(
-      { serviceClient: authorized.serviceClient, projectId: authorized.projectId, mapId: authorized.mapId, revisionId: authorized.revisionId },
+      { serviceClient: authorized.serviceClient, actorUserId: authorized.userId, projectId: authorized.projectId, mapId: authorized.mapId, revisionId: authorized.revisionId },
       {
         id: assetId,
         assetKey: String(authorized.asset.asset_key),

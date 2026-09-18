@@ -59,7 +59,9 @@ export async function cleanupUploadedDocumentImages(
 export async function uploadDocumentImagesAtomically(
   supabase: SupabaseClient,
   images: readonly ExtractedImage[],
-  userId: string
+  userId: string,
+  projectId?: string,
+  documentId?: string,
 ): Promise<UploadedDocumentImage[]> {
   const placeholders = images.map((image) => image.placeholder?.trim() ?? '');
   if (placeholders.some((placeholder) => !placeholder)) {
@@ -79,7 +81,9 @@ export async function uploadDocumentImagesAtomically(
         `document-import-${Date.now()}-${index}.${ext}`,
         { type: image.contentType }
       );
-      const metadata = await uploadMediaFile(supabase, file, userId);
+      const metadata = await uploadMediaFile(supabase, file, projectId
+        ? { userId, projectId, sourceKind: 'document_image', sourceEntityId: documentId ?? null }
+        : userId);
       uploaded.push({
         placeholder: placeholders[index]!,
         url: metadata.url,
@@ -108,7 +112,9 @@ export async function uploadDocumentImagesAtomically(
 export async function uploadDocumentImages(
   supabase: SupabaseClient,
   images: ExtractedImage[],
-  userId: string
+  userId: string,
+  projectId?: string,
+  documentId?: string,
 ): Promise<string[]> {
   const files = images.map((img, i) => {
     const ext = extFromContentType(img.contentType);
@@ -116,7 +122,7 @@ export async function uploadDocumentImages(
       type: img.contentType,
     });
   });
-  return uploadImageFiles(supabase, files, userId);
+  return uploadImageFiles(supabase, files, userId, projectId, documentId);
 }
 
 /**
@@ -127,13 +133,17 @@ export async function uploadDocumentImages(
 export async function uploadImageFiles(
   supabase: SupabaseClient,
   files: File[],
-  userId: string
+  userId: string,
+  projectId?: string,
+  documentId?: string,
 ): Promise<string[]> {
   const urls: string[] = [];
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     try {
-      const meta = await uploadMediaFile(supabase, file, userId);
+      const meta = await uploadMediaFile(supabase, file, projectId
+        ? { userId, projectId, sourceKind: 'document_image', sourceEntityId: documentId ?? null }
+        : userId);
       urls.push(meta.url);
     } catch {
       // best-effort: skip this image, keep the rest

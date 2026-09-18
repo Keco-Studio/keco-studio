@@ -24,6 +24,7 @@ import styles from './ChatPanel.module.css';
 
 interface Props {
   userId?: string;
+  projectId?: string;
   isStreaming: boolean;
   autoExecute: boolean;
   focusRequest?: number;
@@ -45,6 +46,7 @@ const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 
 export function ChatInput({
   userId,
+  projectId,
   isStreaming,
   autoExecute,
   focusRequest = 0,
@@ -181,7 +183,8 @@ export function ChatInput({
       setParsing(true);
       try {
         const uploaderId = await getCurrentUserId(supabase);
-        const imageUrls = await uploadImageFiles(supabase, images, uploaderId);
+        if (!projectId) throw new Error('Project context is required for image uploads');
+        const imageUrls = await uploadImageFiles(supabase, images, uploaderId, projectId);
         if (imageUrls.length === 0) {
           setFileError('The image(s) could not be uploaded. Please try again.');
           return;
@@ -217,7 +220,7 @@ export function ChatInput({
         if (images.length > 0) {
           try {
             const uploaderId = await getCurrentUserId(supabase);
-            imageUrls = await uploadDocumentImages(supabase, images, uploaderId);
+            if (projectId) imageUrls = await uploadDocumentImages(supabase, images, uploaderId, projectId);
           } catch {
             // best-effort: fall back to a text-only design message
           }
@@ -268,6 +271,7 @@ export function ChatInput({
     clearImages,
     supabase,
     selectionContext,
+    projectId,
     onClearSelectionContext,
   ]);
 
