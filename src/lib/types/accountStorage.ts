@@ -10,6 +10,7 @@ export type StorageSourceKind =
   | 'map_reference'
   | 'map_asset'
   | 'character_asset'
+  | 'document_content'
   | 'legacy_unassigned';
 
 export type AccountStorageSort =

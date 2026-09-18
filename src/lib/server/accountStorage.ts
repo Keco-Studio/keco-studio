@@ -35,6 +35,7 @@ const SOURCE_KINDS: readonly StorageSourceKind[] = [
   'map_reference',
   'map_asset',
   'character_asset',
+  'document_content',
   'legacy_unassigned',
 ];
 const SORTS: readonly AccountStorageSort[] = [

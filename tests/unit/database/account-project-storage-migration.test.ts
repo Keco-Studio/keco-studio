@@ -66,4 +66,24 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/v_quota\.quota_bytes\s*-\s*v_quota\.used_bytes\s*-\s*v_quota\.reserved_bytes/i);
     expect(sql).toMatch(/'name_asc',\s*'name_desc',\s*'size_asc',\s*'size_desc',\s*'created_asc',\s*'created_desc'/i);
   });
+
+  it('accounts document Markdown content and exposes it in project file listings', () => {
+    const documentSql = readFileSync(path.join(
+      process.cwd(),
+      'supabase/migrations/20260918020000_account_document_content_storage.sql',
+    ), 'utf8');
+
+    expect(documentSql).toMatch(/create table public\.project_storage_document_content/i);
+    expect(documentSql).toMatch(/document_id uuid not null unique references public\.documents\(id\) on delete cascade/i);
+    expect(documentSql).toMatch(/pg_catalog\.octet_length\(coalesce\(new\.content, ''\)\)/i);
+    expect(documentSql).toMatch(/create trigger trg_sync_document_content_storage/i);
+    expect(documentSql).toMatch(/create trigger trg_settle_document_content_storage/i);
+    expect(documentSql).toMatch(/min\(part\.document_id::text\)::uuid as source_entity_id/i);
+    expect(documentSql).toMatch(/sum\(part\.size_bytes\) as size_bytes, 'document_content'::text/i);
+    expect(documentSql).toMatch(/group by part\.document_id/i);
+    expect(documentSql).toMatch(/not \(file\.source_kind = 'document_image' and exists/i);
+    expect(documentSql).toMatch(/project_storage_document_content content/i);
+    expect(documentSql).toMatch(/STORAGE_QUOTA_EXCEEDED/i);
+    expect(documentSql).toMatch(/service_rebuild_account_storage_quota_totals\(\)[\s\S]+project_storage_document_content/i);
+  });
 });

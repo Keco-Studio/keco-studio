@@ -46,6 +46,7 @@ function isSourceKind(value: unknown): value is StorageSourceKind {
     || value === 'map_reference'
     || value === 'map_asset'
     || value === 'character_asset'
+    || value === 'document_content'
     || value === 'legacy_unassigned';
 }
 
@@ -171,6 +172,7 @@ function sourceLabel(kind: StorageSourceKind): string {
     case 'map_reference': return 'Map reference';
     case 'map_asset': return 'Assets';
     case 'character_asset': return 'Assets';
+    case 'document_content': return 'Document';
     case 'legacy_unassigned': return 'Unassigned legacy file';
   }
 }
@@ -186,6 +188,8 @@ function sourceDestination(file: AccountStorageFile, projectId: string): string 
     case 'map_reference':
       return `/create-map?projectId=${encodeURIComponent(projectId)}`;
     case 'document_image':
+      return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
+    case 'document_content':
       return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
     case 'library_media':
       return `/${projectId}`;

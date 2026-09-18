@@ -140,6 +140,7 @@ export async function createImportedDocument(
         parsed.images,
         userId,
         input.projectId,
+        documentId,
       );
       assertUploadedImagePositions(parsed.images, uploadedImages);
     }
