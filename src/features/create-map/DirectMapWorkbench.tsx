@@ -159,7 +159,7 @@ export function DirectMapWorkbench() {
 
   const toggleSourcePanel = useCallback(() => {
     if (typeof window === 'undefined') return;
-    if (window.innerWidth <= 1099) {
+    if (window.innerWidth < 900) {
       setLeftOpen((open) => !open);
       return;
     }

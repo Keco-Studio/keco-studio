@@ -1098,6 +1098,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
   };
 
+  const sourcePanelToggle = (
+    <button
+      type="button"
+      className={styles.sidebarToggleButton}
+      aria-label="Open source panel"
+      onClick={handleSidebarToggle}
+    >
+      <Image src={topBarBreadCrumbIcon} alt="" width={24} height={24} className="icon-24" />
+    </button>
+  );
+
   const handleCreateAsset = () => {
     // Trigger asset save from the asset page
     if (typeof window !== 'undefined') {
@@ -1612,6 +1623,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   return (
     <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''} ${onCreateMap ? styles.headerCreateMap : ''} ${createMapSidebarCollapsed ? styles.headerCreateMapCollapsed : ''}`}>
       <div className={styles.left}>
+        {onCreateMap ? sourcePanelToggle : null}
         {showCreateProjectBreadcrumb ? (
           <div className={styles.createProjectBreadcrumb}>
             <Image src={menuIcon} alt="Menu" width={36} height={48} className={`icon-menu ${styles.menuIcon}`} />
@@ -1619,14 +1631,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <button
-              type="button"
-              className={styles.sidebarToggleButton}
-              aria-label="Open source panel"
-              onClick={handleSidebarToggle}
-            >
-              <Image src={topBarBreadCrumbIcon} alt="" width={24} height={24} className="icon-24" />
-            </button>
+            {!onCreateMap ? sourcePanelToggle : null}
             {onSimulationSystem ? (
               <div className={styles.simulationHeaderSlot} data-simulation-header-slot />
             ) : (
