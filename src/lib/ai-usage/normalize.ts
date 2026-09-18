@@ -18,7 +18,32 @@ export function normalizeTokenUsage(
   if (!nonNegativeInteger(input) || !nonNegativeInteger(output)) return null;
   const resolved = total === undefined ? input + output : total;
   if (!nonNegativeInteger(resolved) || resolved < input + output) return null;
-  return { inputTokens: input, outputTokens: output, totalTokens: resolved };
+
+  const promptDetails = raw.prompt_tokens_details;
+  const cachedFromDetails = promptDetails && typeof promptDetails === 'object'
+    ? (promptDetails as Record<string, unknown>).cached_tokens
+    : undefined;
+  const reportedCacheHit = raw.prompt_cache_hit_tokens ?? raw.input_cache_hit_tokens ?? cachedFromDetails;
+  const reportedCacheMiss = raw.prompt_cache_miss_tokens ?? raw.input_cache_miss_tokens;
+  if (reportedCacheHit === undefined && reportedCacheMiss === undefined) {
+    return { inputTokens: input, outputTokens: output, totalTokens: resolved };
+  }
+
+  const cacheHit = reportedCacheHit === undefined ? input - Number(reportedCacheMiss) : reportedCacheHit;
+  const cacheMiss = reportedCacheMiss === undefined ? input - Number(reportedCacheHit) : reportedCacheMiss;
+  if (
+    !nonNegativeInteger(cacheHit)
+    || !nonNegativeInteger(cacheMiss)
+    || cacheHit + cacheMiss !== input
+  ) return null;
+
+  return {
+    inputTokens: input,
+    outputTokens: output,
+    totalTokens: resolved,
+    inputCacheHitTokens: cacheHit,
+    inputCacheMissTokens: cacheMiss,
+  };
 }
 
 export function creditsForTokenTotal(totalTokens: bigint): bigint {
