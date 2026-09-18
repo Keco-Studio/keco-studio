@@ -210,8 +210,8 @@ export function DirectMapWorkbench() {
     setChatMessages([]);
     setError(null);
     setViewMode('detail');
-    setPlanDetailsOpen(false);
-    setRightOpen(false);
+    setPlanDetailsOpen(true);
+    setRightOpen(true);
   }, [clearAttachedDocument, draft, generation, readOnly]);
 
   useEffect(() => {
@@ -261,8 +261,8 @@ export function DirectMapWorkbench() {
         { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
       ]);
       setViewMode('detail');
-      setPlanDetailsOpen(false);
-      setRightOpen(false);
+      setPlanDetailsOpen(true);
+      setRightOpen(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create the direct map Plan.');
     } finally {
