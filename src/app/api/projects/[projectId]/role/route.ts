@@ -19,13 +19,24 @@ import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 const getHandler = async (
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
-  { user }: AuthedRequest
+  { supabase, user }: AuthedRequest
 ) => {
   try {
     const { projectId } = await params;
 
-    // Get role via service
-    const result = await getUserProjectRole(getSupabaseServiceRoleClient(), projectId, user.id);
+    let result;
+    try {
+      // Preserve the request's authenticated context whenever RLS can resolve it.
+      result = await getUserProjectRole(supabase, projectId, user.id);
+    } catch (error) {
+      if (!(error instanceof AuthorizationError) || !error.message.toLowerCase().includes('not found')) {
+        throw error;
+      }
+
+      // Some RLS configurations hide a project from its valid member. Confirm
+      // the role with the privileged client only for that visibility fallback.
+      result = await getUserProjectRole(getSupabaseServiceRoleClient(), projectId, user.id);
+    }
     
     return NextResponse.json(result);
   } catch (error) {
