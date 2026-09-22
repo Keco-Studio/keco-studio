@@ -5,6 +5,10 @@ const sql = fs.readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260922010000_atomic_stripe_credit_webhooks.sql',
 ), 'utf8');
+const schemaReloadSql = fs.readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260922010100_reload_atomic_stripe_webhook_schema.sql',
+), 'utf8');
 
 describe('atomic Stripe Credit webhook migration', () => {
   it('claims each Stripe event once before changing an order', () => {
@@ -26,5 +30,10 @@ describe('atomic Stripe Credit webhook migration', () => {
     expect(sql).toMatch(/security definer\s+set search_path\s*=\s*''/i);
     expect(sql).toMatch(/revoke all on function public\.process_stripe_checkout_event[\s\S]*from public, anon, authenticated, service_role/i);
     expect(sql).toMatch(/grant execute on function public\.process_stripe_checkout_event[\s\S]*to service_role/i);
+  });
+
+  it('reloads the PostgREST schema for both fresh and already-migrated environments', () => {
+    expect(sql).toMatch(/notify pgrst,\s*'reload schema'/i);
+    expect(schemaReloadSql).toMatch(/notify pgrst,\s*'reload schema'/i);
   });
 });

@@ -110,3 +110,5 @@ REVOKE ALL ON FUNCTION public.process_stripe_checkout_event(
 GRANT EXECUTE ON FUNCTION public.process_stripe_checkout_event(
   TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, BIGINT
 ) TO service_role;
+
+NOTIFY pgrst, 'reload schema';
