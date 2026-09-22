@@ -42,7 +42,7 @@
 - Consumes: `project_storage_files`, `project_storage_entity_bindings`, `private.storage_refresh_file_entity_binding(uuid)`, `private.storage_project_entities(uuid)`, `account_storage_summary()`.
 - Produces: `account_storage_project_entities(uuid,text,text,integer,integer,uuid)` returning `{items,total,limit,offset,breadcrumb}`.
 
-- [ ] **Step 1: Add the forward-only repair migration**
+- [x] **Step 1: Add the forward-only repair migration**
 
 Create an idempotent migration that:
 
@@ -59,11 +59,11 @@ Create an idempotent migration that:
 11. Replaces `account_storage_summary()` so project item counts include each Folder, Table, Document, and enabled Assets workspace once while used bytes remain the canonical logical plus physical total.
 12. Revokes private helpers from API roles and grants only the public reader RPC to `authenticated`.
 
-- [ ] **Step 2: Add static migration contract coverage**
+- [x] **Step 2: Add static migration contract coverage**
 
 Assert the new SQL includes the later migration, `storage.objects` metadata import, conflict-safe registry writes, binding refresh, recursive Folder ancestry/descendant CTEs, root-only Assets existence logic, the new RPC parameter, breadcrumb JSON, item-count calculation, and explicit revoke/grant statements.
 
-- [ ] **Step 3: Add live database behavior coverage**
+- [x] **Step 3: Add live database behavior coverage**
 
 Extend the PostgreSQL behavior suite to create nested Folders, a child Table with one physical media object, a child Document, an enabled empty Assets workspace, and an unregistered historical Storage object. Assert:
 
@@ -78,7 +78,7 @@ expect(importedRegistryRow.size_bytes).toBe(authoritativeObjectBytes);
 
 Run the repair logic twice and assert registry counts and quota totals do not change on the second run.
 
-- [ ] **Step 4: Run database verification**
+- [x] **Step 4: Run database verification**
 
 Run:
 

@@ -63,6 +63,7 @@ describeDb('account project storage real Postgres behavior', () => {
   });
 
   beforeEach(async () => {
+    await fx.svc.from('libraries').update({ folder_id: null }).eq('id', fx.libraryId);
     await fx.svc.from('documents').delete().eq('project_id', fx.projectId);
     await fx.svc.from('libraries').delete().eq('project_id', fx.projectId).neq('id', fx.libraryId);
     await fx.svc.from('library_assets').delete().eq('library_id', fx.libraryId);
@@ -70,6 +71,7 @@ describeDb('account project storage real Postgres behavior', () => {
     await fx.svc.from('project_storage_file_locations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('storage_upload_reservations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('project_storage_files').delete().eq('project_id', fx.projectId);
+    await fx.svc.from('projects').update({ assets_workspace_enabled: false }).eq('id', fx.projectId);
     const quota = await fx.svc.from('account_storage_quotas').upsert({
       owner_id: fx.owner.id,
       quota_bytes: QUOTA_BYTES,
@@ -500,12 +502,22 @@ describeDb('account project storage real Postgres behavior', () => {
       expect.objectContaining({ sourceKind: 'document_image', sourceEntityId: documentId }),
     ]));
 
+    const entities = await fx.owner.client.rpc('account_storage_project_entities', {
+      p_project_id: fx.projectId,
+      p_query: null,
+      p_sort: 'size_desc',
+      p_limit: 100,
+      p_offset: 0,
+      p_parent_folder_id: null,
+    });
+    expect(entities.error).toBeNull();
+
     const summary = await fx.owner.client.rpc('account_storage_summary');
     expect(summary.error).toBeNull();
     const project = summary.data.ownedProjects.find(
       (item: { id: string }) => item.id === fx.projectId,
     );
-    expect(project.fileCount).toBe(allFiles.data.total);
+    expect(project.fileCount).toBe(entities.data.total);
     expect(project.usedBytes).toBe(
       allFiles.data.items.reduce(
         (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
@@ -608,6 +620,199 @@ describeDb('account project storage real Postgres behavior', () => {
       staleBindings: 0,
       conflictingBindings: 0,
     });
+  });
+
+  it('browses nested folders with recursive sizes and keeps Assets at the project root', async () => {
+    const parent = await fx.svc.from('folders').insert({
+      project_id: fx.projectId,
+      name: `storage-parent-${fx.suffix}`,
+    }).select('id').single();
+    expect(parent.error).toBeNull();
+    const parentId = parent.data?.id as string;
+    const child = await fx.svc.from('folders').insert({
+      project_id: fx.projectId,
+      parent_folder_id: parentId,
+      name: `storage-child-${fx.suffix}`,
+    }).select('id').single();
+    expect(child.error).toBeNull();
+    const childId = child.data?.id as string;
+
+    try {
+      expect((await fx.svc.from('libraries').update({ folder_id: childId }).eq('id', fx.libraryId)).error)
+        .toBeNull();
+      const document = await fx.svc.from('documents').insert({
+        project_id: fx.projectId,
+        folder_id: childId,
+        name: `storage-child-document-${fx.suffix}`,
+        content: '# Child document',
+        created_by: fx.owner.id,
+      }).select('id').single();
+      expect(document.error).toBeNull();
+      expect((await fx.svc.from('projects').update({ assets_workspace_enabled: true })
+        .eq('id', fx.projectId)).error).toBeNull();
+
+      const root = await fx.owner.client.rpc('account_storage_project_entities', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: null,
+      });
+      expect(root.error).toBeNull();
+      expect(root.data.breadcrumb).toEqual([]);
+      expect(root.data.items.map((item: { kind: string }) => item.kind).sort())
+        .toEqual(['assets', 'folder']);
+      const rootFolder = root.data.items.find((item: { kind: string }) => item.kind === 'folder');
+      expect(rootFolder).toMatchObject({ id: parentId, parentFolderId: null });
+      expect(root.data.items.find((item: { kind: string }) => item.kind === 'assets'))
+        .toMatchObject({ id: fx.projectId, sizeBytes: 0 });
+
+      const parentPage = await fx.owner.client.rpc('account_storage_project_entities', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: parentId,
+      });
+      expect(parentPage.error).toBeNull();
+      expect(parentPage.data.breadcrumb).toEqual([
+        expect.objectContaining({ id: parentId, name: `storage-parent-${fx.suffix}` }),
+      ]);
+      expect(parentPage.data.items).toEqual([
+        expect.objectContaining({ id: childId, kind: 'folder', parentFolderId: parentId }),
+      ]);
+
+      const childPage = await fx.owner.client.rpc('account_storage_project_entities', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: childId,
+      });
+      expect(childPage.error).toBeNull();
+      expect(childPage.data.breadcrumb.map((part: { id: string }) => part.id))
+        .toEqual([parentId, childId]);
+      expect(childPage.data.items.map((item: { kind: string }) => item.kind).sort())
+        .toEqual(['document', 'table']);
+      expect(childPage.data.items.some((item: { kind: string }) => item.kind === 'assets')).toBe(false);
+      const childBytes = childPage.data.items.reduce(
+        (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
+        0,
+      );
+      expect(Number(parentPage.data.items[0].sizeBytes)).toBe(childBytes);
+      expect(Number(rootFolder.sizeBytes)).toBe(childBytes);
+
+      const summary = await fx.owner.client.rpc('account_storage_summary');
+      expect(summary.error).toBeNull();
+      const project = summary.data.ownedProjects.find((item: { id: string }) => item.id === fx.projectId);
+      expect(project.fileCount).toBe(5);
+      expect(project.usedBytes).toBe(root.data.items.reduce(
+        (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
+        0,
+      ));
+    } finally {
+      await fx.svc.from('libraries').update({ folder_id: null }).eq('id', fx.libraryId);
+      await fx.svc.from('documents').delete().eq('folder_id', childId);
+      await fx.svc.from('folders').delete().eq('id', childId);
+      await fx.svc.from('folders').delete().eq('id', parentId);
+    }
+  });
+
+  it('imports historical Storage bytes once and activates the root Assets workspace', async () => {
+    const sizeBytes = 37;
+    const objectPath = pathFor(fx.owner, randomUUID());
+    const legacyTableBytes = 29;
+    const legacyTablePath = `${fx.owner.id}/legacy-${randomUUID()}.png`;
+    const fieldId = randomUUID();
+    const rowId = randomUUID();
+    const uploaded = await fx.svc.storage.from('project-assets').upload(
+      objectPath,
+      new Uint8Array(sizeBytes),
+      { contentType: 'image/png' },
+    );
+    expect(uploaded.error).toBeNull();
+    const legacyUploaded = await fx.svc.storage.from('library-media-files').upload(
+      legacyTablePath,
+      new Uint8Array(legacyTableBytes),
+      { contentType: 'image/png' },
+    );
+    expect(legacyUploaded.error).toBeNull();
+    expect((await fx.svc.from('library_field_definitions').insert({
+      id: fieldId,
+      library_id: fx.libraryId,
+      section: 'main',
+      section_id: `${fx.libraryId}::main`,
+      label: 'Legacy portrait',
+      data_type: 'image',
+      required: false,
+      order_index: 0,
+    })).error).toBeNull();
+    expect((await fx.svc.from('library_assets').insert({
+      id: rowId,
+      library_id: fx.libraryId,
+      name: 'Legacy row',
+      row_index: 0,
+    })).error).toBeNull();
+    expect((await fx.svc.from('library_asset_values').insert({
+      asset_id: rowId,
+      field_id: fieldId,
+      value_json: {
+        path: legacyTablePath,
+        url: `https://example.test/${legacyTablePath}`,
+        fileName: 'legacy.png',
+        fileSize: legacyTableBytes,
+        fileType: 'image/png',
+      },
+    })).error).toBeNull();
+
+    try {
+      expect((await fx.svc.from('project_storage_files').select('id')
+        .eq('bucket_id', 'project-assets').eq('object_path', objectPath)).data).toHaveLength(0);
+
+      const firstRepair = await fx.svc.rpc('service_repair_historical_project_storage');
+      expect(firstRepair.error).toBeNull();
+      expect(Number(firstRepair.data.importedFiles)).toBeGreaterThanOrEqual(2);
+      const secondRepair = await fx.svc.rpc('service_repair_historical_project_storage');
+      expect(secondRepair.error).toBeNull();
+      expect(secondRepair.data).toEqual({ importedFiles: 0 });
+
+      const files = await fx.svc.from('project_storage_files')
+        .select('size_bytes,source_kind,project_id')
+        .eq('bucket_id', 'project-assets').eq('object_path', objectPath);
+      expect(files.error).toBeNull();
+      expect(files.data).toEqual([{
+        size_bytes: sizeBytes,
+        source_kind: 'project_asset',
+        project_id: fx.projectId,
+      }]);
+
+      const listed = await fx.owner.client.rpc('account_storage_project_entities', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: null,
+      });
+      expect(listed.error).toBeNull();
+      const assets = listed.data.items.find((item: { kind: string }) => item.kind === 'assets');
+      expect(Number(assets.physicalBytes)).toBeGreaterThanOrEqual(sizeBytes);
+      expect(Number(assets.sizeBytes)).toBe(Number(assets.physicalBytes));
+      const table = listed.data.items.find((item: { id: string }) => item.id === fx.libraryId);
+      expect(Number(table.physicalBytes)).toBe(legacyTableBytes);
+    } finally {
+      await fx.svc.storage.from('project-assets').remove([objectPath]);
+      await fx.svc.storage.from('library-media-files').remove([legacyTablePath]);
+      await fx.svc.from('project_storage_files')
+        .delete().eq('bucket_id', 'project-assets').eq('object_path', objectPath);
+      await fx.svc.from('project_storage_files')
+        .delete().eq('bucket_id', 'library-media-files').eq('object_path', legacyTablePath);
+      await fx.svc.from('library_assets').delete().eq('id', rowId);
+      await fx.svc.from('library_field_definitions').delete().eq('id', fieldId);
+    }
   });
 
   it('accounts UTF-8 documents and complete library tables without blocking logical writes', async () => {

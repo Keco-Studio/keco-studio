@@ -21,6 +21,10 @@ const entityAggregationSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260922120000_project_storage_entity_aggregation.sql',
 ), 'utf8');
+const hierarchySql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260922180000_account_storage_hierarchy_and_historical_assets.sql',
+), 'utf8');
 
 describe('account project storage migration', () => {
   it('defines private quota, file, location, and reservation tables', () => {
@@ -248,5 +252,61 @@ describe('account project storage migration', () => {
     expect(entityAggregationSql).toMatch(/v_display_used := v_physical_used \+ v_logical_used/i);
     expect(entityAggregationSql).not.toMatch(/set used_bytes/i);
     expect(entityAggregationSql).not.toMatch(/set logical_used_bytes/i);
+  });
+
+  it('imports attributable historical storage objects using authoritative metadata', () => {
+    expect(hierarchySql).toMatch(/function public\.service_repair_historical_project_storage\(\)/i);
+    expect(hierarchySql).toMatch(/from storage\.objects object/i);
+    expect(hierarchySql).toMatch(/object\.metadata ->> 'size'/i);
+    expect(hierarchySql).toMatch(/left join public\.project_storage_files registered/i);
+    expect(hierarchySql).toMatch(/registered\.id is null/i);
+    expect(hierarchySql).toMatch(/from public\.project_game_assets asset/i);
+    expect(hierarchySql).toMatch(/from public\.map_reference_images reference/i);
+    expect(hierarchySql).toMatch(/from public\.character_generation_attempts attempt/i);
+    expect(hierarchySql).toMatch(/strpos\(coalesce\(document\.content, ''\), inventory\.object_path\) > 0/i);
+    expect(hierarchySql).toMatch(
+      /private\.storage_json_media_paths\(value\.value_json\)[\s\S]*inventory\.object_path = media_path\.object_path/i,
+    );
+    expect(hierarchySql).toMatch(/insert into public\.project_storage_files/i);
+    expect(hierarchySql).toMatch(/on conflict \(bucket_id, object_path\) do nothing/i);
+    expect(hierarchySql).toMatch(/insert into public\.project_storage_file_locations/i);
+    expect(hierarchySql).toMatch(/service_rebuild_account_storage_quota_totals\(\)/i);
+    expect(hierarchySql).toMatch(/'importedFiles', v_imported/i);
+    expect(hierarchySql).toMatch(
+      /grant execute on function public\.service_repair_historical_project_storage\(\)[\s\S]*to service_role/i,
+    );
+  });
+
+  it('returns direct directory entries with recursive folder totals and breadcrumbs', () => {
+    expect(hierarchySql).toMatch(/function private\.storage_project_directory_entries\(/i);
+    expect(hierarchySql).toMatch(/with recursive entities as/i);
+    expect(hierarchySql).toMatch(/folder_tree as[\s\S]*child\.parent_folder_id = tree\.descendant_id/i);
+    expect(hierarchySql).toMatch(/entity\.folder_id = tree\.descendant_id/i);
+    expect(hierarchySql).toMatch(/folder\.parent_folder_id is not distinct from p_parent_folder_id/i);
+    expect(hierarchySql).toMatch(/entity\.entity_kind = 'assets' and p_parent_folder_id is null/i);
+    expect(hierarchySql).toMatch(/p_parent_folder_id uuid default null/i);
+    expect(hierarchySql).toMatch(/detail = 'STORAGE_FOLDER_NOT_FOUND'/i);
+    expect(hierarchySql).toMatch(/with recursive ancestors as/i);
+    expect(hierarchySql).toMatch(/'breadcrumb', v_breadcrumb/i);
+    expect(hierarchySql).toMatch(/'parentFolderId', page\.parent_folder_id/i);
+  });
+
+  it('uses workspace existence for one root Assets row and counts created entries', () => {
+    expect(hierarchySql).toMatch(/project\.assets_workspace_enabled/i);
+    expect(hierarchySql).toMatch(/coalesce\(physical_totals\.size_bytes, 0\)::bigint/i);
+    expect(hierarchySql).toMatch(/project\.assets_workspace_enabled[\s\S]*or physical_totals\.entity_id is not null/i);
+    expect(hierarchySql).toMatch(/update public\.projects project[\s\S]*set assets_workspace_enabled = true/i);
+    expect(hierarchySql).toMatch(/function private\.storage_activate_assets_workspace_from_file\(\)/i);
+    expect(hierarchySql).toMatch(/trg_activate_assets_workspace_from_storage_file/i);
+    expect(hierarchySql).toMatch(/source_kind in \('project_asset', 'map_reference', 'map_asset', 'character_asset'\)/i);
+    expect(hierarchySql).toMatch(
+      /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_entities/i,
+    );
+    expect(hierarchySql).toMatch(
+      /revoke all on function private\.storage_project_directory_entries\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
+    );
+    expect(hierarchySql).toMatch(
+      /grant execute on function public\.account_storage_project_entities\(uuid, text, text, integer, integer, uuid\)[\s\S]*to authenticated/i,
+    );
   });
 });
