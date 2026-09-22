@@ -1027,6 +1027,7 @@ function registerWriteToolSet(
   server: McpServer,
   legacyContext: ProjectMcpRequestContext | null,
   resolveProject: ProjectContextResolver | null,
+  options: { includeAdminTools: boolean },
 ): void {
   const projectShape = resolveProject ? { projectId: uuid } : {};
   const contextFor: ProjectContextResolver = resolveProject ??
@@ -1987,19 +1988,24 @@ function registerWriteToolSet(
       }),
   );
 
-  registerCreateFolderTool(server, projectShape, contextFor);
+  if (options.includeAdminTools) {
+    registerCreateFolderTool(server, projectShape, contextFor);
+  }
 }
 
 export function registerWriteTools(
   server: McpServer,
   context: ProjectMcpRequestContext,
 ): void {
-  registerWriteToolSet(server, context, null);
+  registerWriteToolSet(server, context, null, {
+    includeAdminTools: context.role === "admin",
+  });
 }
 
 export function registerAccountWriteTools(
   server: McpServer,
   resolveProject: ProjectContextResolver,
+  options: { includeAdminTools: boolean },
 ): void {
-  registerWriteToolSet(server, null, resolveProject);
+  registerWriteToolSet(server, null, resolveProject, options);
 }

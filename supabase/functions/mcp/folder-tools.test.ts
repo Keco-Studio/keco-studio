@@ -117,9 +117,7 @@ for (const role of ["editor", "viewer"] as const) {
     assertEquals(message.result?.isError, true);
     assertMatch(
       JSON.stringify(message.result),
-      role === "viewer"
-        ? /Tool create_folder not found/
-        : /PROJECT_WRITE_FORBIDDEN/,
+      /Tool create_folder not found/,
     );
     assertEquals(
       calls.some((call) => call.name === "mcp_create_folder"),

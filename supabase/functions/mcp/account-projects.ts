@@ -238,3 +238,17 @@ export async function accountHasWritableProject(
   }
   return data;
 }
+
+export async function accountHasAdminProject(
+  context: AccountMcpRequestContext,
+): Promise<boolean> {
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () => await context.supabase.rpc("mcp_has_admin_project"),
+  );
+  if (error || typeof data !== "boolean") {
+    throw internalError("The admin project access could not be resolved.");
+  }
+  return data;
+}

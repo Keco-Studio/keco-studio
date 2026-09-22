@@ -2,6 +2,7 @@ import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 import type { AccountMcpRequestContext } from "./context.ts";
 import { McpDomainError } from "./errors.ts";
 import {
+  accountHasAdminProject,
   accountHasWritableProject,
   authorizeAccountProject,
   listAccessibleProjects,
@@ -210,6 +211,36 @@ Deno.test("writable project discovery fails closed for RPC errors and malformed 
     const { context } = makeContext(async () => response);
     const error = await assertRejects(
       () => accountHasWritableProject(context),
+      McpDomainError,
+    );
+    assertEquals(error.code, "INTERNAL_ERROR");
+  }
+});
+
+Deno.test("admin project discovery uses one boolean RPC without pagination", async () => {
+  const calls: RpcCall[] = [];
+  const { context } = makeContext(async (name, parameters) => {
+    calls.push({ name, parameters });
+    return { data: true, error: null };
+  });
+
+  assertEquals(await accountHasAdminProject(context), true);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].name, "mcp_has_admin_project");
+  assertEquals(calls[0].parameters, undefined);
+});
+
+Deno.test("admin project discovery fails closed for RPC errors and malformed data", async () => {
+  for (
+    const response of [
+      { data: null, error: null },
+      { data: "true", error: null },
+      { data: null, error: { message: "database failed" } },
+    ]
+  ) {
+    const { context } = makeContext(async () => response);
+    const error = await assertRejects(
+      () => accountHasAdminProject(context),
       McpDomainError,
     );
     assertEquals(error.code, "INTERNAL_ERROR");
