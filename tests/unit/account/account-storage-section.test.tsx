@@ -16,6 +16,7 @@ const TABLE_ID = '22222222-2222-4222-8222-222222222222';
 const DOCUMENT_ID = '33333333-3333-4333-8333-333333333333';
 const MEDIA_ID = '44444444-4444-4444-8444-444444444444';
 const ROW_ID = '55555555-5555-4555-8555-555555555555';
+const FOLDER_ID = '77777777-7777-4777-8777-777777777777';
 const GIB = 1024 ** 3;
 
 const summary = {
@@ -40,7 +41,7 @@ const entities = {
     logicalBytes: 1000,
     physicalBytes: 12_000,
     sizeBytes: 13_000,
-    folderId: null,
+    parentFolderId: null,
     createdAt: '2026-09-17T12:00:00.000Z',
     sourceAvailable: true,
   }, {
@@ -51,7 +52,7 @@ const entities = {
     logicalBytes: 3000,
     physicalBytes: 2000,
     sizeBytes: 5000,
-    folderId: null,
+    parentFolderId: null,
     createdAt: '2026-09-16T12:00:00.000Z',
     sourceAvailable: true,
   }, {
@@ -62,13 +63,14 @@ const entities = {
     logicalBytes: 0,
     physicalBytes: 6000,
     sizeBytes: 6000,
-    folderId: null,
+    parentFolderId: null,
     createdAt: '2026-09-15T12:00:00.000Z',
     sourceAvailable: true,
   }],
   total: 51,
   limit: 50,
   offset: 0,
+  breadcrumb: [],
 };
 
 const tableDetail = {
@@ -126,6 +128,120 @@ describe('AccountStorageSection', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
   });
 
+  it('opens Folder rows as directories and returns through the breadcrumb', async () => {
+    const rootPage = {
+      items: [{
+        id: FOLDER_ID,
+        kind: 'folder',
+        name: 'Characters folder',
+        mimeType: 'application/x-keco-folder',
+        logicalBytes: 4000,
+        physicalBytes: 14_000,
+        sizeBytes: 18_000,
+        parentFolderId: null,
+        createdAt: '2026-09-14T12:00:00.000Z',
+        sourceAvailable: true,
+      }, entities.items[2]],
+      total: 2,
+      limit: 50,
+      offset: 0,
+      breadcrumb: [],
+    };
+    const childPage = {
+      items: entities.items.slice(0, 2).map((item) => ({ ...item, parentFolderId: FOLDER_ID })),
+      total: 2,
+      limit: 50,
+      offset: 0,
+      breadcrumb: [{ id: FOLDER_ID, name: 'Characters folder' }],
+    };
+    global.fetch = jest.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url === '/api/account/storage') return response(200, summary);
+      if (url.includes('/entities?')) {
+        return response(200, url.includes(`parentFolderId=${FOLDER_ID}`) ? childPage : rootPage);
+      }
+      if (/\/entities\/(table|document|assets)\//.test(url)) return response(200, tableDetail);
+      return response(404, { error: 'Not found' });
+    }) as never;
+
+    renderStorage();
+    await screen.findByTestId('account-storage-used');
+    fireEvent.click(screen.getByRole('button', { name: /Rainy Manor.*3 items/ }));
+    fireEvent.click((await screen.findByText('Characters folder')).closest('button')!);
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`parentFolderId=${FOLDER_ID}`),
+      expect.anything(),
+    ));
+    expect(await screen.findByText('Characters')).toBeTruthy();
+    expect(screen.getByText('Design document')).toBeTruthy();
+    expect(screen.queryByText('Assets')).toBeNull();
+    expect(screen.queryByLabelText('Characters folder storage details')).toBeNull();
+
+    const path = screen.getByRole('navigation', { name: 'Project storage path' });
+    expect(path.textContent).toContain('Rainy Manor');
+    expect(path.textContent).toContain('Characters folder');
+    fireEvent.click(path.querySelector('button')!);
+    await screen.findByText('Assets');
+    await waitFor(() => {
+      const entityRequests = (global.fetch as jest.Mock).mock.calls
+        .map((call) => String(call[0]))
+        .filter((url) => url.includes('/entities?'));
+      expect(entityRequests.at(-1)).not.toContain('parentFolderId');
+    });
+  });
+
+  it('keeps a failed Folder path for retry and resets the path when projects change', async () => {
+    const rootPage = {
+      items: [{
+        id: FOLDER_ID,
+        kind: 'folder',
+        name: 'Characters folder',
+        mimeType: 'application/x-keco-folder',
+        logicalBytes: 4000,
+        physicalBytes: 14_000,
+        sizeBytes: 18_000,
+        parentFolderId: null,
+        createdAt: '2026-09-14T12:00:00.000Z',
+        sourceAvailable: true,
+      }],
+      total: 1,
+      limit: 50,
+      offset: 0,
+      breadcrumb: [],
+    };
+    global.fetch = jest.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url === '/api/account/storage') return response(200, summary);
+      if (url.includes(`parentFolderId=${FOLDER_ID}`)) return response(503, { error: 'Unavailable' });
+      if (url.includes('/entities?')) return response(200, rootPage);
+      return response(404, { error: 'Not found' });
+    }) as never;
+
+    renderStorage();
+    await screen.findByTestId('account-storage-used');
+    fireEvent.click(screen.getByRole('button', { name: /Rainy Manor.*3 items/ }));
+    fireEvent.click((await screen.findByText('Characters folder')).closest('button')!);
+    expect(await screen.findByText('Project items could not be loaded.')).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Project storage path' }).textContent)
+      .toContain('Characters folder');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect((global.fetch as jest.Mock).mock.calls.filter(
+      (call) => String(call[0]).includes(`parentFolderId=${FOLDER_ID}`),
+    )).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: /Moonlit Archive.*900 GB/ }));
+    await waitFor(() => {
+      const entityRequests = (global.fetch as jest.Mock).mock.calls
+        .map((call) => String(call[0]))
+        .filter((url) => url.includes('/entities?'));
+      expect(entityRequests.at(-1)).toContain('/66666666-6666-4666-8666-666666666666/entities?');
+      expect(entityRequests.at(-1)).not.toContain('parentFolderId');
+    });
+    const path = screen.getByRole('navigation', { name: 'Project storage path' });
+    expect(path.textContent).toBe('Moonlit Archive');
+  });
+
   it('opens a Table breakdown while keeping actual media out of the top-level list', async () => {
     renderStorage();
     await screen.findByTestId('account-storage-used');
@@ -168,7 +284,7 @@ describe('AccountStorageSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Rainy Manor/ }));
     await screen.findByText('Characters');
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search project items' }), { target: { value: 'char' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search folders, tables, documents, assets' }), { target: { value: 'char' } });
     await waitFor(() => expect(global.fetch).toHaveBeenLastCalledWith(expect.stringContaining('query=char'), expect.anything()), { timeout: 1000 });
     fireEvent.change(screen.getByLabelText('Sort items'), { target: { value: 'name_asc' } });
     await waitFor(() => expect(global.fetch).toHaveBeenLastCalledWith(expect.stringContaining('sort=name_asc'), expect.anything()));

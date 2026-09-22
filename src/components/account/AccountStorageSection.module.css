@@ -313,6 +313,56 @@ select:focus-visible {
   padding: 18px;
 }
 
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: -2px 0 12px;
+  overflow-x: auto;
+  color: #64748b;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.breadcrumbPart {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.breadcrumbs button {
+  max-width: 220px;
+  padding: 2px 3px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  color: #475569;
+  background: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.breadcrumbs button:hover {
+  color: #096dd9;
+  background: #eff6ff;
+}
+
+.breadcrumbs button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
+}
+
+.breadcrumbs button[aria-current='page'] {
+  color: #1e293b;
+  font-weight: 600;
+}
+
 .entitiesToolbar {
   display: flex;
   align-items: end;

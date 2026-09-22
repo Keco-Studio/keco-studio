@@ -20,7 +20,7 @@ jest.mock('@/lib/server/accountStorage', () => ({ readProjectStorageEntities, re
 import { GET as getEntitiesRoute } from '@/app/api/account/storage/projects/[projectId]/entities/route';
 import { GET as getDetailRoute } from '@/app/api/account/storage/projects/[projectId]/entities/[kind]/[entityId]/route';
 
-const page = { items: [], total: 0, limit: 50, offset: 0 };
+const page = { items: [], total: 0, limit: 50, offset: 0, breadcrumb: [] };
 const detail = {
   id: ENTITY_ID,
   kind: 'table',
@@ -65,13 +65,24 @@ describe('Account storage entity routes', () => {
       sort: 'name_asc',
       limit: 10,
       offset: 20,
+      parentFolderId: null,
     });
+  });
+
+  it('forwards a validated parent Folder id', async () => {
+    const response = await getEntities(`parentFolderId=${ENTITY_ID}`);
+    expect(response.status).toBe(200);
+    expect(readProjectStorageEntities).toHaveBeenCalledWith(supabase, expect.objectContaining({
+      projectId: PROJECT_ID,
+      parentFolderId: ENTITY_ID,
+    }));
   });
 
   it.each([
     ['not-a-uuid', ''],
     [PROJECT_ID, 'sort=raw_files'],
     [PROJECT_ID, 'limit=0'],
+    [PROJECT_ID, 'parentFolderId=not-a-uuid'],
     [PROJECT_ID, 'unexpected=value'],
   ])('rejects an invalid aggregate request', async (projectId, query) => {
     const response = await getEntities(query, projectId);
@@ -91,12 +102,16 @@ describe('Account storage entity routes', () => {
     });
 
     expect((await getDetail('media')).status).toBe(400);
+    expect((await getDetail('folder')).status).toBe(400);
     expect((await getDetail('table', 'not-a-uuid')).status).toBe(400);
   });
 
   it('maps authorization, missing entities, service failure, and authentication', async () => {
     readProjectStorageEntities.mockRejectedValueOnce({ code: 'STORAGE_PROJECT_FORBIDDEN' });
     expect((await getEntities()).status).toBe(403);
+
+    readProjectStorageEntities.mockRejectedValueOnce({ code: 'STORAGE_FOLDER_NOT_FOUND' });
+    expect((await getEntities(`parentFolderId=${ENTITY_ID}`)).status).toBe(404);
 
     readProjectStorageEntityDetail.mockRejectedValueOnce({ code: 'STORAGE_ENTITY_NOT_FOUND' });
     expect((await getDetail()).status).toBe(404);

@@ -3,9 +3,11 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   AccountStorageEntity,
+  AccountStorageBreadcrumb,
   AccountStorageEntityDetail,
   AccountStorageEntityDetailItem,
   AccountStorageEntityKind,
+  AccountStorageEntryKind,
   AccountStorageEntityPage,
   AccountStorageFile,
   AccountStorageFilePage,
@@ -36,7 +38,7 @@ const FILE_FIELDS = [
 ] as const;
 const ENTITY_FIELDS = [
   'id', 'kind', 'name', 'mimeType', 'logicalBytes', 'physicalBytes', 'sizeBytes',
-  'folderId', 'createdAt', 'sourceAvailable',
+  'parentFolderId', 'createdAt', 'sourceAvailable',
 ] as const;
 const ENTITY_DETAIL_FIELDS = [
   'id', 'kind', 'name', 'logicalBytes', 'physicalBytes', 'sizeBytes', 'sourceAvailable', 'items',
@@ -44,7 +46,9 @@ const ENTITY_DETAIL_FIELDS = [
 const ENTITY_DETAIL_ITEM_FIELDS = [
   'id', 'name', 'mimeType', 'sizeBytes', 'itemKind', 'groupId', 'groupName', 'createdAt',
 ] as const;
-const PAGE_FIELDS = ['items', 'total', 'limit', 'offset'] as const;
+const FILE_PAGE_FIELDS = ['items', 'total', 'limit', 'offset'] as const;
+const ENTITY_PAGE_FIELDS = ['items', 'total', 'limit', 'offset', 'breadcrumb'] as const;
+const BREADCRUMB_FIELDS = ['id', 'name'] as const;
 const UNASSIGNED_FIELDS = ['fileCount', 'usedBytes'] as const;
 const SOURCE_KINDS: readonly StorageSourceKind[] = [
   'project_asset',
@@ -61,11 +65,12 @@ const SORTS: readonly AccountStorageSort[] = [
   'name_asc', 'name_desc', 'size_asc', 'size_desc', 'created_asc', 'created_desc',
 ];
 const ENTITY_KINDS: readonly AccountStorageEntityKind[] = ['table', 'document', 'assets'];
+const ENTRY_KINDS: readonly AccountStorageEntryKind[] = ['folder', ...ENTITY_KINDS];
 
 type RecordValue = Record<string, unknown>;
 
 export class AccountStorageError extends Error {
-  constructor(public readonly code: 'STORAGE_ENTITY_NOT_FOUND') {
+  constructor(public readonly code: 'STORAGE_ENTITY_NOT_FOUND' | 'STORAGE_FOLDER_NOT_FOUND') {
     super(code);
     this.name = 'AccountStorageError';
   }
@@ -89,6 +94,9 @@ function projectEntitiesRpcError(error: unknown): Error {
     }
     if (record.details === 'STORAGE_ENTITY_NOT_FOUND' || record.message === 'STORAGE_ENTITY_NOT_FOUND') {
       return new AccountStorageError('STORAGE_ENTITY_NOT_FOUND');
+    }
+    if (record.details === 'STORAGE_FOLDER_NOT_FOUND' || record.message === 'STORAGE_FOLDER_NOT_FOUND') {
+      return new AccountStorageError('STORAGE_FOLDER_NOT_FOUND');
     }
   }
   return new Error('Unable to load project storage entities');
@@ -145,6 +153,13 @@ function readEntityKind(value: unknown, field = 'kind'): AccountStorageEntityKin
     throw new Error(`Invalid account storage field: ${field}`);
   }
   return value as AccountStorageEntityKind;
+}
+
+function readEntryKind(value: unknown): AccountStorageEntryKind {
+  if (typeof value !== 'string' || !ENTRY_KINDS.includes(value as AccountStorageEntryKind)) {
+    throw new Error('Invalid account storage field: kind');
+  }
+  return value as AccountStorageEntryKind;
 }
 
 function readNullableUuid(value: unknown, field: string): string | null {
@@ -223,7 +238,7 @@ function readFile(value: unknown): AccountStorageFile {
 }
 
 function readFilePage(data: unknown): AccountStorageFilePage {
-  if (!isExactRecord(data, PAGE_FIELDS)) throw new Error('Invalid account storage file page');
+  if (!isExactRecord(data, FILE_PAGE_FIELDS)) throw new Error('Invalid account storage file page');
   if (!Array.isArray(data.items)) throw new Error('Invalid account storage field: items');
   return {
     items: data.items.map(readFile),
@@ -243,26 +258,38 @@ function readEntity(value: unknown): AccountStorageEntity {
   }
   return {
     id: readUuid(value.id, 'id'),
-    kind: readEntityKind(value.kind),
+    kind: readEntryKind(value.kind),
     name: readString(value.name, 'name'),
     mimeType: readString(value.mimeType, 'mimeType'),
     logicalBytes,
     physicalBytes,
     sizeBytes,
-    folderId: readNullableUuid(value.folderId, 'folderId'),
+    parentFolderId: readNullableUuid(value.parentFolderId, 'parentFolderId'),
     createdAt: readTimestamp(value.createdAt, 'createdAt'),
     sourceAvailable: readBoolean(value.sourceAvailable, 'sourceAvailable'),
   };
 }
 
+function readBreadcrumb(value: unknown): AccountStorageBreadcrumb {
+  if (!isExactRecord(value, BREADCRUMB_FIELDS)) {
+    throw new Error('Invalid account storage breadcrumb');
+  }
+  return {
+    id: readUuid(value.id, 'breadcrumb.id'),
+    name: readString(value.name, 'breadcrumb.name'),
+  };
+}
+
 function readEntityPage(data: unknown): AccountStorageEntityPage {
-  if (!isExactRecord(data, PAGE_FIELDS)) throw new Error('Invalid account storage entity page');
+  if (!isExactRecord(data, ENTITY_PAGE_FIELDS)) throw new Error('Invalid account storage entity page');
   if (!Array.isArray(data.items)) throw new Error('Invalid account storage field: items');
+  if (!Array.isArray(data.breadcrumb)) throw new Error('Invalid account storage field: breadcrumb');
   return {
     items: data.items.map(readEntity),
     total: readCount(data.total, 'total'),
     limit: readCount(data.limit, 'limit'),
     offset: readCount(data.offset, 'offset'),
+    breadcrumb: data.breadcrumb.map(readBreadcrumb),
   };
 }
 
@@ -339,7 +366,6 @@ export async function readProjectStorageFiles(
   const limit = Math.max(1, Math.min(100, requestedLimit));
   const offset = input.offset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid account storage offset');
-
   let result: { data: unknown; error: unknown };
   try {
     result = await client.rpc('account_storage_project_files', {
@@ -364,6 +390,7 @@ export async function readProjectStorageEntities(
     sort?: AccountStorageSort;
     limit?: number;
     offset?: number;
+    parentFolderId?: string | null;
   },
 ): Promise<AccountStorageEntityPage> {
   const projectId = readUuid(input.projectId, 'projectId');
@@ -374,6 +401,9 @@ export async function readProjectStorageEntities(
   const limit = Math.max(1, Math.min(100, requestedLimit));
   const offset = input.offset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid account storage offset');
+  const parentFolderId = input.parentFolderId == null
+    ? null
+    : readUuid(input.parentFolderId, 'parentFolderId');
 
   let result: { data: unknown; error: unknown };
   try {
@@ -383,6 +413,7 @@ export async function readProjectStorageEntities(
       p_sort: sort,
       p_limit: limit,
       p_offset: offset,
+      p_parent_folder_id: parentFolderId,
     });
   } catch (error) {
     throw projectEntitiesRpcError(error);
