@@ -61,13 +61,14 @@ const validEntityPage = {
     logicalBytes: 20,
     physicalBytes: 80,
     sizeBytes: 100,
-    folderId: null,
+    parentFolderId: null,
     createdAt: '2026-09-17T00:00:00.000Z',
     sourceAvailable: true,
   }],
   total: 1,
   limit: 50,
   offset: 0,
+  breadcrumb: [],
 };
 
 const validEntityDetail = {
@@ -265,7 +266,32 @@ describe('aggregate project storage entities', () => {
       p_sort: 'name_asc',
       p_limit: 100,
       p_offset: 2,
+      p_parent_folder_id: null,
     });
+  });
+
+  it('loads Folder rows, validates breadcrumbs, and forwards the current directory', async () => {
+    const folderPage = {
+      ...validEntityPage,
+      items: [{
+        ...validEntityPage.items[0],
+        id: OTHER_UUID,
+        kind: 'folder',
+        name: 'Characters',
+        mimeType: 'application/x-keco-folder',
+        parentFolderId: UUID,
+      }],
+      breadcrumb: [{ id: UUID, name: 'Game data' }],
+    };
+    const client = clientFor(folderPage);
+
+    await expect(readProjectStorageEntities(client as never, {
+      projectId: UUID,
+      parentFolderId: UUID,
+    })).resolves.toEqual(folderPage);
+    expect(client.rpc).toHaveBeenCalledWith('account_storage_project_entities', expect.objectContaining({
+      p_parent_folder_id: UUID,
+    }));
   });
 
   it('rejects unknown kinds, invalid folders, and inconsistent aggregate totals', async () => {
@@ -275,12 +301,20 @@ describe('aggregate project storage entities', () => {
     }) as never, { projectId: UUID })).rejects.toThrow('Invalid account storage field: kind');
     await expect(readProjectStorageEntities(clientFor({
       ...validEntityPage,
-      items: [{ ...validEntityPage.items[0], folderId: 'not-a-uuid' }],
-    }) as never, { projectId: UUID })).rejects.toThrow('Invalid account storage field: folderId');
+      items: [{ ...validEntityPage.items[0], parentFolderId: 'not-a-uuid' }],
+    }) as never, { projectId: UUID })).rejects.toThrow('Invalid account storage field: parentFolderId');
     await expect(readProjectStorageEntities(clientFor({
       ...validEntityPage,
       items: [{ ...validEntityPage.items[0], sizeBytes: 99 }],
     }) as never, { projectId: UUID })).rejects.toThrow('Invalid account storage field: sizeBytes');
+    await expect(readProjectStorageEntities(clientFor({
+      ...validEntityPage,
+      breadcrumb: [{ id: 'not-a-uuid', name: 'Broken' }],
+    }) as never, { projectId: UUID })).rejects.toThrow('Invalid account storage field: breadcrumb.id');
+    await expect(readProjectStorageEntities(clientFor(validEntityPage) as never, {
+      projectId: UUID,
+      parentFolderId: 'not-a-uuid',
+    })).rejects.toThrow('Invalid account storage field: parentFolderId');
   });
 
   it('loads details only when their items reconcile to the entity subtotal', async () => {
@@ -312,6 +346,10 @@ describe('aggregate project storage entities', () => {
       details: 'STORAGE_ENTITY_NOT_FOUND',
     }) as never, { projectId: UUID, kind: 'assets', entityId: UUID }))
       .rejects.toEqual(new AccountStorageError('STORAGE_ENTITY_NOT_FOUND'));
+    await expect(readProjectStorageEntities(clientFor(validEntityPage, {
+      details: 'STORAGE_FOLDER_NOT_FOUND',
+    }) as never, { projectId: UUID, parentFolderId: OTHER_UUID }))
+      .rejects.toEqual(new AccountStorageError('STORAGE_FOLDER_NOT_FOUND'));
     await expect(readProjectStorageEntities(clientFor(validEntityPage, {
       details: 'private database detail',
     }) as never, { projectId: UUID }))

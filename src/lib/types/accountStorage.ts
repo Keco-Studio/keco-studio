@@ -22,7 +22,8 @@ export type AccountStorageSort =
   | 'created_asc'
   | 'created_desc';
 
-export type AccountStorageEntityKind = 'table' | 'document' | 'assets';
+export type AccountStorageEntryKind = 'folder' | 'table' | 'document' | 'assets';
+export type AccountStorageEntityKind = Exclude<AccountStorageEntryKind, 'folder'>;
 
 export type AccountStorageProject = {
   id: string;
@@ -66,13 +67,13 @@ export type AccountStorageFilePage = {
 
 export type AccountStorageEntity = {
   id: string;
-  kind: AccountStorageEntityKind;
+  kind: AccountStorageEntryKind;
   name: string;
   mimeType: string;
   logicalBytes: number;
   physicalBytes: number;
   sizeBytes: number;
-  folderId: string | null;
+  parentFolderId: string | null;
   createdAt: string;
   sourceAvailable: boolean;
 };
@@ -82,6 +83,12 @@ export type AccountStorageEntityPage = {
   total: number;
   limit: number;
   offset: number;
+  breadcrumb: AccountStorageBreadcrumb[];
+};
+
+export type AccountStorageBreadcrumb = {
+  id: string;
+  name: string;
 };
 
 export type AccountStorageEntityDetailItem = {
