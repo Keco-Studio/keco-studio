@@ -185,6 +185,7 @@ const BooleanCellComponent: React.FC<BooleanCellProps> = ({
         <div className={styles.cellContent}>
           <div className={styles.booleanToggle}>
             <Switch
+              size="small"
               checked={checked}
               disabled={userRole === 'viewer'}
               onChange={handleSwitchChange}
@@ -208,6 +209,7 @@ const BooleanCellComponent: React.FC<BooleanCellProps> = ({
       ) : (
         <div className={styles.booleanToggle}>
           <Switch
+            size="small"
             checked={checked}
             disabled={userRole === 'viewer'}
             onChange={handleSwitchChange}
