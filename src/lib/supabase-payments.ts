@@ -2,7 +2,6 @@ import 'server-only';
 
 import type { InternalPaymentStatus } from '@/lib/payment-domain';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
-import { getStudioPlanById } from '@/lib/studio-plans';
 
 export type PaymentOrderInput = {
   id: string;
@@ -52,85 +51,40 @@ export async function attachStripeSession(paymentId: string, sessionId: string) 
   }
 }
 
-export async function recordWebhookEvent(
-  eventId: string,
-  eventType: string,
-  payload: Record<string, unknown>
-): Promise<boolean> {
+export type StripeCheckoutEventInput = {
+  eventId: string;
+  eventType: string;
+  sessionId: string | null;
+  status: InternalPaymentStatus | null;
+  paymentIntentId?: string | null;
+  payload: Record<string, unknown>;
+  creditAmount: number;
+};
+
+export type StripeCheckoutEventResult = {
+  processed: boolean;
+  orderId: string | null;
+};
+
+export async function processStripeCheckoutEvent(
+  input: StripeCheckoutEventInput,
+): Promise<StripeCheckoutEventResult> {
   const supabase = getSupabaseServiceRoleClient();
-  const { error } = await supabase.from('payment_webhook_events').insert({
-    id: eventId,
-    event_type: eventType,
-    payload,
+  const { data, error } = await supabase.rpc('process_stripe_checkout_event', {
+    p_event_id: input.eventId,
+    p_event_type: input.eventType,
+    p_session_id: input.sessionId,
+    p_status: input.status,
+    p_payment_intent_id: input.paymentIntentId ?? null,
+    p_payload: input.payload,
+    p_credit_amount: input.creditAmount,
   });
 
-  if (!error) return true;
-  if (error.code === '23505') return false;
-  throw new Error(`Failed to record webhook event: ${error.message}`);
-}
-
-export async function hasWebhookEvent(eventId: string): Promise<boolean> {
-  const supabase = getSupabaseServiceRoleClient();
-  const { data, error } = await supabase
-    .from('payment_webhook_events')
-    .select('id')
-    .eq('id', eventId)
-    .limit(1);
-
   if (error) {
-    throw new Error(`Failed to check webhook event: ${error.message}`);
+    throw new Error(`Failed to process Stripe webhook: ${error.message}`);
   }
-  return (data?.length ?? 0) > 0;
-}
-
-export async function updatePaymentOrderFromStripe(input: {
-  sessionId: string;
-  status: InternalPaymentStatus;
-  paymentIntentId?: string | null;
-}) {
-  const supabase = getSupabaseServiceRoleClient();
-  const { data: order, error: orderError } = await supabase
-    .from('payment_orders')
-    .select('id, user_id, plan_id, plan_label')
-    .eq('stripe_checkout_session_id', input.sessionId)
-    .maybeSingle();
-
-  if (orderError) {
-    throw new Error(`Failed to load payment order: ${orderError.message}`);
+  if (!data || typeof data !== 'object' || typeof data.processed !== 'boolean') {
+    throw new Error('Failed to process Stripe webhook: invalid RPC response');
   }
-  if (!order) {
-    throw new Error(`Payment order not found for Checkout session ${input.sessionId}`);
-  }
-
-  const plan = input.status === 'paid' ? getStudioPlanById(order.plan_id) : null;
-  if (input.status === 'paid' && (!plan?.creditAmount || !order.user_id)) {
-    throw new Error(`Payment order ${order.id} does not have a valid Credit grant`);
-  }
-
-  const { error } = await supabase
-    .from('payment_orders')
-    .update({
-      status: input.status,
-      stripe_payment_intent_id: input.paymentIntentId ?? null,
-      paid_at: input.status === 'paid' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('stripe_checkout_session_id', input.sessionId);
-
-  if (error) {
-    throw new Error(`Failed to update payment order: ${error.message}`);
-  }
-
-  if (input.status === 'paid' && plan?.creditAmount && order.user_id) {
-    const { error: creditError } = await supabase.from('credit_ledger_entries').insert({
-      user_id: order.user_id,
-      credit_delta: plan.creditAmount,
-      reason: `Stripe ${order.plan_label} purchase`,
-      reference_key: `stripe-checkout:${input.sessionId}`,
-    });
-
-    if (creditError && creditError.code !== '23505') {
-      throw new Error(`Failed to grant purchased Credits: ${creditError.message}`);
-    }
-  }
+  return data as StripeCheckoutEventResult;
 }
