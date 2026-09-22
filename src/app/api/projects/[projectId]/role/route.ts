@@ -10,6 +10,7 @@ import {
   AuthorizationError,
   getUserProjectRole,
 } from '@/lib/services/authorizationService';
+import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
 /**
  * GET /api/projects/[projectId]/role
@@ -18,13 +19,13 @@ import {
 const getHandler = async (
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
-  { supabase, user }: AuthedRequest
+  { user }: AuthedRequest
 ) => {
   try {
     const { projectId } = await params;
 
     // Get role via service
-    const result = await getUserProjectRole(supabase, projectId, user.id);
+    const result = await getUserProjectRole(getSupabaseServiceRoleClient(), projectId, user.id);
     
     return NextResponse.json(result);
   } catch (error) {

@@ -13,6 +13,7 @@
   background: #ffffff;
   box-shadow: none;
   overflow: visible;
+  position: relative;
 }
 
 /* Script dialogue view: no outer card frame — fill the right content area */
@@ -81,7 +82,32 @@
   flex-shrink: 0;
 }
 
+.fixedAddColumnControl {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid #DDE1E6;
+  border-left: 1px solid #DDE1E6;
+  background: #F9FAFB;
+  cursor: pointer;
+}
+
+.fixedAddColumnControl:hover {
+  background: #f1f5f9;
+}
+
 .addColumnHeaderCell {
+  position: sticky;
+  right: 0;
+  z-index: 4;
   text-align: center;
   width: 40px !important;
   min-width: 40px !important;
@@ -89,6 +115,7 @@
   background: #F9FAFB;
   border-left: none;
   border-right: 1px solid #DDE1E6;
+  box-shadow: -1px 0 0 #dde1e6;
 }
 
 .headerRowTop .addColumnHeaderCellSectionRow {
@@ -97,11 +124,16 @@
 }
 
 .addColumnCell {
+  position: sticky;
+  right: 0;
+  z-index: 2;
   width: 40px !important;
   min-width: 40px !important;
   max-width: 40px !important;
-  border-left: none;
+  border-left: 1px solid #DDE1E6;
   border-right: 1px solid #DDE1E6;
+  background: #ffffff;
+  box-shadow: -1px 0 0 #dde1e6;
 }
 
 /* The visible scrollbar is a sticky proxy below the table. */
@@ -333,35 +365,26 @@
   padding: 0.35rem 0;
 }
 
-/* For 1-6 columns: table width is 100% */
-.table.cols1,
-.table.cols2,
-.table.cols3,
-.table.cols4,
-.table.cols5,
-.table.cols6 {
-  width: 100%;
+/* Auto columns fill the available space; explicit widths enlarge only when needed. */
+.table.colsAuto {
   min-width: 100%;
 }
 
-/* For more than 6 columns: table width is auto (based on min-width of columns) */
-.table.colsMany {
-  width: max-content;
-  min-width: 100%;
-}
-
-/* When columns have been manually resized, allow horizontal scroll instead of crushing neighbors */
+/* Manually resized columns can overflow without crushing neighbors. */
 .table.colsCustom {
   width: max-content;
   min-width: 100%;
 }
 
+.table.colsAuto .headerCell:not(.numberColumnHeader),
+.table.colsAuto .propertyHeaderCell:not(.numberColumnHeader),
 .table.colsCustom .headerCell:not(.numberColumnHeader),
 .table.colsCustom .propertyHeaderCell:not(.numberColumnHeader) {
   min-width: 5rem;
   /* Do not set max-width on headers — it clips the column-resize handle (right: -3px). */
 }
 
+.table.colsAuto .cell:not(.numberCell),
 .table.colsCustom .cell:not(.numberCell) {
   /* max-width: 0 forces fixed-layout body cells to respect <col> widths instead of
      nowrap / long unbroken text intrinsic min-content (blocks column shrink). */
@@ -370,61 +393,11 @@
   overflow: hidden;
 }
 
+.table.colsAuto .numberColumnHeader,
+.table.colsAuto .numberCell,
 .table.colsCustom .numberColumnHeader,
 .table.colsCustom .numberCell {
   min-width: 2.5rem;
-}
-
-/* Dynamic column width based on column count */
-.table.cols1 .headerCell:not(.numberColumnHeader),
-.table.cols1 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols1 .cell:not(.numberCell) {
-  width: calc(100% - 3.75rem);
-  max-width: calc(100% - 3.75rem);
-}
-
-.table.cols2 .headerCell:not(.numberColumnHeader),
-.table.cols2 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols2 .cell:not(.numberCell) {
-  width: calc((100% - 3.75rem) / 2);
-  max-width: calc((100% - 3.75rem) / 2);
-}
-
-.table.cols3 .headerCell:not(.numberColumnHeader),
-.table.cols3 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols3 .cell:not(.numberCell) {
-  width: calc((100% - 3.75rem) / 3);
-  max-width: calc((100% - 3.75rem) / 3);
-}
-
-.table.cols4 .headerCell:not(.numberColumnHeader),
-.table.cols4 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols4 .cell:not(.numberCell) {
-  width: calc((100% - 3.75rem) / 4);
-  max-width: calc((100% - 3.75rem) / 4);
-}
-
-.table.cols5 .headerCell:not(.numberColumnHeader),
-.table.cols5 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols5 .cell:not(.numberCell) {
-  width: calc((100% - 3.75rem) / 5);
-  max-width: calc((100% - 3.75rem) / 5);
-}
-
-.table.cols6 .headerCell:not(.numberColumnHeader),
-.table.cols6 .propertyHeaderCell:not(.numberColumnHeader),
-.table.cols6 .cell:not(.numberCell) {
-  width: calc((100% - 3.75rem) / 6);
-  max-width: calc((100% - 3.75rem) / 6);
-}
-
-/* For more than 6 columns, use minimum width (2/3 of previous 13.5rem) */
-.table.colsMany .headerCell:not(.numberColumnHeader),
-.table.colsMany .propertyHeaderCell:not(.numberColumnHeader),
-.table.colsMany .cell:not(.numberCell) {
-  width: 9rem;
-  max-width: 9rem;
-  min-width: 9rem;
 }
 
 .headerRowTop {
@@ -637,6 +610,16 @@
 
 .headerContextMenuButton:hover {
   background-color: var(--keco-blue-tint-soft);
+}
+
+.headerContextMenuDivider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: #e2e8f0;
+}
+
+.headerContextMenuButtonDanger {
+  color: #aa052c;
 }
 
 .row {
@@ -1580,7 +1563,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .addRow:hover {
-  background: #f9fafb;
+  background: var(--keco-control-hover-bg);
 }
 
 /* Remove cell borders in add row to show as a blank row, but keep numberCell border for alignment */
@@ -2478,7 +2461,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .confirmCancelBtn:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 }
 

@@ -12,11 +12,11 @@ describe('navigation branding and folder create controls', () => {
 
     for (const source of [studio, simulation, script]) {
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*color:\s*#16325D;/s);
-      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-family:\s*Archivo,\s*sans-serif;/s);
+      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-family:\s*Archivo,\s*'Roboto',\s*sans-serif;/s);
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-size:\s*16px;/s);
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-weight:\s*700;/s);
-      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*line-height:\s*100%;/s);
-      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*text-transform:\s*lowercase;/s);
+      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*line-height:\s*1\.2;/s);
+      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*text-transform:\s*none;/s);
       expect(source).toMatch(/(?:brandSubtitle|sidebarBrand p)\b[^}]*color:\s*(?:#5B74A7|var\(--branding-theme-secondary-text,\s*#5B74A7\));/s);
     }
   });

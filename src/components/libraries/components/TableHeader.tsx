@@ -113,8 +113,12 @@ export type TableHeaderProps = {
   existingProperties?: PropertyConfig[];
   /** Whether to show the "add column" button column at the right side of header */
   showAddColumn?: boolean;
+  /** Render the button inside the header cell. Set false when an external fixed control owns it. */
+  showAddColumnButton?: boolean;
   /** Click handler for the "add column" header button */
   onAddColumnClick?: () => void;
+  /** Insert a column immediately after a specific field. */
+  onInsertColumnRight?: (propertyId: string) => void;
   /** Ref for the add column button (used to position the popup below it) */
   addColumnButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** Start dragging a column resize handle */
@@ -146,7 +150,9 @@ export function TableHeader({
   onToggleSelectAll,
   existingProperties,
   showAddColumn = false,
+  showAddColumnButton = true,
   onAddColumnClick,
+  onInsertColumnRight,
   addColumnButtonRef,
   onColumnResizeStart,
   isResizingColumn = false,
@@ -453,21 +459,24 @@ export function TableHeader({
             scope="col"
             className={`${styles.headerCell} ${styles.addColumnHeaderCell}`}
           >
-            <button
-              ref={addColumnButtonRef}
-              type="button"
-              className={styles.addColumnButton}
-              onClick={onAddColumnClick}
-              aria-label="Add new column"
-            >
-              <Image
-                src={addColumIcon}
-                alt=""
-                width={16}
-                height={16}
-                className={styles.addColumnButtonIcon}
-              />
-            </button>
+            {showAddColumnButton && (
+              <button
+                ref={addColumnButtonRef}
+                type="button"
+                className={styles.addColumnButton}
+                onClick={onAddColumnClick}
+                aria-label="Insert column right"
+                title="Insert column right"
+              >
+                <Image
+                  src={addColumIcon}
+                  alt=""
+                  width={16}
+                  height={16}
+                  className={styles.addColumnButtonIcon}
+                />
+              </button>
+            )}
           </th>
         )}
       </tr>
@@ -491,6 +500,18 @@ export function TableHeader({
               type="button"
               className={styles.headerContextMenuButton}
               onClick={() => {
+                setHeaderMenu((prev) => ({ ...prev, visible: false }));
+                if (headerMenu.propertyId) {
+                  onInsertColumnRight?.(headerMenu.propertyId);
+                }
+              }}
+            >
+              Insert column right
+            </button>
+            <button
+              type="button"
+              className={styles.headerContextMenuButton}
+              onClick={() => {
                 if (!headerMenu.propertyId) return;
                 setEditTarget({
                   open: true,
@@ -510,25 +531,28 @@ export function TableHeader({
               Edit column
             </button>
             {headerMenu.canDeleteColumn && (
-              <button
-                type="button"
-                className={styles.headerContextMenuButton}
-                onClick={() => {
-                  if (!headerMenu.propertyId) {
-                    showErrorToast('Missing column id');
-                    return;
-                  }
-                  setDeleteColumnConfirm({
-                    open: true,
-                    propertyId: headerMenu.propertyId,
-                    propertyName: headerMenu.propertyName,
-                    loading: false,
-                  });
-                  setHeaderMenu((prev) => ({ ...prev, visible: false }));
-                }}
-              >
-                Delete column
-              </button>
+              <>
+                <div className={styles.headerContextMenuDivider} />
+                <button
+                  type="button"
+                  className={`${styles.headerContextMenuButton} ${styles.headerContextMenuButtonDanger}`}
+                  onClick={() => {
+                    if (!headerMenu.propertyId) {
+                      showErrorToast('Missing column id');
+                      return;
+                    }
+                    setDeleteColumnConfirm({
+                      open: true,
+                      propertyId: headerMenu.propertyId,
+                      propertyName: headerMenu.propertyName,
+                      loading: false,
+                    });
+                    setHeaderMenu((prev) => ({ ...prev, visible: false }));
+                  }}
+                >
+                  Delete column
+                </button>
+              </>
             )}
           </div>,
           document.body,

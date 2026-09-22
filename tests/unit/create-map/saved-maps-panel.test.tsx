@@ -43,7 +43,7 @@ describe('SavedMapsPanel', () => {
     expect(markup).toContain('Saved maps');
     expect(markup).toContain('River Town');
     expect(markup).not.toContain('Adventure');
-    expect(markup).toContain('v3');
+    expect(markup).not.toContain('v3');
     expect(markup).toContain('dateTime="2026-08-10T01:00:00.000Z"');
     expect(markup).toContain('aria-current="true"');
     expect(markup).toContain('aria-label="Search saved maps"');
@@ -99,6 +99,15 @@ describe('SavedMapsPanel', () => {
     expect(errorMarkup).toContain('role="alert"');
     expect(errorMarkup).toContain('aria-label="Retry saved maps"');
     expect(emptyMarkup).toContain('No saved maps');
+  });
+
+  it('uses the compact empty-state treatment in the narrow Map sidebar', () => {
+    const source = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/components/SavedMapsPanel.tsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(/<EmptyContentState[^>]*compact/);
   });
 
   it('blocks dirty, saving, and conflicted drafts but permits clean saved workspaces', () => {

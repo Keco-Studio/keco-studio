@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { App } from 'antd';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import {
   AssetRow,
   CreateLibraryAssetOptions,
@@ -56,9 +57,12 @@ import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization
 import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
-import { getColumnWidthClassKey } from './utils/tableStructure';
 import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
 import { resolveLibraryViewMode } from './libraryViewMode';
+import { getAutoColumnWidths, getAutoTableWidth } from './utils/autoColumnWidths';
+import { useElementClientWidth } from './hooks/useElementClientWidth';
+import addColumIcon from '@/assets/images/addColumIcon.svg';
+import { resolveTableUserRole, type TableUserRole } from './utils/tableUserRole';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -84,6 +88,8 @@ export type LibraryAssetsTableProps = {
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
   onAddProperty?: (payload: AddColumnFormPayload) => Promise<void>;
+  /** Project page role is authoritative when available. */
+  projectRole?: TableUserRole;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -118,6 +124,7 @@ export function LibraryAssetsTable({
   onDeleteAsset,
   onDeleteAssets,
   onAddProperty,
+  projectRole,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
@@ -140,6 +147,7 @@ export function LibraryAssetsTable({
   const [contextMenuRowId, setContextMenuRowId] = useState<string | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [addColumnModalOpen, setAddColumnModalOpen] = useState(false);
+  const [insertAfterPropertyId, setInsertAfterPropertyId] = useState<string | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement>(null);
 
   // Batch edit context menu state
@@ -305,6 +313,7 @@ export function LibraryAssetsTable({
 
   // Ref for table container to detect clicks outside (edit cell)
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const tableContainerWidth = useElementClientWidth(tableContainerRef);
   // Ref for add-row form: click outside this (e.g. another cell) triggers save new row
   const addRowFormRef = useRef<HTMLTableRowElement>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
@@ -331,7 +340,8 @@ export function LibraryAssetsTable({
     avatarRefs,
     setAssetCardRef,
   } = useAssetHover(supabase);
-  const userRole = useUserRole(params?.projectId as string | undefined, supabase);
+  const fetchedUserRole = useUserRole(params?.projectId as string | undefined, supabase);
+  const userRole = resolveTableUserRole(projectRole, fetchedUserRole);
 
   // Asset detail drawer (right side panel)
   const [detailDrawerRowId, setDetailDrawerRowId] = useState<string | null>(null);
@@ -486,6 +496,7 @@ export function LibraryAssetsTable({
   }, [detailDrawerRowId, displayRows]);
 
   const activeProperties = orderedProperties;
+  const showAddColumn = userRole === 'admin' || userRole === 'editor';
   const resizeColumnKeys = useMemo(
     () => [NUMBER_COLUMN_KEY, ...activeProperties.map((property) => property.id)],
     [activeProperties],
@@ -500,6 +511,38 @@ export function LibraryAssetsTable({
     isResizingColumn,
     isResizingRow,
   } = useTableResize(library?.id, resizeColumnKeys);
+
+  const autoColumnWidths = useMemo(
+    () => getAutoColumnWidths({
+      properties: activeProperties,
+      rows: displayRows,
+      containerWidth: tableContainerWidth,
+      fixedColumnWidth: 60 + (showAddColumn ? 40 : 0),
+    }),
+    [activeProperties, displayRows, showAddColumn, tableContainerWidth],
+  );
+  const getAutoColStyle = useCallback((propertyId: string): React.CSSProperties | undefined => {
+    const width = autoColumnWidths[propertyId];
+    if (!width) return undefined;
+    return {
+      width: `${width}px`,
+      minWidth: '96px',
+      maxWidth: `${width}px`,
+    };
+  }, [autoColumnWidths]);
+  const autoTableStyle = useMemo(() => ({
+    width: `${getAutoTableWidth(
+      autoColumnWidths,
+      60 + (showAddColumn ? 40 : 0),
+      tableContainerWidth,
+    )}px`,
+  }), [autoColumnWidths, showAddColumn, tableContainerWidth]);
+  const autoTableHasOverflow = tableContainerWidth > 0 &&
+    getAutoTableWidth(
+      autoColumnWidths,
+      60 + (showAddColumn ? 40 : 0),
+      tableContainerWidth,
+    ) > tableContainerWidth + 1;
   const {
     searchHighlightedCellKeys,
     scrollTargetCell,
@@ -516,8 +559,20 @@ export function LibraryAssetsTable({
   };
 
   const handleAddColumnClick = () => {
-    if (onAddProperty) setAddColumnModalOpen(true);
+    if (onAddProperty) {
+      setInsertAfterPropertyId(null);
+      setAddColumnModalOpen(true);
+    }
     else handlePredefineClick();
+  };
+
+  const handleInsertColumnRight = (propertyId: string) => {
+    if (onAddProperty) {
+      setInsertAfterPropertyId(propertyId);
+      setAddColumnModalOpen(true);
+    } else {
+      handlePredefineClick();
+    }
   };
 
   const getAllRowsForCellSelection = useCallback(() => {
@@ -918,7 +973,7 @@ export function LibraryAssetsTable({
 
   const totalColumns = 1 + activeProperties.length;
 
-  const columnWidthClass = styles[getColumnWidthClassKey(activeProperties.length)];
+  const useCustomColumnWidths = hasCustomColumnWidths || isResizingColumn;
 
   // Header-level "select all rows" state
   const headerAllRowsSelected =
@@ -958,14 +1013,18 @@ export function LibraryAssetsTable({
             )
           ) : (
             <table
-              className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : columnWidthClass}`}
+              className={`${styles.table} ${useCustomColumnWidths ? styles.colsCustom : styles.colsAuto}`}
+              style={useCustomColumnWidths ? undefined : autoTableStyle}
             >
             <colgroup>
-              <col style={getColStyle(NUMBER_COLUMN_KEY)} />
+              <col style={useCustomColumnWidths ? getColStyle(NUMBER_COLUMN_KEY) : { width: 60 }} />
               {activeProperties.map((property) => (
-                <col key={property.id} style={getColStyle(property.id)} />
+                <col
+                  key={property.id}
+                  style={useCustomColumnWidths ? getColStyle(property.id) : getAutoColStyle(property.id)}
+                />
               ))}
-              {(userRole === 'admin' || userRole === 'editor') && (
+              {showAddColumn && (
                 <col style={{ width: 40 }} />
               )}
             </colgroup>
@@ -975,9 +1034,10 @@ export function LibraryAssetsTable({
               hasSomeRowsSelected={headerHasSomeRowsSelected}
               onToggleSelectAll={handleToggleSelectAllRows}
               existingProperties={properties}
-              showAddColumn={userRole === 'admin' || userRole === 'editor'}
+              showAddColumn={showAddColumn}
+              showAddColumnButton={false}
               onAddColumnClick={handleAddColumnClick}
-              addColumnButtonRef={addColumnButtonRef}
+              onInsertColumnRight={handleInsertColumnRight}
               onColumnResizeStart={startColumnResize}
               isResizingColumn={isResizingColumn}
               rows={resolvedRows}
@@ -1068,8 +1128,29 @@ export function LibraryAssetsTable({
             </table>
           )}
         </div>
+        {showAddColumn && (
+          <button
+            ref={addColumnButtonRef}
+            type="button"
+            className={styles.fixedAddColumnControl}
+            onClick={handleAddColumnClick}
+            aria-label="Insert column right"
+            title="Insert column right"
+          >
+            <Image
+              src={addColumIcon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.addColumnButtonIcon}
+            />
+          </button>
+        )}
         {scriptViewMode !== 'script' && (
-          <StickyHorizontalScrollbar scrollContainerRef={tableContainerRef} />
+          <StickyHorizontalScrollbar
+            scrollContainerRef={tableContainerRef}
+            knownOverflow={useCustomColumnWidths ? undefined : autoTableHasOverflow}
+          />
         )}
       </div>
 
@@ -1103,11 +1184,17 @@ export function LibraryAssetsTable({
       {onAddProperty && (
         <AddColumnModal
           open={addColumnModalOpen}
-          onClose={() => setAddColumnModalOpen(false)}
+          onClose={() => {
+            setAddColumnModalOpen(false);
+            setInsertAfterPropertyId(null);
+          }}
           anchorRef={addColumnButtonRef}
           existingProperties={properties}
           onSubmit={async (payload) => {
-            await onAddProperty(payload);
+            await onAddProperty({
+              ...payload,
+              insertAfterPropertyId: insertAfterPropertyId ?? undefined,
+            });
           }}
         />
       )}

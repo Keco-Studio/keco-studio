@@ -23,7 +23,8 @@ describe('native simulation workbench presentation', () => {
 
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
-    expect(source).toContain('Keco Simulator');
+    expect(source).toContain('Simulator');
+    expect(source).not.toContain('Keco Simulator');
     expect(source).toContain('Battle &amp; numbers sandbox · for game designers');
     expect(source).toContain('projectButton');
     expect(source).toContain('projectWrap');
@@ -38,7 +39,8 @@ describe('native simulation workbench presentation', () => {
     expect(source).toContain('aria-expanded');
 
     const css = read('SimulationWorkbench.module.css');
-    expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*228px/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*var\(--simulation-sidebar-width\)/s);
+    expect(read('simulationTokens.css')).toContain('--simulation-sidebar-width: 300px');
     expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--simulation-surface-glass\)/s);
     expect(css).toMatch(/\.sidebarHidden\s*\{/);
     expect(css).not.toMatch(/\.collapseButton\s*\{/);

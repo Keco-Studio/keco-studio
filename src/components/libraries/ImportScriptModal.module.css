@@ -203,7 +203,7 @@
 }
 
 .fileButton:hover:not(:disabled) {
-  background: #f9fafb;
+  background: var(--keco-control-hover-bg);
   border-color: #94a3b8;
 }
 
@@ -335,7 +335,7 @@
 }
 
 .cancelButton:hover:not(:disabled) {
-  background: #f9fafb;
+  background: var(--keco-control-hover-bg);
 }
 
 .cancelButton:disabled {

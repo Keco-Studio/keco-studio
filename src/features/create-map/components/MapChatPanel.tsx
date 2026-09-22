@@ -53,10 +53,7 @@ type MapChatPanelProps = {
   onBack: () => void;
   onCreate?: () => void;
   onAsk: (prompt: string) => void;
-  onGenerate: () => void;
   canAsk: boolean;
-  canGenerate: boolean;
-  showGenerate: boolean;
   busy?: boolean;
   readOnly?: boolean;
   error?: string | null;
@@ -91,10 +88,7 @@ export function MapChatPanel({
   onBack,
   onCreate,
   onAsk,
-  onGenerate,
   canAsk,
-  canGenerate,
-  showGenerate,
   busy = false,
   readOnly = false,
   error = null,
@@ -133,7 +127,7 @@ export function MapChatPanel({
     const node = listRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [visibleMessages, showGenerate]);
+  }, [visibleMessages]);
 
   useEffect(() => {
     if (!attachMenuOpen) return;
@@ -242,13 +236,7 @@ export function MapChatPanel({
                   aria-current={entry.isCurrent || undefined}
                   data-history-version={entry.label}
                 >
-                  <Image
-                    src={mapPlanIcon}
-                    width={21}
-                    height={21}
-                    alt=""
-                    aria-hidden="true"
-                  />
+                  <Image src={mapPlanIcon} width={21} height={21} alt="" aria-hidden="true" />
                   <span>{entry.label}</span>
                 </div>
               ))}
@@ -284,31 +272,11 @@ export function MapChatPanel({
                 {message.text}
               </div>
               {isPlanMessage ? renderMapPlanCard() : null}
-              {isPlanMessage && showGenerate ? (
-                <button
-                  type="button"
-                  className={styles.chatGenerateButton}
-                  disabled={!canGenerate || busy || readOnly}
-                  onClick={onGenerate}
-                >
-                  Generate Map
-                </button>
-              ) : null}
               {isMapMessage ? renderMapImageCard() : null}
             </div>
           );
         })}
         {!hasPlanMessage ? renderMapPlanCard() : null}
-        {!hasPlanMessage && showGenerate ? (
-          <button
-            type="button"
-            className={styles.chatGenerateButton}
-            disabled={!canGenerate || busy || readOnly}
-            onClick={onGenerate}
-          >
-            Generate Map
-          </button>
-        ) : null}
         {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
       </div>
 

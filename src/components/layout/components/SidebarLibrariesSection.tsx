@@ -6,7 +6,7 @@ import type { DataNode } from 'antd/es/tree';
 import type { Library } from '@/lib/services/libraryService';
 import type { SidebarAssetRow } from '../hooks/useSidebarAssets';
 import addProjectIcon from '@/assets/images/addProjectIcon.svg';
-import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
+import recentEmptyIcon from '@/assets/images/nav-icons/computer.svg';
 import { SidebarTreeView } from './SidebarTreeView';
 import type { SidebarTreeDropInfo } from './SidebarTreeView';
 import styles from '../Sidebar.module.css';
@@ -164,10 +164,10 @@ export function SidebarLibrariesSection({
         {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
           <div className={styles.sidebarEmptyState}>
             <Image
-              src={FolderCloseIcon}
+              src={recentEmptyIcon}
               alt="No folders or libraries"
-              width={22}
-              height={18}
+              width={88}
+              height={88}
               className={`icon-22 ${styles.emptyIcon}`}
             />
             <div className={styles.sidebarEmptyText}>

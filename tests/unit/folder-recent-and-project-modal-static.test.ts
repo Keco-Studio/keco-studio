@@ -14,7 +14,9 @@ describe('folder/recent cards and project modal visual contracts', () => {
     expect(source).toMatch(
       /\.stickyHorizontalScrollbar\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s,
     );
-    expect(table).toContain('<StickyHorizontalScrollbar scrollContainerRef={tableContainerRef} />');
+    expect(table).toContain('<StickyHorizontalScrollbar');
+    expect(table).toContain('scrollContainerRef={tableContainerRef}');
+    expect(table).toContain('knownOverflow={useCustomColumnWidths ? undefined : autoTableHasOverflow}');
   });
 
   it('loads and renders folder documents alongside libraries', () => {

@@ -26,22 +26,19 @@ describe('MapChatPanel', () => {
     onBack: jest.fn(),
     onCreate: jest.fn(),
     onAsk: jest.fn(),
-    onGenerate: jest.fn(),
     canAsk: true,
-    canGenerate: true,
-    showGenerate: true,
   };
 
-  it('renders chat header actions, search, and generate control', () => {
+  it('renders chat header actions and search without a generate control', () => {
     const markup = renderToStaticMarkup(React.createElement(MapChatPanel, {
       ...baseProps,
       mapPlan: { title: 'Village map plan', versionLabel: 'Version1' },
       mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: 'https://example.test/map.png' },
+      onViewMapPlan: jest.fn(),
       generationHistory: [
         { revisionId: 'revision-2', label: 'V2', isCurrent: true },
         { revisionId: 'revision-1', label: 'V1', isCurrent: false },
       ],
-      onViewMapPlan: jest.fn(),
     } as never));
 
     expect(markup).toContain('Village map');
@@ -51,10 +48,9 @@ describe('MapChatPanel', () => {
     expect(markup).not.toContain('aria-label="Filter messages"');
     expect(markup).toContain('aria-label="Search messages"');
     expect(markup).toContain('Make a village map');
-    expect(markup).toContain('Generate Map');
+    expect(markup).not.toContain('Generate Map');
     expect(markup).toContain('Village map plan');
     expect(markup).toContain('aria-label="View map plan"');
-    expect(markup).not.toContain('aria-label="View map plan details"');
     expect(markup).toContain('data-history-version="V1"');
     expect(markup).toContain('data-history-version="V2"');
     expect(markup).toContain('aria-label="Download map"');

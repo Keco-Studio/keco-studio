@@ -34,7 +34,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
   const onKeco101 = isKeco101Path(pathname);
   const isKecoAdminPage = pathname === '/keco-admin';
-  const showLeftNav = createMapChrome.showLeftNav || isKecoAdminPage;
+  const showLeftNav = createMapChrome.showLeftNav || hideSidebarForGameDesignSystems || isKecoAdminPage;
   // Dedicated product workspaces hide Studio resource chrome.
   // Script mounts ScriptSidebar as a left sibling of TopBar/main.
   const showStudioSidebar =
