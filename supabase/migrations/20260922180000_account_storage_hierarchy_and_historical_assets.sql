@@ -1,6 +1,10 @@
 -- Repair historical physical objects that predate the storage registry and
 -- expose the Account Storage explorer as a project directory hierarchy.
 
+-- Production history repair can scan more objects than the default two-minute
+-- migration timeout permits. Reset the connection setting at the end.
+set statement_timeout = '10min';
+
 -- Historical imports are deliberately limited to Keco's accounted buckets.
 -- Native registry rows win over path attribution; every path-derived project
 -- id must resolve to a real project before an object can enter the ledger.
@@ -195,6 +199,8 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_activate_assets_workspace_from_storage_file
+  on public.project_storage_files;
 create trigger trg_activate_assets_workspace_from_storage_file
 after insert or update of project_id, source_kind, lifecycle_status
 on public.project_storage_files
@@ -370,7 +376,7 @@ $$;
 
 drop function if exists public.account_storage_project_entities(uuid, text, text, integer, integer);
 
-create function public.account_storage_project_entities(
+create or replace function public.account_storage_project_entities(
   p_project_id uuid,
   p_query text default null,
   p_sort text default 'size_desc',
@@ -576,3 +582,5 @@ revoke all on function public.service_repair_historical_project_storage()
   from public, anon, authenticated;
 grant execute on function public.service_repair_historical_project_storage()
   to service_role;
+
+reset statement_timeout;
