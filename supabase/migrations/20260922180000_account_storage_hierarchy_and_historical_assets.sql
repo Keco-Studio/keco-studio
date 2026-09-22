@@ -211,7 +211,9 @@ select public.service_repair_historical_project_storage();
 
 -- Assets existence is controlled by the root workspace, not by a positive
 -- physical subtotal. This also lets its detail endpoint return an empty list.
-create or replace function private.storage_project_entities(p_project_id uuid)
+-- Keep the existing helper available to in-flight production RPCs: replacing
+-- it can wait indefinitely for those calls to release their function lock.
+create or replace function private.storage_project_hierarchy_entities(p_project_id uuid)
 returns table (
   entity_id uuid,
   entity_kind text,
@@ -311,7 +313,7 @@ security definer
 set search_path = ''
 as $$
   with recursive entities as (
-    select * from private.storage_project_entities(p_project_id)
+    select * from private.storage_project_hierarchy_entities(p_project_id)
   ), folder_tree as (
     select folder.id as root_id, folder.id as descendant_id
     from public.folders folder
@@ -374,9 +376,7 @@ as $$
   select * from directory_entries;
 $$;
 
-drop function if exists public.account_storage_project_entities(uuid, text, text, integer, integer);
-
-create or replace function public.account_storage_project_entities(
+create or replace function public.account_storage_project_entities_v2(
   p_project_id uuid,
   p_query text default null,
   p_sort text default 'size_desc',
@@ -473,7 +473,9 @@ begin
 end;
 $$;
 
-create or replace function public.account_storage_summary()
+-- Use a versioned RPC so deployment never replaces the summary function that
+-- the currently deployed application may still be executing.
+create or replace function public.account_storage_summary_v2()
 returns jsonb
 language plpgsql
 security definer
@@ -512,11 +514,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_entities(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_entities(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities(project.id) entity),
       'ownedByCurrentUser', true
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_entities(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities(project.id) entity) as sort_bytes
     from public.projects project
     left join public.profiles profile on profile.id = project.owner_id
     where project.owner_id = v_actor
@@ -530,11 +532,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_entities(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_entities(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities(project.id) entity),
       'ownedByCurrentUser', false
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_entities(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities(project.id) entity) as sort_bytes
     from public.projects project
     join public.project_collaborators collaborator
       on collaborator.project_id = project.id
@@ -568,15 +570,19 @@ begin
 end;
 $$;
 
-revoke all on function private.storage_project_entities(uuid)
+revoke all on function private.storage_project_hierarchy_entities(uuid)
   from public, anon, authenticated, service_role;
 revoke all on function private.storage_activate_assets_workspace_from_file()
   from public, anon, authenticated, service_role;
 revoke all on function private.storage_project_directory_entries(uuid, uuid)
   from public, anon, authenticated, service_role;
-revoke all on function public.account_storage_project_entities(uuid, text, text, integer, integer, uuid)
+revoke all on function public.account_storage_project_entities_v2(uuid, text, text, integer, integer, uuid)
   from public, anon, service_role;
-grant execute on function public.account_storage_project_entities(uuid, text, text, integer, integer, uuid)
+grant execute on function public.account_storage_project_entities_v2(uuid, text, text, integer, integer, uuid)
+  to authenticated;
+revoke all on function public.account_storage_summary_v2()
+  from public, anon, service_role;
+grant execute on function public.account_storage_summary_v2()
   to authenticated;
 revoke all on function public.service_repair_historical_project_storage()
   from public, anon, authenticated;
