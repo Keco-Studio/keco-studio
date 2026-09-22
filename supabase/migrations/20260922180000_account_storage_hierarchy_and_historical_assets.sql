@@ -5,6 +5,24 @@
 -- migration timeout permits. Reset the connection setting at the end.
 set statement_timeout = '10min';
 
+-- Historical imports are set based. Suppress the ordinary per-file refresh
+-- trigger while they run so each imported object does not rescan every table
+-- cell containing JSON media metadata.
+create or replace function private.storage_refresh_file_entity_binding_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if pg_catalog.current_setting('keco.storage_skip_entity_binding', true) = 'on' then
+    return new;
+  end if;
+  perform private.storage_refresh_file_entity_binding(new.id);
+  return new;
+end;
+$$;
+
 -- Historical imports are deliberately limited to Keco's accounted buckets.
 -- Native registry rows win over path attribution; every path-derived project
 -- id must resolve to a real project before an object can enter the ledger.
@@ -16,7 +34,10 @@ set search_path = ''
 as $$
 declare
   v_imported bigint;
+  v_imported_ids uuid[];
 begin
+perform pg_catalog.set_config('keco.storage_skip_entity_binding', 'on', true);
+
 with storage_inventory as (
   select
     object.bucket_id,
@@ -39,22 +60,22 @@ with storage_inventory as (
 ), native_candidates as (
   select asset.storage_bucket as bucket_id, asset.storage_path as object_path,
     asset.project_id, 'project_asset'::text as source_kind, asset.id as source_entity_id,
-    1 as priority
+    3 as priority
   from public.project_game_assets asset
   union all
   select 'map-assets', reference.storage_path, reference.project_id,
-    'map_reference', reference.id, 1
+    'map_reference', reference.id, 3
   from public.map_reference_images reference
   union all
   select 'map-assets', asset.storage_path, map.project_id,
-    'map_asset', asset.id, 1
+    'map_asset', asset.id, 3
   from public.map_assets asset
   join public.map_revisions revision on revision.id = asset.map_revision_id
   join public.map_projects map on map.id = revision.map_project_id
   where asset.storage_path is not null
   union all
   select 'character-assets', attempt.storage_path, asset.project_id,
-    'character_asset', asset.id, 1
+    'character_asset', asset.id, 3
   from public.character_generation_attempts attempt
   join public.character_assets asset on asset.id = attempt.character_asset_id
   where attempt.storage_path is not null
@@ -67,7 +88,7 @@ with storage_inventory as (
     and pg_catalog.strpos(coalesce(document.content, ''), inventory.object_path) > 0
   union all
   select inventory.bucket_id, inventory.object_path, library.project_id,
-    'library_media', asset.id, 1
+    'library_media', asset.id, 2
   from public.library_asset_values value
   join public.library_assets asset on asset.id = value.asset_id
   join public.libraries library on library.id = asset.library_id
@@ -109,7 +130,7 @@ with storage_inventory as (
     and inventory.object_path = native.object_path
   union all
   select path.bucket_id, path.object_path, project.id,
-    path.source_kind, null::uuid, 2
+    path.source_kind, null::uuid, 4
   from path_candidates path
   join public.projects project
     on path.project_id_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
@@ -155,13 +176,80 @@ with storage_inventory as (
   on conflict do nothing
   returning id
 )
-select count(*) into v_imported from imported;
+select count(*), coalesce(array_agg(imported.id), '{}'::uuid[])
+  into v_imported, v_imported_ids
+from imported;
 
--- The trigger above binds new files. Refresh all rows as an idempotent repair
--- for partially deployed historical registries.
-perform private.storage_refresh_file_entity_binding(file.id)
+perform pg_catalog.set_config('keco.storage_skip_entity_binding', 'off', true);
+
+-- Bind only rows imported by this transaction. They are not visible to other
+-- sessions yet, so this batch cannot race existing file lifecycle updates.
+-- Materializing media paths makes the cost proportional to the number of
+-- table values plus imported files, rather than their product.
+with media_locations as materialized (
+  select
+    library.project_id,
+    library.id as library_id,
+    asset.id as asset_id,
+    media_path.object_path
+  from public.library_asset_values value
+  join public.library_assets asset on asset.id = value.asset_id
+  join public.libraries library on library.id = asset.library_id
+  cross join lateral private.storage_json_media_paths(value.value_json) media_path
+), table_bindings as (
+  select distinct on (file.id)
+    file.id as file_id,
+    media.library_id,
+    media.asset_id
+  from media_locations media
+  join public.project_storage_files file
+    on file.id = any(v_imported_ids)
+    and file.project_id = media.project_id
+    and file.bucket_id = 'library-media-files'
+    and file.object_path = media.object_path
+    and file.lifecycle_status = 'active'
+  order by file.id, media.library_id, media.asset_id
+)
+insert into public.project_storage_entity_bindings (
+  file_id, project_id, owner_id, entity_kind, entity_id,
+  detail_entity_id, provenance, created_at, updated_at
+)
+select
+  file.id,
+  file.project_id,
+  file.owner_id,
+  case
+    when document.id is not null then 'document'
+    when table_binding.file_id is not null then 'table'
+    else 'assets'
+  end,
+  case
+    when document.id is not null then document.id
+    when table_binding.file_id is not null then table_binding.library_id
+    else file.project_id
+  end,
+  case
+    when document.id is not null then null::uuid
+    when table_binding.file_id is not null then table_binding.asset_id
+    else file.source_entity_id
+  end,
+  case
+    when document.id is not null then 'document_source'
+    when table_binding.file_id is not null then 'table_cell_path'
+    else 'project_assets'
+  end,
+  pg_catalog.clock_timestamp(),
+  pg_catalog.clock_timestamp()
 from public.project_storage_files file
-where file.project_id is not null;
+left join public.documents document
+  on file.source_kind = 'document_image'
+  and document.id = file.source_entity_id
+  and document.project_id = file.project_id
+left join table_bindings table_binding on table_binding.file_id = file.id
+where file.project_id is not null
+  and file.id = any(v_imported_ids)
+  and file.lifecycle_status = 'active'
+on conflict (file_id) do nothing;
 
 -- Existing native standalone assets imply that the root Assets workspace
 -- exists, even when an older project missed the activation flag migration.
