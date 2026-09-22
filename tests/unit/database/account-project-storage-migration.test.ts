@@ -255,6 +255,8 @@ describe('account project storage migration', () => {
   });
 
   it('imports attributable historical storage objects using authoritative metadata', () => {
+    expect(hierarchySql).toMatch(/set statement_timeout = '10min'/i);
+    expect(hierarchySql).toMatch(/reset statement_timeout/i);
     expect(hierarchySql).toMatch(/function public\.service_repair_historical_project_storage\(\)/i);
     expect(hierarchySql).toMatch(/from storage\.objects object/i);
     expect(hierarchySql).toMatch(/object\.metadata ->> 'size'/i);
@@ -298,6 +300,9 @@ describe('account project storage migration', () => {
     expect(hierarchySql).toMatch(/update public\.projects project[\s\S]*set assets_workspace_enabled = true/i);
     expect(hierarchySql).toMatch(/function private\.storage_activate_assets_workspace_from_file\(\)/i);
     expect(hierarchySql).toMatch(/trg_activate_assets_workspace_from_storage_file/i);
+    expect(hierarchySql).toMatch(
+      /drop trigger if exists trg_activate_assets_workspace_from_storage_file[\s\S]*create trigger trg_activate_assets_workspace_from_storage_file/i,
+    );
     expect(hierarchySql).toMatch(/source_kind in \('project_asset', 'map_reference', 'map_asset', 'character_asset'\)/i);
     expect(hierarchySql).toMatch(
       /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_entities/i,
