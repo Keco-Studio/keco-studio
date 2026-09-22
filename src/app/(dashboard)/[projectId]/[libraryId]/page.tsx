@@ -43,6 +43,7 @@ import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
 import { getStudioLibraryRedirectPath } from '@/lib/studioLibraryIsolation';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { resolveTableUserRole } from '@/components/libraries/utils/tableUserRole';
 
 export default function LibraryPage() {
   const params = useParams();
@@ -54,7 +55,6 @@ export default function LibraryPage() {
   
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const { data: projectRole } = useProjectRoleQuery(projectId, userProfile?.id);
-  const userRole: CollaboratorRole = projectRole?.role ?? 'viewer';
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
@@ -123,6 +123,11 @@ export default function LibraryPage() {
     queryFn: () => getProject(supabase, projectId),
     enabled: !!projectId,
   });
+  const userRole: CollaboratorRole = resolveTableUserRole(
+    projectRole?.role,
+    'viewer',
+    project?.owner_id === userProfile?.id,
+  ) ?? 'viewer';
 
   const { data: library, isLoading: libraryLoading, error: libraryError } = useQuery({
     queryKey: queryKeys.library(libraryId),
@@ -471,7 +476,7 @@ export default function LibraryPage() {
               }
               properties={tableProperties}
               overrideRows={versionAssetRows}
-              projectRole={projectRole?.role}
+              projectRole={userRole}
               onAddProperty={handleAddProperty}
             />
           </RowStoreProvider>

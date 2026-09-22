@@ -9,4 +9,8 @@ describe('resolveTableUserRole', () => {
   it('falls back to the table role lookup only when the page role is unavailable', () => {
     expect(resolveTableUserRole(undefined, 'admin')).toBe('admin');
   });
+
+  it('treats the loaded project owner as admin before a role request resolves', () => {
+    expect(resolveTableUserRole(undefined, null, true)).toBe('admin');
+  });
 });
