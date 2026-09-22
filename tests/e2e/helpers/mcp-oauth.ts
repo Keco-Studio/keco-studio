@@ -78,7 +78,7 @@ export async function authorizeMcpInBrowser(
   });
   const approve = input.page.getByRole('button', { name: 'Approve' });
   await approve.waitFor({ state: 'visible', timeout: 30_000 });
-  await approve.click();
+  await approve.click({ timeout: 30_000 });
   await input.page.waitForURL((url) => {
     return url.origin === new URL(input.redirectUri).origin
       && url.pathname === new URL(input.redirectUri).pathname
