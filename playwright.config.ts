@@ -32,6 +32,8 @@ process.env.MCP_CONNECTION_ID_SIGNING_SECRET ??=
   'keco-playwright-mcp-connection-signing-secret-2026-07-24';
 const playwrightCronSecret = 'keco-playwright-cron-secret-2026-08-15';
 process.env.CRON_SECRET = playwrightCronSecret;
+const playwrightStripeSecretKey = process.env.STRIPE_SECRET_KEY ?? 'sk_test_keco_playwright';
+const playwrightStripeWebhookSecret = 'whsec_keco_playwright_20260922';
 const playwrightPort = process.env.PLAYWRIGHT_PORT ?? '3000';
 const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 const playwrightDistDir = process.env.PLAYWRIGHT_PORT ? '.next-playwright' : '.next';
@@ -121,6 +123,8 @@ export default defineConfig({
     env: {
       ...process.env,
       CRON_SECRET: playwrightCronSecret,
+      STRIPE_SECRET_KEY: playwrightStripeSecretKey,
+      STRIPE_WEBHOOK_SECRET: playwrightStripeWebhookSecret,
       NEXT_DIST_DIR: playwrightDistDir,
     },
   },
