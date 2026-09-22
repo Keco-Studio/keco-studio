@@ -343,7 +343,7 @@ function readSort(value: unknown): AccountStorageSort {
 }
 
 export async function readOwnAccountStorage(client: SupabaseClient): Promise<AccountStorageSummary> {
-  const { data, error } = await client.rpc('account_storage_summary_v3');
+  const { data, error } = await client.rpc('account_storage_summary_v4');
   if (error) throw new Error('Unable to load account storage');
   return readSummary(data);
 }
@@ -407,7 +407,7 @@ export async function readProjectStorageEntities(
 
   let result: { data: unknown; error: unknown };
   try {
-    result = await client.rpc('account_storage_project_entities_v3', {
+    result = await client.rpc('account_storage_project_entities_v4', {
       p_project_id: projectId,
       p_query: query,
       p_sort: sort,

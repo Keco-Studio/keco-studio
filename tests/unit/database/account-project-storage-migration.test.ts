@@ -29,6 +29,10 @@ const v3CompatibilitySql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260922220000_account_storage_v3_compatibility.sql',
 ), 'utf8');
+const v4CompatibilitySql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260922230000_account_storage_v4_compatibility.sql',
+), 'utf8');
 
 describe('account project storage migration', () => {
   it('defines private quota, file, location, and reservation tables', () => {
@@ -298,8 +302,8 @@ describe('account project storage migration', () => {
   });
 
   it('returns direct directory entries with recursive folder totals and breadcrumbs', () => {
-    expect(hierarchySql).toMatch(/function private\.storage_project_hierarchy_entities_v2\(p_project_id uuid\)/i);
-    expect(hierarchySql).toMatch(/function private\.storage_project_directory_entries_v2\(/i);
+    expect(hierarchySql).toMatch(/function private\.storage_project_hierarchy_entities_v3\(p_project_id uuid\)/i);
+    expect(hierarchySql).toMatch(/function private\.storage_project_directory_entries_v3\(/i);
     expect(hierarchySql).toMatch(/with recursive entities as/i);
     expect(hierarchySql).toMatch(/folder_tree as[\s\S]*child\.parent_folder_id = tree\.descendant_id/i);
     expect(hierarchySql).toMatch(/entity\.folder_id = tree\.descendant_id/i);
@@ -324,30 +328,34 @@ describe('account project storage migration', () => {
     );
     expect(hierarchySql).toMatch(/source_kind in \('project_asset', 'map_reference', 'map_asset', 'character_asset'\)/i);
     expect(hierarchySql).toMatch(
-      /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_hierarchy_entities_v2/i,
+      /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_hierarchy_entities_v3/i,
     );
     expect(hierarchySql).toMatch(
-      /revoke all on function private\.storage_project_hierarchy_entities_v2\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
+      /revoke all on function private\.storage_project_hierarchy_entities_v3\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
     );
     expect(hierarchySql).toMatch(
-      /revoke all on function private\.storage_project_directory_entries_v2\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
+      /revoke all on function private\.storage_project_directory_entries_v3\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
     );
     expect(hierarchySql).toMatch(
-      /grant execute on function public\.account_storage_project_entities_v3\(uuid, text, text, integer, integer, uuid\)[\s\S]*to authenticated/i,
+      /grant execute on function public\.account_storage_project_entities_v4\(uuid, text, text, integer, integer, uuid\)[\s\S]*to authenticated/i,
     );
     expect(hierarchySql).toMatch(
-      /grant execute on function public\.account_storage_summary_v3\(\)[\s\S]*to authenticated/i,
+      /grant execute on function public\.account_storage_summary_v4\(\)[\s\S]*to authenticated/i,
     );
     expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_hierarchy_entities\(/i);
     expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_directory_entries\(/i);
     expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_project_entities_v2\(/i);
     expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_summary_v2\(/i);
+    expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_hierarchy_entities_v2\(/i);
+    expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_directory_entries_v2\(/i);
+    expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_project_entities_v3\(/i);
+    expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_summary_v3\(\)/i);
     expect(hierarchySql).not.toMatch(/drop function if exists public\.account_storage_project_entities/i);
     expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_entities\(/i);
     expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_summary\(\)/i);
   });
 
-  it('adds v3 compatibility wrappers only when an earlier database lacks them', () => {
+  it('adds v3 compatibility wrappers for fresh-v4 and older-v2 databases', () => {
     expect(v3CompatibilitySql).toMatch(
       /to_regprocedure\([\s\S]*account_storage_project_entities_v3\(uuid,text,text,integer,integer,uuid\)[\s\S]*\) is null/i,
     );
@@ -358,7 +366,13 @@ describe('account project storage migration', () => {
       /create function public\.account_storage_project_entities_v3\([\s\S]*select public\.account_storage_project_entities_v2\(/i,
     );
     expect(v3CompatibilitySql).toMatch(
+      /create function public\.account_storage_project_entities_v3\([\s\S]*select public\.account_storage_project_entities_v4\(/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
       /create function public\.account_storage_summary_v3\(\)[\s\S]*select public\.account_storage_summary_v2\(\)/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
+      /create function public\.account_storage_summary_v3\(\)[\s\S]*select public\.account_storage_summary_v4\(\)/i,
     );
     expect(v3CompatibilitySql).not.toMatch(/create or replace function/i);
     expect(v3CompatibilitySql.trimEnd()).toMatch(/end;\s*\$migration\$;$/i);
@@ -373,6 +387,35 @@ describe('account project storage migration', () => {
     );
     expect(v3CompatibilitySql).toMatch(
       /grant execute on function public\.account_storage_summary_v3\(\)[\s\S]*to authenticated/i,
+    );
+  });
+
+  it('adds v4 compatibility wrappers without replacing live v3 functions', () => {
+    expect(v4CompatibilitySql).toMatch(
+      /to_regprocedure\([\s\S]*account_storage_project_entities_v4\(uuid,text,text,integer,integer,uuid\)[\s\S]*\) is null/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /to_regprocedure\([\s\S]*account_storage_summary_v4\(\)[\s\S]*\) is null/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /create function public\.account_storage_project_entities_v4\([\s\S]*select public\.account_storage_project_entities_v3\(/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /create function public\.account_storage_summary_v4\(\)[\s\S]*select public\.account_storage_summary_v3\(\)/i,
+    );
+    expect(v4CompatibilitySql).not.toMatch(/create or replace function/i);
+    expect(v4CompatibilitySql.trimEnd()).toMatch(/end;\s*\$migration\$;$/i);
+    expect(v4CompatibilitySql).toMatch(
+      /revoke all on function public\.account_storage_project_entities_v4\([\s\S]*from public, anon, authenticated, service_role/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /grant execute on function public\.account_storage_project_entities_v4\([\s\S]*to authenticated/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /revoke all on function public\.account_storage_summary_v4\(\)[\s\S]*from public, anon, authenticated, service_role/i,
+    );
+    expect(v4CompatibilitySql).toMatch(
+      /grant execute on function public\.account_storage_summary_v4\(\)[\s\S]*to authenticated/i,
     );
   });
 });
