@@ -280,6 +280,7 @@ describe('account project storage migration', () => {
   });
 
   it('returns direct directory entries with recursive folder totals and breadcrumbs', () => {
+    expect(hierarchySql).toMatch(/function private\.storage_project_hierarchy_entities\(p_project_id uuid\)/i);
     expect(hierarchySql).toMatch(/function private\.storage_project_directory_entries\(/i);
     expect(hierarchySql).toMatch(/with recursive entities as/i);
     expect(hierarchySql).toMatch(/folder_tree as[\s\S]*child\.parent_folder_id = tree\.descendant_id/i);
@@ -305,13 +306,22 @@ describe('account project storage migration', () => {
     );
     expect(hierarchySql).toMatch(/source_kind in \('project_asset', 'map_reference', 'map_asset', 'character_asset'\)/i);
     expect(hierarchySql).toMatch(
-      /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_entities/i,
+      /'fileCount',[\s\S]*count\(\*\) from public\.folders folder[\s\S]*count\(\*\) from private\.storage_project_hierarchy_entities/i,
+    );
+    expect(hierarchySql).toMatch(
+      /revoke all on function private\.storage_project_hierarchy_entities\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
     );
     expect(hierarchySql).toMatch(
       /revoke all on function private\.storage_project_directory_entries\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/i,
     );
     expect(hierarchySql).toMatch(
-      /grant execute on function public\.account_storage_project_entities\(uuid, text, text, integer, integer, uuid\)[\s\S]*to authenticated/i,
+      /grant execute on function public\.account_storage_project_entities_v2\(uuid, text, text, integer, integer, uuid\)[\s\S]*to authenticated/i,
     );
+    expect(hierarchySql).toMatch(
+      /grant execute on function public\.account_storage_summary_v2\(\)[\s\S]*to authenticated/i,
+    );
+    expect(hierarchySql).not.toMatch(/drop function if exists public\.account_storage_project_entities/i);
+    expect(hierarchySql).not.toMatch(/create or replace function private\.storage_project_entities\(/i);
+    expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_summary\(\)/i);
   });
 });
