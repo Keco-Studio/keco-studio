@@ -502,7 +502,7 @@ describeDb('account project storage real Postgres behavior', () => {
       expect.objectContaining({ sourceKind: 'document_image', sourceEntityId: documentId }),
     ]));
 
-    const entities = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+    const entities = await fx.owner.client.rpc('account_storage_project_entities_v4', {
       p_project_id: fx.projectId,
       p_query: null,
       p_sort: 'size_desc',
@@ -512,7 +512,7 @@ describeDb('account project storage real Postgres behavior', () => {
     });
     expect(entities.error).toBeNull();
 
-    const summary = await fx.owner.client.rpc('account_storage_summary_v3');
+    const summary = await fx.owner.client.rpc('account_storage_summary_v4');
     expect(summary.error).toBeNull();
     const project = summary.data.ownedProjects.find(
       (item: { id: string }) => item.id === fx.projectId,
@@ -576,7 +576,7 @@ describeDb('account project storage real Postgres behavior', () => {
     expect(await upload(fx.owner, standalonePath, standaloneBytes)).toBeNull();
     await finalize(fx.owner, standaloneReservation.reservationId as string, standaloneBytes);
 
-    const listed = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+    const listed = await fx.owner.client.rpc('account_storage_project_entities_v4', {
       p_project_id: fx.projectId,
       p_query: null,
       p_sort: 'size_desc',
@@ -604,7 +604,7 @@ describeDb('account project storage real Postgres behavior', () => {
       0,
     )).toBe(Number(detail.data.sizeBytes));
 
-    const summaryResult = await fx.owner.client.rpc('account_storage_summary_v3');
+    const summaryResult = await fx.owner.client.rpc('account_storage_summary_v4');
     expect(summaryResult.error).toBeNull();
     const project = summaryResult.data.ownedProjects.find((item: { id: string }) => item.id === fx.projectId);
     expect(project.fileCount).toBe(listed.data.total);
@@ -651,7 +651,7 @@ describeDb('account project storage real Postgres behavior', () => {
       expect((await fx.svc.from('projects').update({ assets_workspace_enabled: true })
         .eq('id', fx.projectId)).error).toBeNull();
 
-      const root = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+      const root = await fx.owner.client.rpc('account_storage_project_entities_v4', {
         p_project_id: fx.projectId,
         p_query: null,
         p_sort: 'size_desc',
@@ -668,7 +668,7 @@ describeDb('account project storage real Postgres behavior', () => {
       expect(root.data.items.find((item: { kind: string }) => item.kind === 'assets'))
         .toMatchObject({ id: fx.projectId, sizeBytes: 0 });
 
-      const parentPage = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+      const parentPage = await fx.owner.client.rpc('account_storage_project_entities_v4', {
         p_project_id: fx.projectId,
         p_query: null,
         p_sort: 'size_desc',
@@ -684,7 +684,7 @@ describeDb('account project storage real Postgres behavior', () => {
         expect.objectContaining({ id: childId, kind: 'folder', parentFolderId: parentId }),
       ]);
 
-      const childPage = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+      const childPage = await fx.owner.client.rpc('account_storage_project_entities_v4', {
         p_project_id: fx.projectId,
         p_query: null,
         p_sort: 'size_desc',
@@ -705,7 +705,7 @@ describeDb('account project storage real Postgres behavior', () => {
       expect(Number(parentPage.data.items[0].sizeBytes)).toBe(childBytes);
       expect(Number(rootFolder.sizeBytes)).toBe(childBytes);
 
-      const summary = await fx.owner.client.rpc('account_storage_summary_v3');
+      const summary = await fx.owner.client.rpc('account_storage_summary_v4');
       expect(summary.error).toBeNull();
       const project = summary.data.ownedProjects.find((item: { id: string }) => item.id === fx.projectId);
       expect(project.fileCount).toBe(5);
@@ -846,7 +846,7 @@ describeDb('account project storage real Postgres behavior', () => {
         source_entity_id: sharedDocumentId,
       });
 
-      const listed = await fx.owner.client.rpc('account_storage_project_entities_v3', {
+      const listed = await fx.owner.client.rpc('account_storage_project_entities_v4', {
         p_project_id: fx.projectId,
         p_query: null,
         p_sort: 'size_desc',
@@ -1037,7 +1037,7 @@ describeDb('account project storage real Postgres behavior', () => {
       (logicalRows.data ?? []).reduce((total, row) => total + Number(row.size_bytes), 0),
     );
 
-    const summary = await fx.owner.client.rpc('account_storage_summary_v3');
+    const summary = await fx.owner.client.rpc('account_storage_summary_v4');
     expect(summary.error).toBeNull();
     expect(summary.data).toMatchObject({
       physicalUsedBytes: 0,
@@ -1099,7 +1099,7 @@ describeDb('account project storage real Postgres behavior', () => {
     expect(await upload(secondOwner, sharedPath, 16)).toBeNull();
     await finalize(secondOwner, sharedReservation.reservationId as string, 16);
 
-    const result = await fx.editor.client.rpc('account_storage_summary_v3');
+    const result = await fx.editor.client.rpc('account_storage_summary_v4');
     if (result.error) throw new Error(result.error.message);
     expect(result.data).toMatchObject({ physicalUsedBytes: 0, reservedBytes: 0 });
     expect(Number(result.data.usedBytes)).toBe(Number(result.data.logicalUsedBytes));
