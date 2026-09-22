@@ -726,7 +726,10 @@ describeDb('account project storage real Postgres behavior', () => {
     const objectPath = pathFor(fx.owner, randomUUID());
     const legacyTableBytes = 29;
     const legacyTablePath = `${fx.owner.id}/legacy-${randomUUID()}.png`;
+    const sharedMediaBytes = 31;
+    const sharedMediaPath = `${fx.owner.id}/shared-${randomUUID()}.png`;
     const fieldId = randomUUID();
+    const sharedFieldId = randomUUID();
     const rowId = randomUUID();
     const uploaded = await fx.svc.storage.from('project-assets').upload(
       objectPath,
@@ -740,7 +743,13 @@ describeDb('account project storage real Postgres behavior', () => {
       { contentType: 'image/png' },
     );
     expect(legacyUploaded.error).toBeNull();
-    expect((await fx.svc.from('library_field_definitions').insert({
+    const sharedUploaded = await fx.svc.storage.from('library-media-files').upload(
+      sharedMediaPath,
+      new Uint8Array(sharedMediaBytes),
+      { contentType: 'image/png' },
+    );
+    expect(sharedUploaded.error).toBeNull();
+    expect((await fx.svc.from('library_field_definitions').insert([{
       id: fieldId,
       library_id: fx.libraryId,
       section: 'main',
@@ -749,14 +758,23 @@ describeDb('account project storage real Postgres behavior', () => {
       data_type: 'image',
       required: false,
       order_index: 0,
-    })).error).toBeNull();
+    }, {
+      id: sharedFieldId,
+      library_id: fx.libraryId,
+      section: 'main',
+      section_id: `${fx.libraryId}::main`,
+      label: 'Shared portrait',
+      data_type: 'image',
+      required: false,
+      order_index: 1,
+    }])).error).toBeNull();
     expect((await fx.svc.from('library_assets').insert({
       id: rowId,
       library_id: fx.libraryId,
       name: 'Legacy row',
       row_index: 0,
     })).error).toBeNull();
-    expect((await fx.svc.from('library_asset_values').insert({
+    expect((await fx.svc.from('library_asset_values').insert([{
       asset_id: rowId,
       field_id: fieldId,
       value_json: {
@@ -766,6 +784,37 @@ describeDb('account project storage real Postgres behavior', () => {
         fileSize: legacyTableBytes,
         fileType: 'image/png',
       },
+    }, {
+      asset_id: rowId,
+      field_id: sharedFieldId,
+      value_json: {
+        path: sharedMediaPath,
+        url: `https://example.test/${sharedMediaPath}`,
+        fileName: 'shared.png',
+        fileSize: sharedMediaBytes,
+        fileType: 'image/png',
+      },
+    }])).error).toBeNull();
+    const sharedDocument = await fx.svc.from('documents').insert({
+      project_id: fx.projectId,
+      name: `Shared historical media ${fx.suffix}`,
+      content: `![shared](https://example.test/${sharedMediaPath})`,
+      created_by: fx.owner.id,
+    }).select('id').single();
+    expect(sharedDocument.error).toBeNull();
+    const sharedDocumentId = sharedDocument.data?.id as string;
+    const nativeAssetId = randomUUID();
+    expect((await fx.svc.from('project_game_assets').insert({
+      id: nativeAssetId,
+      project_id: fx.projectId,
+      created_by: fx.owner.id,
+      name: 'Shared native asset',
+      category: 'character',
+      status: 'ready',
+      mime_type: 'image/png',
+      storage_bucket: 'library-media-files',
+      storage_path: sharedMediaPath,
+      file_size: sharedMediaBytes,
     })).error).toBeNull();
 
     try {
@@ -774,7 +823,7 @@ describeDb('account project storage real Postgres behavior', () => {
 
       const firstRepair = await fx.svc.rpc('service_repair_historical_project_storage');
       expect(firstRepair.error).toBeNull();
-      expect(Number(firstRepair.data.importedFiles)).toBeGreaterThanOrEqual(2);
+      expect(Number(firstRepair.data.importedFiles)).toBeGreaterThanOrEqual(3);
       const secondRepair = await fx.svc.rpc('service_repair_historical_project_storage');
       expect(secondRepair.error).toBeNull();
       expect(secondRepair.data).toEqual({ importedFiles: 0 });
@@ -788,6 +837,14 @@ describeDb('account project storage real Postgres behavior', () => {
         source_kind: 'project_asset',
         project_id: fx.projectId,
       }]);
+      const sharedFile = await fx.svc.from('project_storage_files')
+        .select('source_kind,source_entity_id')
+        .eq('bucket_id', 'library-media-files').eq('object_path', sharedMediaPath).single();
+      expect(sharedFile.error).toBeNull();
+      expect(sharedFile.data).toEqual({
+        source_kind: 'document_image',
+        source_entity_id: sharedDocumentId,
+      });
 
       const listed = await fx.owner.client.rpc('account_storage_project_entities_v2', {
         p_project_id: fx.projectId,
@@ -803,15 +860,21 @@ describeDb('account project storage real Postgres behavior', () => {
       expect(Number(assets.sizeBytes)).toBe(Number(assets.physicalBytes));
       const table = listed.data.items.find((item: { id: string }) => item.id === fx.libraryId);
       expect(Number(table.physicalBytes)).toBe(legacyTableBytes);
+      const document = listed.data.items.find((item: { id: string }) => item.id === sharedDocumentId);
+      expect(Number(document.physicalBytes)).toBe(sharedMediaBytes);
     } finally {
       await fx.svc.storage.from('project-assets').remove([objectPath]);
-      await fx.svc.storage.from('library-media-files').remove([legacyTablePath]);
+      await fx.svc.storage.from('library-media-files').remove([legacyTablePath, sharedMediaPath]);
       await fx.svc.from('project_storage_files')
         .delete().eq('bucket_id', 'project-assets').eq('object_path', objectPath);
       await fx.svc.from('project_storage_files')
         .delete().eq('bucket_id', 'library-media-files').eq('object_path', legacyTablePath);
+      await fx.svc.from('project_storage_files')
+        .delete().eq('bucket_id', 'library-media-files').eq('object_path', sharedMediaPath);
+      await fx.svc.from('documents').delete().eq('id', sharedDocumentId);
+      await fx.svc.from('project_game_assets').delete().eq('id', nativeAssetId);
       await fx.svc.from('library_assets').delete().eq('id', rowId);
-      await fx.svc.from('library_field_definitions').delete().eq('id', fieldId);
+      await fx.svc.from('library_field_definitions').delete().in('id', [fieldId, sharedFieldId]);
     }
   });
 
