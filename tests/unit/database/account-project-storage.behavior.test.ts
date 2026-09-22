@@ -65,6 +65,8 @@ describeDb('account project storage real Postgres behavior', () => {
   beforeEach(async () => {
     await fx.svc.from('documents').delete().eq('project_id', fx.projectId);
     await fx.svc.from('libraries').delete().eq('project_id', fx.projectId).neq('id', fx.libraryId);
+    await fx.svc.from('library_assets').delete().eq('library_id', fx.libraryId);
+    await fx.svc.from('library_field_definitions').delete().eq('library_id', fx.libraryId);
     await fx.svc.from('project_storage_file_locations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('storage_upload_reservations').delete().eq('project_id', fx.projectId);
     await fx.svc.from('project_storage_files').delete().eq('project_id', fx.projectId);
@@ -99,13 +101,14 @@ describeDb('account project storage real Postgres behavior', () => {
     bucketId = 'project-assets',
     sourceKind = 'project_asset',
     sourceEntityId: string | null = null,
+    displayName = `storage-${fx.suffix}.bin`,
   ) {
     const result = await actor.client.rpc('reserve_project_storage_upload', {
       p_project_id: projectId,
       p_bucket_id: bucketId,
       p_object_path: objectPath,
       p_expected_bytes: expectedBytes,
-      p_display_name: `storage-${fx.suffix}.bin`,
+      p_display_name: displayName,
       p_mime_type: 'application/octet-stream',
       p_source_kind: sourceKind,
       p_source_entity_id: sourceEntityId,
@@ -509,6 +512,102 @@ describeDb('account project storage real Postgres behavior', () => {
         0,
       ),
     );
+  });
+
+  it('lists each Table once, counts referenced media once, and groups remaining files under Assets', async () => {
+    const fieldId = randomUUID();
+    const rowIds = [randomUUID(), randomUUID()];
+    const sectionId = `${fx.libraryId}::main`;
+    const field = await fx.svc.from('library_field_definitions').insert({
+      id: fieldId,
+      library_id: fx.libraryId,
+      section: 'main',
+      section_id: sectionId,
+      label: 'Portrait',
+      data_type: 'image',
+      required: false,
+      order_index: 0,
+    });
+    expect(field.error).toBeNull();
+    const rows = await fx.svc.from('library_assets').insert([
+      { id: rowIds[0], library_id: fx.libraryId, name: 'Alice', row_index: 0 },
+      { id: rowIds[1], library_id: fx.libraryId, name: 'Bob', row_index: 1 },
+    ]);
+    expect(rows.error).toBeNull();
+
+    const mediaBytes = 16;
+    const mediaPath = `${fx.owner.id}/${fx.projectId}/${randomUUID()}.png`;
+    const mediaReservation = await reserve(
+      fx.owner, mediaBytes, mediaPath, fx.projectId, 'library-media-files', 'library_media', null,
+      'alice.png',
+    );
+    expect(await upload(fx.owner, mediaPath, mediaBytes, 'library-media-files')).toBeNull();
+    await finalize(fx.owner, mediaReservation.reservationId as string, mediaBytes);
+
+    const mediaValue = {
+      url: `https://example.test/storage/${mediaPath}`,
+      path: mediaPath,
+      fileName: 'alice.png',
+      fileSize: mediaBytes,
+      fileType: 'image/png',
+      uploadedAt: '2026-09-22T00:00:00.000Z',
+    };
+    const values = await fx.svc.from('library_asset_values').insert([
+      { asset_id: rowIds[0], field_id: fieldId, value_json: mediaValue },
+      { asset_id: rowIds[1], field_id: fieldId, value_json: mediaValue },
+    ]);
+    expect(values.error).toBeNull();
+
+    const standaloneBytes = 20;
+    const standalonePath = pathFor(fx.owner);
+    const standaloneReservation = await reserve(fx.owner, standaloneBytes, standalonePath);
+    expect(await upload(fx.owner, standalonePath, standaloneBytes)).toBeNull();
+    await finalize(fx.owner, standaloneReservation.reservationId as string, standaloneBytes);
+
+    const listed = await fx.owner.client.rpc('account_storage_project_entities', {
+      p_project_id: fx.projectId,
+      p_query: null,
+      p_sort: 'size_desc',
+      p_limit: 50,
+      p_offset: 0,
+    });
+    expect(listed.error).toBeNull();
+    const tableRows = listed.data.items.filter((item: { kind: string }) => item.kind === 'table');
+    const table = tableRows.find((item: { id: string }) => item.id === fx.libraryId);
+    const assets = listed.data.items.find((item: { kind: string }) => item.kind === 'assets');
+    expect(tableRows).toHaveLength(1);
+    expect(Number(table.physicalBytes)).toBe(mediaBytes);
+    expect(Number(table.sizeBytes)).toBe(Number(table.logicalBytes) + mediaBytes);
+    expect(assets).toMatchObject({ id: fx.projectId, name: 'Assets', physicalBytes: standaloneBytes });
+
+    const detail = await fx.owner.client.rpc('account_storage_entity_details', {
+      p_project_id: fx.projectId,
+      p_entity_kind: 'table',
+      p_entity_id: fx.libraryId,
+    });
+    expect(detail.error).toBeNull();
+    expect(detail.data.items.filter((item: { name: string }) => item.name === 'alice.png')).toHaveLength(1);
+    expect(detail.data.items.reduce(
+      (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
+      0,
+    )).toBe(Number(detail.data.sizeBytes));
+
+    const summaryResult = await fx.owner.client.rpc('account_storage_summary');
+    expect(summaryResult.error).toBeNull();
+    const project = summaryResult.data.ownedProjects.find((item: { id: string }) => item.id === fx.projectId);
+    expect(project.fileCount).toBe(listed.data.total);
+    expect(project.usedBytes).toBe(listed.data.items.reduce(
+      (total: number, item: { sizeBytes: number }) => total + Number(item.sizeBytes),
+      0,
+    ));
+
+    const drift = await fx.svc.rpc('service_account_storage_entity_binding_drift');
+    expect(drift.error).toBeNull();
+    expect(drift.data).toEqual({
+      missingBindings: 0,
+      staleBindings: 0,
+      conflictingBindings: 0,
+    });
   });
 
   it('accounts UTF-8 documents and complete library tables without blocking logical writes', async () => {

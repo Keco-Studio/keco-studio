@@ -17,6 +17,10 @@ const aggregationSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260918040000_account_storage_logical_file_aggregation.sql',
 ), 'utf8');
+const entityAggregationSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260922120000_project_storage_entity_aggregation.sql',
+), 'utf8');
 
 describe('account project storage migration', () => {
   it('defines private quota, file, location, and reservation tables', () => {
@@ -165,5 +169,84 @@ describe('account project storage migration', () => {
     expect(aggregationSql).toMatch(
       /revoke all on function public\.account_storage_project_files[\s\S]*grant execute[\s\S]*to authenticated/i,
     );
+  });
+
+  it('binds every physical project file to one aggregate entity', () => {
+    expect(entityAggregationSql).toMatch(/create table public\.project_storage_entity_bindings/i);
+    expect(entityAggregationSql).toMatch(/file_id uuid primary key references public\.project_storage_files\(id\) on delete cascade/i);
+    expect(entityAggregationSql).toMatch(/entity_kind text not null check \(entity_kind in \('document', 'table', 'assets'\)\)/i);
+    expect(entityAggregationSql).toMatch(/function private\.storage_refresh_file_entity_binding\(p_file_id uuid\)/i);
+    expect(entityAggregationSql).toMatch(/v_file\.source_kind = 'document_image'[\s\S]*v_entity_kind := 'document'/i);
+    expect(entityAggregationSql).toMatch(/private\.storage_json_media_paths\(value\.value_json\)[\s\S]*order by library\.id, asset\.id/i);
+    expect(entityAggregationSql).toMatch(/v_entity_kind := 'assets'[\s\S]*v_entity_id := v_file\.project_id/i);
+    expect(entityAggregationSql).toMatch(/on conflict \(file_id\) do update/i);
+    expect(entityAggregationSql).toMatch(/select private\.storage_refresh_file_entity_binding\(file\.id\)[\s\S]*where file\.project_id is not null/i);
+  });
+
+  it('refreshes entity ownership when files, table cells, libraries, or documents change', () => {
+    for (const trigger of [
+      /trg_refresh_storage_file_entity_binding[\s\S]*on public\.project_storage_files/i,
+      /trg_refresh_media_value_storage_bindings[\s\S]*on public\.library_asset_values/i,
+      /trg_refresh_library_storage_bindings[\s\S]*on public\.libraries/i,
+      /trg_refresh_asset_storage_bindings[\s\S]*on public\.library_assets/i,
+      /trg_refresh_document_storage_bindings[\s\S]*on public\.documents/i,
+    ]) expect(entityAggregationSql).toMatch(trigger);
+  });
+
+  it('exposes service-role binding drift detection and repair', () => {
+    expect(entityAggregationSql).toMatch(/function public\.service_account_storage_entity_binding_drift\(\)/i);
+    expect(entityAggregationSql).toMatch(/'missingBindings'/i);
+    expect(entityAggregationSql).toMatch(/'staleBindings'/i);
+    expect(entityAggregationSql).toMatch(/'conflictingBindings'/i);
+    expect(entityAggregationSql).toMatch(/function public\.service_refresh_account_storage_entity_bindings\(\)/i);
+    expect(entityAggregationSql).toMatch(
+      /grant execute on function public\.service_account_storage_entity_binding_drift\(\) to service_role/i,
+    );
+    expect(entityAggregationSql).toMatch(
+      /grant execute on function public\.service_refresh_account_storage_entity_bindings\(\) to service_role/i,
+    );
+    expect(entityAggregationSql).toMatch(/expected_bindings[\s\S]*binding\.entity_kind is distinct from expected\.entity_kind/i);
+    expect(entityAggregationSql).toMatch(/binding\.entity_id is distinct from expected\.entity_id/i);
+  });
+
+  it('keeps private aggregation and mutation functions inaccessible to API roles', () => {
+    expect(entityAggregationSql).toMatch(
+      /revoke all on table public\.project_storage_entity_bindings from public, anon, authenticated, service_role/i,
+    );
+    for (const privateFunction of [
+      'storage_json_media_paths',
+      'storage_refresh_file_entity_binding',
+      'storage_refresh_project_entity_bindings',
+      'storage_project_entity_physical_files',
+      'storage_project_entities',
+    ]) {
+      expect(entityAggregationSql).toMatch(new RegExp(
+        `revoke all on function private\\.${privateFunction}\\(`
+          + `[\\s\\S]*from public, anon, authenticated, service_role`,
+        'i',
+      ));
+    }
+  });
+
+  it('returns one-level entities and exact read-only details', () => {
+    expect(entityAggregationSql).toMatch(/function private\.storage_project_entity_physical_files\(p_project_id uuid\)/i);
+    expect(entityAggregationSql).toMatch(/left join public\.project_storage_entity_bindings binding/i);
+    expect(entityAggregationSql).toMatch(/else 'assets'[\s\S]*else file\.project_id/i);
+    expect(entityAggregationSql).toMatch(/function private\.storage_project_entities\(p_project_id uuid\)/i);
+    expect(entityAggregationSql).toMatch(/logical\.size_bytes \+ coalesce\(physical_totals\.size_bytes, 0\) as size_bytes/i);
+    expect(entityAggregationSql).toMatch(/'Assets'[\s\S]*'application\/x-keco-assets'/i);
+    expect(entityAggregationSql).toMatch(/function public\.account_storage_project_entities\(/i);
+    expect(entityAggregationSql).toMatch(/function public\.account_storage_entity_details\(/i);
+    expect(entityAggregationSql).toMatch(/perform public\.storage_require_reader\(p_project_id, v_actor\)/i);
+    expect(entityAggregationSql).toMatch(/grant execute on function public\.account_storage_project_entities[\s\S]*to authenticated/i);
+    expect(entityAggregationSql).toMatch(/grant execute on function public\.account_storage_entity_details[\s\S]*to authenticated/i);
+  });
+
+  it('uses aggregate rows for project file counts and totals without changing quota counters', () => {
+    expect(entityAggregationSql).toMatch(/'fileCount', \(select count\(\*\) from private\.storage_project_entities\(project\.id\)\)/i);
+    expect(entityAggregationSql).toMatch(/'usedBytes', \(select coalesce\(sum\(entity\.size_bytes\), 0\) from private\.storage_project_entities\(project\.id\) entity\)/i);
+    expect(entityAggregationSql).toMatch(/v_display_used := v_physical_used \+ v_logical_used/i);
+    expect(entityAggregationSql).not.toMatch(/set used_bytes/i);
+    expect(entityAggregationSql).not.toMatch(/set logical_used_bytes/i);
   });
 });

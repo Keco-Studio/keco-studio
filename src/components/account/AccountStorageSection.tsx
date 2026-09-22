@@ -1,18 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AppstoreOutlined, CloseOutlined, FileTextOutlined, TableOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   ACCOUNT_STORAGE_PAGE_SIZE,
   ACCOUNT_STORAGE_CRITICAL_PERCENT,
   ACCOUNT_STORAGE_WARNING_PERCENT,
-  type AccountStorageFile,
-  type AccountStorageFilePage,
+  type AccountStorageEntity,
+  type AccountStorageEntityDetail,
+  type AccountStorageEntityDetailItem,
+  type AccountStorageEntityKind,
+  type AccountStorageEntityPage,
   type AccountStorageProject,
   type AccountStorageSort,
   type AccountStorageSummary,
-  type StorageSourceKind,
 } from '@/lib/types/accountStorage';
 import styles from './AccountStorageSection.module.css';
 
@@ -27,8 +30,8 @@ const SORT_OPTIONS: ReadonlyArray<{ value: AccountStorageSort; label: string }> 
   { value: 'size_asc', label: 'Size: smallest first' },
   { value: 'name_asc', label: 'Name: A to Z' },
   { value: 'name_desc', label: 'Name: Z to A' },
-  { value: 'created_desc', label: 'Uploaded: newest first' },
-  { value: 'created_asc', label: 'Uploaded: oldest first' },
+  { value: 'created_desc', label: 'Created: newest first' },
+  { value: 'created_asc', label: 'Created: oldest first' },
 ];
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
@@ -39,16 +42,8 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function isSourceKind(value: unknown): value is StorageSourceKind {
-  return value === 'project_asset'
-    || value === 'library_media'
-    || value === 'document_image'
-    || value === 'map_reference'
-    || value === 'map_asset'
-    || value === 'character_asset'
-    || value === 'document_content'
-    || value === 'library_table'
-    || value === 'legacy_unassigned';
+function isEntityKind(value: unknown): value is AccountStorageEntityKind {
+  return value === 'table' || value === 'document' || value === 'assets';
 }
 
 function isProject(value: unknown): value is AccountStorageProject {
@@ -62,21 +57,10 @@ function isProject(value: unknown): value is AccountStorageProject {
     && typeof candidate.ownedByCurrentUser === 'boolean';
 }
 
-function isProjectList(value: unknown): value is AccountStorageProject[] {
-  return Array.isArray(value) && value.every(isProject);
-}
-
 function isAccountStorageSummary(value: unknown): value is AccountStorageSummary {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<AccountStorageSummary>;
   const unassigned = candidate.unassigned;
-  const hasValidUnassigned = unassigned === null || (
-    !!unassigned
-    && typeof unassigned === 'object'
-    && isNonNegativeSafeInteger(unassigned.fileCount)
-    && isNonNegativeSafeInteger(unassigned.usedBytes)
-  );
-
   return isNonNegativeSafeInteger(candidate.quotaBytes)
     && isNonNegativeSafeInteger(candidate.usedBytes)
     && isNonNegativeSafeInteger(candidate.physicalUsedBytes)
@@ -84,62 +68,103 @@ function isAccountStorageSummary(value: unknown): value is AccountStorageSummary
     && isNonNegativeSafeInteger(candidate.reservedBytes)
     && isNonNegativeSafeInteger(candidate.remainingBytes)
     && isNonNegativeSafeInteger(candidate.overageBytes)
-    && isProjectList(candidate.ownedProjects)
-    && isProjectList(candidate.sharedProjects)
-    && hasValidUnassigned;
+    && Array.isArray(candidate.ownedProjects)
+    && candidate.ownedProjects.every(isProject)
+    && Array.isArray(candidate.sharedProjects)
+    && candidate.sharedProjects.every(isProject)
+    && (unassigned === null || (
+      !!unassigned
+      && typeof unassigned === 'object'
+      && isNonNegativeSafeInteger(unassigned.fileCount)
+      && isNonNegativeSafeInteger(unassigned.usedBytes)
+    ));
 }
 
-function isFile(value: unknown): value is AccountStorageFile {
+function isEntity(value: unknown): value is AccountStorageEntity {
   if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<AccountStorageFile>;
-  return isNonEmptyString(candidate.id)
-    && typeof candidate.name === 'string'
-    && isNonEmptyString(candidate.mimeType)
-    && isNonNegativeSafeInteger(candidate.sizeBytes)
-    && isSourceKind(candidate.sourceKind)
-    && (candidate.sourceEntityId === null || typeof candidate.sourceEntityId === 'string')
-    && isNonEmptyString(candidate.createdAt)
-    && Number.isFinite(Date.parse(candidate.createdAt))
-    && typeof candidate.sourceAvailable === 'boolean';
+  const entity = value as Partial<AccountStorageEntity>;
+  return isNonEmptyString(entity.id)
+    && isEntityKind(entity.kind)
+    && typeof entity.name === 'string'
+    && isNonEmptyString(entity.mimeType)
+    && isNonNegativeSafeInteger(entity.logicalBytes)
+    && isNonNegativeSafeInteger(entity.physicalBytes)
+    && isNonNegativeSafeInteger(entity.sizeBytes)
+    && entity.logicalBytes + entity.physicalBytes === entity.sizeBytes
+    && (entity.folderId === null || typeof entity.folderId === 'string')
+    && isNonEmptyString(entity.createdAt)
+    && Number.isFinite(Date.parse(entity.createdAt))
+    && typeof entity.sourceAvailable === 'boolean';
 }
 
-function isFilePage(value: unknown): value is AccountStorageFilePage {
+function isEntityPage(value: unknown): value is AccountStorageEntityPage {
   if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<AccountStorageFilePage>;
-  return Array.isArray(candidate.items)
-    && candidate.items.every(isFile)
-    && isNonNegativeSafeInteger(candidate.total)
-    && isNonNegativeSafeInteger(candidate.limit)
-    && candidate.limit > 0
-    && isNonNegativeSafeInteger(candidate.offset);
+  const page = value as Partial<AccountStorageEntityPage>;
+  return Array.isArray(page.items)
+    && page.items.every(isEntity)
+    && isNonNegativeSafeInteger(page.total)
+    && isNonNegativeSafeInteger(page.limit)
+    && page.limit > 0
+    && isNonNegativeSafeInteger(page.offset);
+}
+
+function isDetailItem(value: unknown): value is AccountStorageEntityDetailItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<AccountStorageEntityDetailItem>;
+  return isNonEmptyString(item.id)
+    && typeof item.name === 'string'
+    && isNonEmptyString(item.mimeType)
+    && isNonNegativeSafeInteger(item.sizeBytes)
+    && (item.itemKind === 'logical' || item.itemKind === 'media')
+    && (item.groupId === null || typeof item.groupId === 'string')
+    && (item.groupName === null || typeof item.groupName === 'string')
+    && isNonEmptyString(item.createdAt)
+    && Number.isFinite(Date.parse(item.createdAt));
+}
+
+function isEntityDetail(value: unknown): value is AccountStorageEntityDetail {
+  if (!value || typeof value !== 'object') return false;
+  const detail = value as Partial<AccountStorageEntityDetail>;
+  return isNonEmptyString(detail.id)
+    && isEntityKind(detail.kind)
+    && typeof detail.name === 'string'
+    && isNonNegativeSafeInteger(detail.logicalBytes)
+    && isNonNegativeSafeInteger(detail.physicalBytes)
+    && isNonNegativeSafeInteger(detail.sizeBytes)
+    && detail.logicalBytes + detail.physicalBytes === detail.sizeBytes
+    && typeof detail.sourceAvailable === 'boolean'
+    && Array.isArray(detail.items)
+    && detail.items.every(isDetailItem)
+    && detail.items.reduce((total, item) => total + item.sizeBytes, 0) === detail.sizeBytes;
 }
 
 async function fetchAccountStorage(): Promise<AccountStorageSummary> {
   const response = await fetch('/api/account/storage', { cache: 'no-store' });
   if (!response.ok) throw new AccountStorageRequestError();
-
   const body: unknown = await response.json();
   if (!isAccountStorageSummary(body)) throw new AccountStorageRequestError();
   return body;
 }
 
-async function fetchProjectFiles(
+async function fetchProjectEntities(
   projectId: string,
   query: string,
   sort: AccountStorageSort,
   offset: number,
-): Promise<AccountStorageFilePage> {
-  const params = new URLSearchParams({
-    query,
-    sort,
-    limit: String(ACCOUNT_STORAGE_PAGE_SIZE),
-    offset: String(offset),
-  });
-  const response = await fetch(`/api/account/storage/projects/${projectId}/files?${params}`, { cache: 'no-store' });
+): Promise<AccountStorageEntityPage> {
+  const params = new URLSearchParams({ query, sort, limit: String(ACCOUNT_STORAGE_PAGE_SIZE), offset: String(offset) });
+  const response = await fetch(`/api/account/storage/projects/${projectId}/entities?${params}`, { cache: 'no-store' });
   if (!response.ok) throw new AccountStorageRequestError();
-
   const body: unknown = await response.json();
-  if (!isFilePage(body)) throw new AccountStorageRequestError();
+  if (!isEntityPage(body)) throw new AccountStorageRequestError();
+  return body;
+}
+
+async function fetchEntityDetail(projectId: string, entity: AccountStorageEntity): Promise<AccountStorageEntityDetail> {
+  const response = await fetch(`/api/account/storage/projects/${projectId}/entities/${entity.kind}/${entity.id}`, { cache: 'no-store' });
+  if (!response.ok) throw new AccountStorageRequestError();
+  const body: unknown = await response.json();
+  if (!isEntityDetail(body)) throw new AccountStorageRequestError();
   return body;
 }
 
@@ -148,86 +173,39 @@ export function formatStorageBytes(bytes: number): string {
   const units = ['KB', 'MB', 'GB', 'TB'] as const;
   let value = bytes;
   let unit = -1;
-  do {
-    value /= 1024;
-    unit += 1;
-  } while (value >= 1024 && unit < units.length - 1);
+  do { value /= 1024; unit += 1; } while (value >= 1024 && unit < units.length - 1);
   const digits = value >= 1000 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9])0$/, '')} ${units[unit]}`;
 }
 
-function formatFileCount(count: number): string {
-  return `${count} ${count === 1 ? 'file' : 'files'}`;
+function formatEntityCount(count: number): string { return `${count} ${count === 1 ? 'item' : 'items'}`; }
+function formatCreatedAt(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 }
-
-function formatUploadedAt(value: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value));
+function entityLabel(kind: AccountStorageEntityKind): string {
+  if (kind === 'table') return 'Table';
+  if (kind === 'document') return 'Document';
+  return 'Assets';
 }
-
-function sourceLabel(kind: StorageSourceKind): string {
-  switch (kind) {
-    case 'project_asset': return 'Assets';
-    case 'library_media': return 'Library';
-    case 'document_image': return 'Document';
-    case 'map_reference': return 'Map reference';
-    case 'map_asset': return 'Assets';
-    case 'character_asset': return 'Assets';
-    case 'document_content': return 'Document';
-    case 'library_table': return 'Table';
-    case 'legacy_unassigned': return 'Unassigned legacy file';
-  }
+function entityIcon(kind: AccountStorageEntityKind) {
+  if (kind === 'table') return <TableOutlined aria-hidden="true" />;
+  if (kind === 'document') return <FileTextOutlined aria-hidden="true" />;
+  return <AppstoreOutlined aria-hidden="true" />;
 }
-
-function fileDisplayName(file: AccountStorageFile): string {
-  if (file.name.trim().length > 0) return file.name;
-  if (file.sourceKind === 'document_content') return 'Untitled document';
-  if (file.sourceKind === 'library_table') return 'Untitled table';
-  return 'Untitled file';
+function entityDestination(entity: AccountStorageEntity, projectId: string): string | null {
+  if (!entity.sourceAvailable) return null;
+  if (entity.kind === 'table') return `/${projectId}/${entity.id}`;
+  if (entity.kind === 'document') return `/${projectId}/doc/${entity.id}`;
+  return `/${projectId}/admin/assets`;
 }
-
-function sourceDestination(file: AccountStorageFile, projectId: string): string | null {
-  if (!file.sourceAvailable) return null;
-
-  switch (file.sourceKind) {
-    case 'project_asset':
-    case 'map_asset':
-    case 'character_asset':
-      return `/${projectId}/admin/assets`;
-    case 'map_reference':
-      return `/create-map?projectId=${encodeURIComponent(projectId)}`;
-    case 'document_image':
-      return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
-    case 'document_content':
-      return file.sourceEntityId ? `/${projectId}/doc/${file.sourceEntityId}` : `/${projectId}`;
-    case 'library_table':
-      return file.sourceEntityId ? `/${projectId}/${file.sourceEntityId}` : `/${projectId}`;
-    case 'library_media':
-      return `/${projectId}`;
-    case 'legacy_unassigned':
-      return null;
-  }
-}
-
 function storagePercentage(bytes: number, quotaBytes: number): number {
-  if (quotaBytes === 0) return 0;
-  return Math.min(100, Math.max(0, Math.round(bytes * 100 / quotaBytes)));
+  return quotaBytes === 0 ? 0 : Math.min(100, Math.max(0, Math.round(bytes * 100 / quotaBytes)));
 }
-
 function usageWarning(physicalUsedBytes: number, quotaBytes: number): string | null {
   const rawPercent = quotaBytes === 0 ? 0 : physicalUsedBytes / quotaBytes * 100;
-  if (rawPercent >= 100) {
-    return 'Storage is full. New uploads are blocked until space is released or your allowance is increased.';
-  }
-  if (rawPercent >= ACCOUNT_STORAGE_CRITICAL_PERCENT) {
-    return 'Storage is 95% full. Free space soon to avoid blocked uploads.';
-  }
-  if (rawPercent >= ACCOUNT_STORAGE_WARNING_PERCENT) {
-    return 'Storage is 80% full. Consider freeing space before your projects reach their allowance.';
-  }
+  if (rawPercent >= 100) return 'Storage is full. New uploads are blocked until space is released or your allowance is increased.';
+  if (rawPercent >= ACCOUNT_STORAGE_CRITICAL_PERCENT) return 'Storage is 95% full. Free space soon to avoid blocked uploads.';
+  if (rawPercent >= ACCOUNT_STORAGE_WARNING_PERCENT) return 'Storage is 80% full. Consider freeing space before your projects reach their allowance.';
   return null;
 }
 
@@ -237,48 +215,76 @@ function ProjectButton({ project, selected, onSelect }: {
   onSelect: (project: AccountStorageProject) => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`${styles.projectButton} ${selected ? styles.selectedProject : ''}`}
-      aria-pressed={selected}
-      onClick={() => onSelect(project)}
-    >
+    <button type="button" className={`${styles.projectButton} ${selected ? styles.selectedProject : ''}`} aria-pressed={selected} onClick={() => onSelect(project)}>
       <span className={styles.projectName}>{project.name}</span>
-      <span className={styles.projectMeta}>{formatFileCount(project.fileCount)} · {formatStorageBytes(project.usedBytes)}</span>
-      {!project.ownedByCurrentUser ? (
-        <span className={styles.owner}>Owned by {project.ownerName.trim() || 'Unknown owner'}</span>
-      ) : null}
+      <span className={styles.projectMeta}>{formatEntityCount(project.fileCount)} · {formatStorageBytes(project.usedBytes)}</span>
+      {!project.ownedByCurrentUser ? <span className={styles.owner}>Owned by {project.ownerName.trim() || 'Unknown owner'}</span> : null}
     </button>
+  );
+}
+
+function DetailPane({ projectId, entity, onClose, onOpenSource }: {
+  projectId: string;
+  entity: AccountStorageEntity;
+  onClose: () => void;
+  onOpenSource: () => void;
+}) {
+  const detailQuery = useQuery({
+    queryKey: ['account-storage-entity-detail', projectId, entity.kind, entity.id],
+    queryFn: () => fetchEntityDetail(projectId, entity),
+    retry: false,
+    staleTime: 0,
+  });
+  const detail = detailQuery.data;
+  const groups = useMemo(() => {
+    const grouped = new Map<string, { name: string; items: AccountStorageEntityDetailItem[] }>();
+    for (const item of detail?.items ?? []) {
+      const key = item.groupId ?? item.itemKind;
+      const group = grouped.get(key) ?? { name: item.groupName ?? (item.itemKind === 'logical' ? 'Content' : 'Media'), items: [] };
+      group.items.push(item);
+      grouped.set(key, group);
+    }
+    return [...grouped.values()];
+  }, [detail]);
+
+  return (
+    <aside className={styles.detailPane} aria-label={`${entity.name || entityLabel(entity.kind)} storage details`}>
+      <div className={styles.detailHeader}>
+        <div className={styles.detailTitle}><span className={styles.entityIcon}>{entityIcon(entity.kind)}</span><div><span className={styles.detailKind}>{entityLabel(entity.kind)}</span><h4>{entity.name || `Untitled ${entityLabel(entity.kind).toLowerCase()}`}</h4></div></div>
+        <button type="button" className={styles.iconButton} aria-label="Close storage details" title="Close" onClick={onClose}><CloseOutlined /></button>
+      </div>
+      <dl className={styles.detailTotals}>
+        <div><dt>Total</dt><dd>{formatStorageBytes(entity.sizeBytes)}</dd></div>
+        <div><dt>Content</dt><dd>{formatStorageBytes(entity.logicalBytes)}</dd></div>
+        <div><dt>Media</dt><dd>{formatStorageBytes(entity.physicalBytes)}</dd></div>
+      </dl>
+      {detailQuery.isLoading ? <p className={styles.detailState} role="status">Loading details</p> : null}
+      {detailQuery.error ? <div className={styles.detailError} role="alert"><span>Details could not be loaded.</span><button type="button" onClick={() => void detailQuery.refetch()}>Retry</button></div> : null}
+      {detail && groups.length === 0 ? <p className={styles.detailState}>No detail items.</p> : null}
+      {detail ? <div className={styles.detailGroups}>{groups.map((group) => <section key={`${group.name}-${group.items[0]?.id}`} className={styles.detailGroup}><div className={styles.detailGroupHeading}><h5>{group.name}</h5><span>{formatStorageBytes(group.items.reduce((total, item) => total + item.sizeBytes, 0))}</span></div><ul>{group.items.map((item) => <li key={item.id}><span>{item.name || 'Untitled media'}</span><span>{formatStorageBytes(item.sizeBytes)}</span></li>)}</ul></section>)}</div> : null}
+      <button type="button" className={styles.sourceButton} disabled={!entity.sourceAvailable} onClick={onOpenSource}>Open {entityLabel(entity.kind)}</button>
+    </aside>
   );
 }
 
 export function AccountStorageSection() {
   const router = useRouter();
   const [selectedProject, setSelectedProject] = useState<AccountStorageProject | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<AccountStorageEntity | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sort, setSort] = useState<AccountStorageSort>('size_desc');
   const [offset, setOffset] = useState(0);
-  const summaryQuery = useQuery({
-    queryKey: ['account-storage'],
-    queryFn: fetchAccountStorage,
-    retry: false,
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-  });
+  const summaryQuery = useQuery({ queryKey: ['account-storage'], queryFn: fetchAccountStorage, retry: false, staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true });
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedSearch(search);
-      setOffset(0);
-    }, 250);
+    const timeout = window.setTimeout(() => { setDebouncedSearch(search); setOffset(0); setSelectedEntity(null); }, 250);
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const filesQuery = useQuery({
-    queryKey: ['account-storage-files', selectedProject?.id, debouncedSearch, sort, offset],
-    queryFn: () => fetchProjectFiles(selectedProject!.id, debouncedSearch, sort, offset),
+  const entitiesQuery = useQuery({
+    queryKey: ['account-storage-entities', selectedProject?.id, debouncedSearch, sort, offset],
+    queryFn: () => fetchProjectEntities(selectedProject!.id, debouncedSearch, sort, offset),
     enabled: Boolean(selectedProject && selectedProject.fileCount > 0),
     retry: false,
     staleTime: 0,
@@ -288,205 +294,57 @@ export function AccountStorageSection() {
 
   const firstLoadFailed = Boolean(summaryQuery.error && !summaryQuery.data);
   const refreshFailed = Boolean(summaryQuery.error && summaryQuery.data);
-  const percent = summaryQuery.data
-    ? storagePercentage(summaryQuery.data.usedBytes, summaryQuery.data.quotaBytes)
-    : 0;
-  const physicalUsageIsCritical = summaryQuery.data
-    ? summaryQuery.data.quotaBytes > 0
-      && summaryQuery.data.physicalUsedBytes / summaryQuery.data.quotaBytes * 100 >= ACCOUNT_STORAGE_CRITICAL_PERCENT
-    : false;
-  const warning = summaryQuery.data
-    ? usageWarning(summaryQuery.data.physicalUsedBytes, summaryQuery.data.quotaBytes)
-    : null;
-  const filePage = filesQuery.data;
+  const percent = summaryQuery.data ? storagePercentage(summaryQuery.data.usedBytes, summaryQuery.data.quotaBytes) : 0;
+  const physicalUsageIsCritical = summaryQuery.data ? summaryQuery.data.quotaBytes > 0 && summaryQuery.data.physicalUsedBytes / summaryQuery.data.quotaBytes * 100 >= ACCOUNT_STORAGE_CRITICAL_PERCENT : false;
+  const warning = summaryQuery.data ? usageWarning(summaryQuery.data.physicalUsedBytes, summaryQuery.data.quotaBytes) : null;
+  const entityPage = entitiesQuery.data;
 
   function selectProject(project: AccountStorageProject) {
-    setSelectedProject(project);
-    setSearch('');
-    setDebouncedSearch('');
-    setSort('size_desc');
-    setOffset(0);
+    setSelectedProject(project); setSelectedEntity(null); setSearch(''); setDebouncedSearch(''); setSort('size_desc'); setOffset(0);
+  }
+  function openSelectedEntity() {
+    if (!selectedProject || !selectedEntity) return;
+    const destination = entityDestination(selectedEntity, selectedProject.id);
+    if (destination) router.push(destination);
   }
 
   return (
     <section className={styles.section} aria-labelledby="account-storage-heading">
-      <div className={styles.sectionHeading}>
-        <span className={styles.icon} aria-hidden="true">▣</span>
-        <div>
-          <h2 id="account-storage-heading">Storage</h2>
-          <p>Files and content stored by your projects.</p>
-        </div>
-      </div>
-
-      {firstLoadFailed ? (
-        <div className={styles.errorState} role="alert">
-          <div>
-            <strong>Storage data could not be loaded</strong>
-            <span>The account service is temporarily unavailable.</span>
-          </div>
-          <button type="button" onClick={() => void summaryQuery.refetch()}>Retry</button>
-        </div>
-      ) : (
+      <div className={styles.sectionHeading}><span className={styles.icon} aria-hidden="true"><AppstoreOutlined /></span><div><h2 id="account-storage-heading">Storage</h2><p>Content stored by your projects.</p></div></div>
+      {firstLoadFailed ? <div className={styles.errorState} role="alert"><div><strong>Storage data could not be loaded</strong><span>The account service is temporarily unavailable.</span></div><button type="button" onClick={() => void summaryQuery.refetch()}>Retry</button></div> : (
         <>
           <div className={styles.summary} data-testid="account-storage-summary" aria-busy={summaryQuery.isLoading}>
             <dl className={styles.ledger}>
-              <div className={styles.ledgerItem}>
-                <dt>Used</dt>
-                <dd data-testid={summaryQuery.data ? 'account-storage-used' : undefined}>
-                  {summaryQuery.data ? formatStorageBytes(summaryQuery.data.usedBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}
-                </dd>
-              </div>
-              <div className={styles.ledgerItem}>
-                <dt>Allowance</dt>
-                <dd>
-                  {summaryQuery.data ? formatStorageBytes(summaryQuery.data.quotaBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}
-                </dd>
-              </div>
-              <div className={`${styles.ledgerItem} ${styles.remainingItem}`}>
-                <dt>Remaining</dt>
-                <dd>
-                  {summaryQuery.data ? formatStorageBytes(summaryQuery.data.remainingBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}
-                </dd>
-              </div>
+              <div className={styles.ledgerItem}><dt>Used</dt><dd data-testid={summaryQuery.data ? 'account-storage-used' : undefined}>{summaryQuery.data ? formatStorageBytes(summaryQuery.data.usedBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}</dd></div>
+              <div className={styles.ledgerItem}><dt>Allowance</dt><dd>{summaryQuery.data ? formatStorageBytes(summaryQuery.data.quotaBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}</dd></div>
+              <div className={`${styles.ledgerItem} ${styles.remainingItem}`}><dt>Remaining</dt><dd>{summaryQuery.data ? formatStorageBytes(summaryQuery.data.remainingBytes) : <span className={styles.placeholder} data-testid="account-storage-value-placeholder" />}</dd></div>
             </dl>
-            <div className={styles.progressDetails}>
-              <div className={styles.progressTrack} role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-                <span className={styles.progressValue} style={{ width: `${percent}%` }} />
-              </div>
-              {summaryQuery.data ? <span>{percent}% used</span> : null}
-            </div>
-            {summaryQuery.data ? (
-              <div className={styles.usageBreakdown} aria-label="Storage usage breakdown">
-                <span>Files {formatStorageBytes(summaryQuery.data.physicalUsedBytes)}</span>
-                <span>Documents and tables {formatStorageBytes(summaryQuery.data.logicalUsedBytes)}</span>
-              </div>
-            ) : null}
-            {refreshFailed ? (
-              <div className={styles.refreshError} role="alert">
-                <span>Storage data could not be refreshed. Showing the last loaded values.</span>
-                <button type="button" onClick={() => void summaryQuery.refetch()}>Retry</button>
-              </div>
-            ) : null}
-            {summaryQuery.data && summaryQuery.data.overageBytes > 0 ? (
-              <p className={styles.criticalWarning} role="alert">
-                Stored content exceeds the allowance by {formatStorageBytes(summaryQuery.data.overageBytes)}.
-              </p>
-            ) : null}
+            <div className={styles.progressDetails}><div className={styles.progressTrack} role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><span className={styles.progressValue} style={{ width: `${percent}%` }} /></div>{summaryQuery.data ? <span>{percent}% used</span> : null}</div>
+            {summaryQuery.data ? <div className={styles.usageBreakdown} aria-label="Storage usage breakdown"><span>Media {formatStorageBytes(summaryQuery.data.physicalUsedBytes)}</span><span>Content {formatStorageBytes(summaryQuery.data.logicalUsedBytes)}</span></div> : null}
+            {refreshFailed ? <div className={styles.refreshError} role="alert"><span>Storage data could not be refreshed. Showing the last loaded values.</span><button type="button" onClick={() => void summaryQuery.refetch()}>Retry</button></div> : null}
+            {summaryQuery.data && summaryQuery.data.overageBytes > 0 ? <p className={styles.criticalWarning} role="alert">Stored content exceeds the allowance by {formatStorageBytes(summaryQuery.data.overageBytes)}.</p> : null}
             {warning ? <p className={physicalUsageIsCritical ? styles.criticalWarning : styles.warning} role="alert">{warning}</p> : null}
           </div>
 
-          <div className={styles.explorer} data-testid="account-storage-explorer" data-stacks-on-mobile="true">
+          <div className={`${styles.explorer} ${selectedEntity ? styles.explorerWithDetail : ''}`} data-testid="account-storage-explorer" data-stacks-on-mobile="true">
             <nav className={styles.projectPane} aria-label="Storage projects">
-              <h3>My projects</h3>
-              <div className={styles.projectList}>
-                {summaryQuery.data?.ownedProjects.map((project) => (
-                  <ProjectButton key={project.id} project={project} selected={selectedProject?.id === project.id} onSelect={selectProject} />
-                ))}
-                {summaryQuery.data?.unassigned ? (
-                  <div className={styles.unassigned}>
-                    <span>Unassigned legacy files</span>
-                    <span>{formatFileCount(summaryQuery.data.unassigned.fileCount)} · {formatStorageBytes(summaryQuery.data.unassigned.usedBytes)}</span>
-                  </div>
-                ) : null}
-              </div>
-              <h3 className={styles.sharedHeading}>Shared with me</h3>
-              <p className={styles.excluded}>Excluded from your allowance</p>
-              <div className={styles.projectList}>
-                {summaryQuery.data?.sharedProjects.map((project) => (
-                  <ProjectButton key={project.id} project={project} selected={selectedProject?.id === project.id} onSelect={selectProject} />
-                ))}
-              </div>
+              <h3>My projects</h3><div className={styles.projectList}>{summaryQuery.data?.ownedProjects.map((project) => <ProjectButton key={project.id} project={project} selected={selectedProject?.id === project.id} onSelect={selectProject} />)}{summaryQuery.data?.unassigned ? <div className={styles.unassigned}><span>Unassigned legacy files</span><span>{summaryQuery.data.unassigned.fileCount} files · {formatStorageBytes(summaryQuery.data.unassigned.usedBytes)}</span></div> : null}</div>
+              <h3 className={styles.sharedHeading}>Shared with me</h3><p className={styles.excluded}>Excluded from your allowance</p><div className={styles.projectList}>{summaryQuery.data?.sharedProjects.map((project) => <ProjectButton key={project.id} project={project} selected={selectedProject?.id === project.id} onSelect={selectProject} />)}</div>
             </nav>
 
-            <div className={styles.filesPane}>
-              <div className={styles.filesToolbar}>
-                <label>
-                  <span className={styles.visuallyHidden}>Search files</span>
-                  <input
-                    type="search"
-                    role="searchbox"
-                    aria-label="Search files"
-                    placeholder="Search files"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    disabled={!selectedProject}
-                  />
-                </label>
-                <label className={styles.sortLabel}>
-                  <span>Sort files</span>
-                  <select
-                    aria-label="Sort files"
-                    value={sort}
-                    onChange={(event) => {
-                      setSort(event.target.value as AccountStorageSort);
-                      setOffset(0);
-                    }}
-                    disabled={!selectedProject}
-                  >
-                    {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </label>
+            <div className={styles.entitiesPane}>
+              <div className={styles.entitiesToolbar}>
+                <label><span className={styles.visuallyHidden}>Search project items</span><input type="search" role="searchbox" aria-label="Search project items" placeholder="Search tables, documents, assets" value={search} onChange={(event) => setSearch(event.target.value)} disabled={!selectedProject} /></label>
+                <label className={styles.sortLabel}><span>Sort items</span><select aria-label="Sort items" value={sort} onChange={(event) => { setSort(event.target.value as AccountStorageSort); setOffset(0); setSelectedEntity(null); }} disabled={!selectedProject}>{SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               </div>
-
-              {!selectedProject ? <p className={styles.emptyState}>Select a project to view its files.</p> : null}
-              {selectedProject && selectedProject.fileCount === 0 ? <p className={styles.emptyState}>This project has no stored files.</p> : null}
-              {selectedProject && selectedProject.fileCount > 0 && filesQuery.isLoading && !filePage ? <p className={styles.emptyState} role="status">Loading files</p> : null}
-              {selectedProject && selectedProject.fileCount > 0 && filesQuery.error && !filePage ? <p className={styles.fileError} role="alert">Files could not be loaded for this project.</p> : null}
-              {selectedProject && selectedProject.fileCount > 0 && filePage && filePage.items.length === 0 ? <p className={styles.emptyState}>This project has no stored files.</p> : null}
-              {selectedProject && filePage && filePage.items.length > 0 ? (
-                <>
-                  <div className={styles.tableScroll}>
-                    <table className={styles.fileTable}>
-                      <thead>
-                        <tr>
-                          <th scope="col">Name</th>
-                          <th scope="col">Type</th>
-                          <th scope="col">Size</th>
-                          <th scope="col">Uploaded</th>
-                          <th scope="col">Source</th>
-                          <th scope="col"><span className={styles.visuallyHidden}>Action</span></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filePage.items.map((file) => {
-                          const destination = sourceDestination(file, selectedProject.id);
-                          const displayName = fileDisplayName(file);
-                          return (
-                            <tr key={file.id}>
-                              <td className={styles.fileName}>{displayName}</td>
-                              <td>{file.mimeType}</td>
-                              <td>{formatStorageBytes(file.sizeBytes)}</td>
-                              <td>{formatUploadedAt(file.createdAt)}</td>
-                              <td>{file.sourceAvailable ? sourceLabel(file.sourceKind) : 'Source no longer exists'}</td>
-                              <td>
-                                <button
-                                  type="button"
-                                  className={styles.openButton}
-                                  aria-label={`Open ${displayName} location`}
-                                  disabled={!destination}
-                                  onClick={() => {
-                                    if (destination) router.push(destination);
-                                  }}
-                                >
-                                  Open location
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className={styles.pagination}>
-                    <span>{filePage.total} {filePage.total === 1 ? 'file' : 'files'}</span>
-                    <div>
-                      <button type="button" onClick={() => setOffset(Math.max(0, offset - filePage.limit))} disabled={offset === 0}>Previous page</button>
-                      <button type="button" onClick={() => setOffset(offset + filePage.limit)} disabled={offset + filePage.limit >= filePage.total}>Next page</button>
-                    </div>
-                  </div>
-                </>
-              ) : null}
+              {!selectedProject ? <p className={styles.emptyState}>Select a project to view its stored content.</p> : null}
+              {selectedProject && selectedProject.fileCount === 0 ? <p className={styles.emptyState}>This project has no stored content.</p> : null}
+              {selectedProject && selectedProject.fileCount > 0 && entitiesQuery.isLoading && !entityPage ? <p className={styles.emptyState} role="status">Loading project items</p> : null}
+              {selectedProject && selectedProject.fileCount > 0 && entitiesQuery.error && !entityPage ? <div className={styles.entityError} role="alert"><span>Project items could not be loaded.</span><button type="button" onClick={() => void entitiesQuery.refetch()}>Retry</button></div> : null}
+              {selectedProject && entityPage && entityPage.items.length === 0 ? <p className={styles.emptyState}>No matching project items.</p> : null}
+              {selectedProject && entityPage && entityPage.items.length > 0 ? <><div className={styles.entityList} role="list" aria-label="Project storage items">{entityPage.items.map((entity) => { const name = entity.name || `Untitled ${entityLabel(entity.kind).toLowerCase()}`; return <button key={`${entity.kind}-${entity.id}`} type="button" role="listitem" className={`${styles.entityRow} ${selectedEntity?.id === entity.id && selectedEntity.kind === entity.kind ? styles.selectedEntity : ''}`} onClick={() => setSelectedEntity(entity)}><span className={styles.entityIcon}>{entityIcon(entity.kind)}</span><span className={styles.entityIdentity}><strong>{name}</strong><span>{entityLabel(entity.kind)} · {formatCreatedAt(entity.createdAt)}</span></span><span className={styles.entitySize}>{formatStorageBytes(entity.sizeBytes)}</span></button>; })}</div><div className={styles.pagination}><span>{entityPage.total} {entityPage.total === 1 ? 'item' : 'items'}</span><div><button type="button" onClick={() => { setOffset(Math.max(0, offset - entityPage.limit)); setSelectedEntity(null); }} disabled={offset === 0}>Previous page</button><button type="button" onClick={() => { setOffset(offset + entityPage.limit); setSelectedEntity(null); }} disabled={offset + entityPage.limit >= entityPage.total}>Next page</button></div></div></> : null}
             </div>
+            {selectedProject && selectedEntity ? <DetailPane projectId={selectedProject.id} entity={selectedEntity} onClose={() => setSelectedEntity(null)} onOpenSource={openSelectedEntity} /> : null}
           </div>
         </>
       )}
