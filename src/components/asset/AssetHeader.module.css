@@ -29,7 +29,7 @@
 }
 
 .backButton:hover {
-  opacity: 0.7;
+  background: var(--keco-control-hover-bg);
 }
 
 .title {
@@ -62,7 +62,7 @@
 }
 
 .iconButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 }
 
@@ -139,7 +139,7 @@
 }
 
 .expandCollaboratorsButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   transform: scale(1.05);
 }
 
@@ -215,7 +215,7 @@
 }
 
 .memberItem:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .memberInfo {
@@ -294,5 +294,3 @@
     left: 0;
   }
 }
-
-

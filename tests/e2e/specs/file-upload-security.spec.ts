@@ -87,7 +87,7 @@ async function cleanupTempDir(): Promise<void> {
 }
 
 async function addColumn(page: import('@playwright/test').Page, name: string, dataTypeLabel: string): Promise<void> {
-  const addColumnButton = page.getByRole('button', { name: /add new column/i });
+  const addColumnButton = page.getByRole('button', { name: /insert column right/i });
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
   const addModal = page.getByRole('dialog', { name: /add column/i }).first();
   await addColumnButton.click();

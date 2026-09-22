@@ -103,22 +103,3 @@ export function detectScriptColumns(
     hasScriptColumns: !!(scriptColumns.nameKey && scriptColumns.contentKey),
   };
 }
-
-export type ColumnWidthClassKey =
-  | 'cols1'
-  | 'cols2'
-  | 'cols3'
-  | 'cols4'
-  | 'cols5'
-  | 'cols6'
-  | 'colsMany';
-
-export function getColumnWidthClassKey(columnCount: number): ColumnWidthClassKey {
-  if (columnCount === 1) return 'cols1';
-  if (columnCount === 2) return 'cols2';
-  if (columnCount === 3) return 'cols3';
-  if (columnCount === 4) return 'cols4';
-  if (columnCount === 5) return 'cols5';
-  if (columnCount === 6) return 'cols6';
-  return 'colsMany';
-}

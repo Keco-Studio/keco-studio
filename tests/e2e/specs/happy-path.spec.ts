@@ -98,7 +98,7 @@ test.describe('Happy Path - Complete User Journey', () => {
       await libraryPage.openLibrary(libraries.breed.name);
       await libraryPage.waitForPageLoad();
       
-      // Current UI schema entry: table right-side "+" (Add new column), not /predefine route.
+      // Current UI schema entry: fixed table right-side "+" (Insert column right), not /predefine route.
       await libraryPage.addColumnFromTableSchemaEntry(libraries.breed.name, 'Origin', 'String');
       
       // Wait for template to be fully saved to database (critical in parallel execution)

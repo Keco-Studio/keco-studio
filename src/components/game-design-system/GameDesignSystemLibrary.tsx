@@ -66,12 +66,12 @@ export function GameDesignSystemLibrary(props: Props) {
   return (
     <aside className={styles.library} aria-label="Game Design System library">
       <div className={styles.libraryHeader}>
-        <div>
-          <span className={styles.eyebrow}>Design governance</span>
+        <div className={styles.brandBlock}>
           <h1>Game Design System</h1>
+          <p className={styles.brandSubtitle}>Manage and config game assets for game designers.</p>
         </div>
         <button
-          className={styles.iconButton}
+          className={styles.libraryCreateButton}
           type="button"
           aria-label="Create Game Design System"
           title="Create Game Design System"

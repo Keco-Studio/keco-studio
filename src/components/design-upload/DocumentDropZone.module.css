@@ -243,7 +243,7 @@
 
 .clearButton:hover {
   border-color: #d1d5db;
-  background: #f9fafb;
+  background: var(--keco-control-hover-bg);
 }
 
 .zoneCompact .clearButton {

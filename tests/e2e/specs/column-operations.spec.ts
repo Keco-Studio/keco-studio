@@ -47,10 +47,7 @@ async function saveEditColumnModal(page: Page, modal: Locator): Promise<void> {
 }
 
 async function openAddColumnModal(page: Page): Promise<Locator> {
-  const addColumnButton = page
-    .locator('thead')
-    .getByRole('button', { name: /add new column/i })
-    .first();
+  const addColumnButton = page.getByRole('button', { name: /insert column right/i }).first();
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
 
   const addModal = page.getByRole('dialog', { name: /add column/i }).first();

@@ -20,10 +20,10 @@ import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { invalidateFolderData, invalidateLibraryData } from '@/lib/queryInvalidation';
-import libraryEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
+import { EmptyContentState } from '@/components/shared/EmptyContentState';
 import styles from './FolderPage.module.css';
 
 export default function FolderPage() {
@@ -289,18 +289,7 @@ export default function FolderPage() {
       /> */}
       {libraries.length === 0 && documents.length === 0 ? (
         <div className={styles.emptyStateWrapper}>
-          <div className={styles.emptyStateContainer}>
-            <div className={styles.emptyIcon}>
-              <Image
-                src={libraryEmptyIcon}
-                alt="Library icon"
-                width={237}
-                height={219}
-              />
-            </div>
-            <div className={styles.emptyText}>
-              There is no any library here. you need to create a library firstly
-            </div>
+          <EmptyContentState message="There is no any library here. you need to create a library firstly">
             {canCreate && (
               <button
                 className={styles.createLibraryButton}
@@ -325,7 +314,7 @@ export default function FolderPage() {
                 <span className={styles.buttonText}>Create Library</span>
               </button>
             )}
-          </div>
+          </EmptyContentState>
         </div>
       ) : viewMode === 'grid' ? (
         <div className={styles.grid}>

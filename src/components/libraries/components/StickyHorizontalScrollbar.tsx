@@ -1,27 +1,35 @@
 'use client';
 
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import styles from '../LibraryAssetsTable.module.css';
+import { resolveHorizontalOverflow } from './stickyHorizontalScrollbarState';
 
 type StickyHorizontalScrollbarProps = {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
+  /** Auto-sized tables know whether their calculated columns exceed the viewport. */
+  knownOverflow?: boolean;
 };
 
 export function StickyHorizontalScrollbar({
   scrollContainerRef,
+  knownOverflow,
 }: StickyHorizontalScrollbarProps) {
   const scrollbarRef = useRef<HTMLDivElement>(null);
   const spacerRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     const scrollbar = scrollbarRef.current;
     const spacer = spacerRef.current;
     if (!scrollContainer || !scrollbar || !spacer) return;
 
     const updateDimensions = () => {
-      const nextHasOverflow = scrollContainer.scrollWidth > scrollContainer.clientWidth + 1;
+      const nextHasOverflow = resolveHorizontalOverflow(
+        scrollContainer.scrollWidth,
+        scrollContainer.clientWidth,
+        knownOverflow,
+      );
       spacer.style.width = `${scrollContainer.scrollWidth}px`;
       setHasOverflow((current) =>
         current === nextHasOverflow ? current : nextHasOverflow
@@ -62,7 +70,7 @@ export function StickyHorizontalScrollbar({
       window.removeEventListener('resize', updateDimensions);
       resizeObserver?.disconnect();
     };
-  }, [scrollContainerRef]);
+  }, [knownOverflow, scrollContainerRef]);
 
   return (
     <div

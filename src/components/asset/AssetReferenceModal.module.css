@@ -271,7 +271,7 @@
 }
 
 .refTable tbody td[aria-disabled='false']:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .refTable tbody td.cellSelected {
@@ -408,7 +408,7 @@
 
 .assetListRow:hover {
   border-color: #d1d5db;
-  background: #f9fafb;
+  background: var(--keco-control-hover-bg);
 }
 
 .assetListRowSelected {
@@ -550,7 +550,7 @@
 }
 
 .cancelButton:hover {
-  background-color: #f9fafb;
+  background-color: var(--keco-control-hover-bg);
   border-color: #9ca3af;
 }
 

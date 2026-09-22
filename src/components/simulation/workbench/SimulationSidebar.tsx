@@ -88,7 +88,7 @@ export function SimulationSidebar({
       style={{ backdropFilter: 'var(--blur-glass)' }}
     >
       <div className={styles.sidebarBrand}>
-        <strong className={styles.brandText}>Keco Simulator</strong>
+        <strong className={styles.brandText}>Simulator</strong>
         <p>Battle &amp; numbers sandbox · for game designers</p>
       </div>
 
