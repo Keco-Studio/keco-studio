@@ -73,7 +73,7 @@
 }
 
 .container {
-  padding: 1rem 1.5rem;
+  padding: 1rem 1.5rem 2.5rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -93,27 +93,6 @@
 
 .error {
   color: #dc2626;
-}
-
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
-  padding: 3rem 2rem;
-  text-align: center;
-  min-height: 400px;
-}
-
-.emptyIcon {
-  display: block;
-}
-
-.emptyText {
-  color: #000000;
-  font-size: 1rem;
-  font-weight: 400;
 }
 
 .createButton {
@@ -197,6 +176,4 @@
     justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
   }
 }
-
-
 

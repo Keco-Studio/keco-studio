@@ -15,11 +15,12 @@
   --font-pixer: 'Pixer', sans-serif;
   /* Shared selection / hover tokens (sidebar, table, menus) */
   --keco-blue: #0b99ff;
+  --keco-control-hover-bg: #e6f4ff;
   /* Soft blue fill — readable on white surfaces (table cells, menus) */
   --keco-blue-tint: #e6f4ff;
   /* 8% blue overlay — good on tinted/sidebar surfaces */
-  --keco-blue-tint-soft: #0b99ff14;
-  --keco-row-hover-bg: #f8fafc;
+  --keco-blue-tint-soft: var(--keco-control-hover-bg);
+  --keco-row-hover-bg: var(--keco-control-hover-bg);
 }
 
 /* Pixer font declaration */

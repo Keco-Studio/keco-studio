@@ -13,6 +13,7 @@ export const ACCOUNT_STORAGE_COLLABORATOR_ID = '20000000-0000-4000-8000-00000000
 export const OWNED_PROJECT_ID = '30000000-0000-4000-8000-000000000003';
 export const SHARED_PROJECT_ID = '40000000-0000-4000-8000-000000000004';
 export const FORBIDDEN_PROJECT_ID = '50000000-0000-4000-8000-000000000005';
+export const OWNED_FOLDER_ID = '60000000-0000-4000-8000-000000000006';
 
 const ONE_TB = 1_099_511_627_776;
 const SUPABASE_ORIGIN = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321').origin;
@@ -44,7 +45,7 @@ function entity(input: Partial<AccountStorageEntity> & Pick<AccountStorageEntity
     logicalBytes: input.logicalBytes ?? 0,
     physicalBytes: input.physicalBytes ?? 1024,
     sizeBytes: input.sizeBytes ?? 1024,
-    folderId: input.folderId ?? null,
+    parentFolderId: input.parentFolderId ?? null,
     createdAt: input.createdAt ?? '2026-09-18T00:00:00.000Z',
     sourceAvailable: input.sourceAvailable ?? true,
   };
@@ -54,7 +55,7 @@ const ownedProject: AccountStorageProject = {
   id: OWNED_PROJECT_ID,
   name: 'Owned Storage Fixture',
   ownerName: 'Storage Owner',
-  fileCount: 3,
+  fileCount: 4,
   usedBytes: 512 * 1024 * 1024 * 1024,
   ownedByCurrentUser: true,
 };
@@ -68,7 +69,19 @@ const sharedProject: AccountStorageProject = {
   ownedByCurrentUser: false,
 };
 
-const ownedEntities = [
+const ownedRootEntities = [
+  entity({
+    id: OWNED_FOLDER_ID,
+    name: 'Story content',
+    kind: 'folder',
+    logicalBytes: 6_144,
+    physicalBytes: 13_024,
+    sizeBytes: 19_168,
+  }),
+  entity({ id: OWNED_PROJECT_ID, name: 'Assets', kind: 'assets', physicalBytes: 3_300, sizeBytes: 3_300 }),
+];
+
+const ownedFolderEntities = [
   entity({
     id: '82000000-0000-4000-8000-000000000008',
     name: 'Story outline',
@@ -76,6 +89,7 @@ const ownedEntities = [
     logicalBytes: 2_048,
     physicalBytes: 1024,
     sizeBytes: 3_072,
+    parentFolderId: OWNED_FOLDER_ID,
   }),
   entity({
     id: '84000000-0000-4000-8000-000000000008',
@@ -84,8 +98,8 @@ const ownedEntities = [
     logicalBytes: 4_096,
     physicalBytes: 12_000,
     sizeBytes: 16_096,
+    parentFolderId: OWNED_FOLDER_ID,
   }),
-  entity({ id: OWNED_PROJECT_ID, name: 'Assets', kind: 'assets', physicalBytes: 3_300, sizeBytes: 3_300 }),
 ];
 
 const sharedEntities = [
@@ -103,7 +117,7 @@ function compareEntities(sort: AccountStorageSort): (left: AccountStorageEntity,
   }
 }
 
-function entityDetail(item: AccountStorageEntity): AccountStorageEntityDetail {
+function entityDetail(item: AccountStorageEntity & { kind: AccountStorageEntityDetail['kind'] }): AccountStorageEntityDetail {
   const logicalId = item.kind === 'assets' ? null : '91000000-0000-4000-8000-000000000009';
   const detailItems: AccountStorageEntityDetail['items'] = [];
   if (logicalId && item.logicalBytes > 0) detailItems.push({
@@ -211,11 +225,19 @@ export class AccountStorageMockBackend {
     if (segments.length > entityIndex + 1) {
       const kind = segments[entityIndex + 1];
       const entityId = segments[entityIndex + 2];
-      const match = [...ownedEntities, ...sharedEntities].find(item => item.kind === kind && item.id === entityId);
-      return match ? json(route, entityDetail(match)) : json(route, { error: 'Storage entity not found' }, 404);
+      const match = [...ownedRootEntities, ...ownedFolderEntities, ...sharedEntities]
+        .find(item => item.kind !== 'folder' && item.kind === kind && item.id === entityId);
+      return match && match.kind !== 'folder'
+        ? json(route, entityDetail(match as AccountStorageEntity & { kind: AccountStorageEntityDetail['kind'] }))
+        : json(route, { error: 'Storage entity not found' }, 404);
     }
 
-    const entities = projectId === SHARED_PROJECT_ID ? sharedEntities : ownedEntities;
+    const parentFolderId = url.searchParams.get('parentFolderId');
+    const entities = projectId === SHARED_PROJECT_ID
+      ? sharedEntities
+      : parentFolderId === OWNED_FOLDER_ID
+        ? ownedFolderEntities
+        : ownedRootEntities;
     const query = (url.searchParams.get('query') ?? '').toLocaleLowerCase();
     const sort = (url.searchParams.get('sort') ?? 'size_desc') as AccountStorageSort;
     const limit = Number(url.searchParams.get('limit') ?? 50);
@@ -228,6 +250,9 @@ export class AccountStorageMockBackend {
       total: items.length,
       limit,
       offset,
+      breadcrumb: parentFolderId === OWNED_FOLDER_ID
+        ? [{ id: OWNED_FOLDER_ID, name: 'Story content' }]
+        : [],
     };
     return json(route, page);
   }

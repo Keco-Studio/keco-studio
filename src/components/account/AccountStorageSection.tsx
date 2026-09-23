@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppstoreOutlined, CloseOutlined, FileTextOutlined, TableOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, CloseOutlined, FileTextOutlined, FolderOutlined, RightOutlined, TableOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   ACCOUNT_STORAGE_PAGE_SIZE,
   ACCOUNT_STORAGE_CRITICAL_PERCENT,
   ACCOUNT_STORAGE_WARNING_PERCENT,
   type AccountStorageEntity,
+  type AccountStorageBreadcrumb,
   type AccountStorageEntityDetail,
   type AccountStorageEntityDetailItem,
   type AccountStorageEntityKind,
+  type AccountStorageEntryKind,
   type AccountStorageEntityPage,
   type AccountStorageProject,
   type AccountStorageSort,
@@ -42,8 +44,18 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+type AccountStorageDetailEntity = Omit<AccountStorageEntity, 'kind'> & { kind: AccountStorageEntityKind };
+
 function isEntityKind(value: unknown): value is AccountStorageEntityKind {
   return value === 'table' || value === 'document' || value === 'assets';
+}
+
+function isEntryKind(value: unknown): value is AccountStorageEntryKind {
+  return value === 'folder' || isEntityKind(value);
+}
+
+function isDetailEntity(entity: AccountStorageEntity): entity is AccountStorageDetailEntity {
+  return isEntityKind(entity.kind);
 }
 
 function isProject(value: unknown): value is AccountStorageProject {
@@ -84,14 +96,14 @@ function isEntity(value: unknown): value is AccountStorageEntity {
   if (!value || typeof value !== 'object') return false;
   const entity = value as Partial<AccountStorageEntity>;
   return isNonEmptyString(entity.id)
-    && isEntityKind(entity.kind)
+    && isEntryKind(entity.kind)
     && typeof entity.name === 'string'
     && isNonEmptyString(entity.mimeType)
     && isNonNegativeSafeInteger(entity.logicalBytes)
     && isNonNegativeSafeInteger(entity.physicalBytes)
     && isNonNegativeSafeInteger(entity.sizeBytes)
     && entity.logicalBytes + entity.physicalBytes === entity.sizeBytes
-    && (entity.folderId === null || typeof entity.folderId === 'string')
+    && (entity.parentFolderId === null || typeof entity.parentFolderId === 'string')
     && isNonEmptyString(entity.createdAt)
     && Number.isFinite(Date.parse(entity.createdAt))
     && typeof entity.sourceAvailable === 'boolean';
@@ -105,7 +117,12 @@ function isEntityPage(value: unknown): value is AccountStorageEntityPage {
     && isNonNegativeSafeInteger(page.total)
     && isNonNegativeSafeInteger(page.limit)
     && page.limit > 0
-    && isNonNegativeSafeInteger(page.offset);
+    && isNonNegativeSafeInteger(page.offset)
+    && Array.isArray(page.breadcrumb)
+    && page.breadcrumb.every((part) => !!part
+      && typeof part === 'object'
+      && isNonEmptyString(part.id)
+      && typeof part.name === 'string');
 }
 
 function isDetailItem(value: unknown): value is AccountStorageEntityDetailItem {
@@ -151,8 +168,10 @@ async function fetchProjectEntities(
   query: string,
   sort: AccountStorageSort,
   offset: number,
+  parentFolderId: string | null,
 ): Promise<AccountStorageEntityPage> {
   const params = new URLSearchParams({ query, sort, limit: String(ACCOUNT_STORAGE_PAGE_SIZE), offset: String(offset) });
+  if (parentFolderId) params.set('parentFolderId', parentFolderId);
   const response = await fetch(`/api/account/storage/projects/${projectId}/entities?${params}`, { cache: 'no-store' });
   if (!response.ok) throw new AccountStorageRequestError();
   const body: unknown = await response.json();
@@ -160,7 +179,7 @@ async function fetchProjectEntities(
   return body;
 }
 
-async function fetchEntityDetail(projectId: string, entity: AccountStorageEntity): Promise<AccountStorageEntityDetail> {
+async function fetchEntityDetail(projectId: string, entity: AccountStorageDetailEntity): Promise<AccountStorageEntityDetail> {
   const response = await fetch(`/api/account/storage/projects/${projectId}/entities/${entity.kind}/${entity.id}`, { cache: 'no-store' });
   if (!response.ok) throw new AccountStorageRequestError();
   const body: unknown = await response.json();
@@ -182,17 +201,19 @@ function formatEntityCount(count: number): string { return `${count} ${count ===
 function formatCreatedAt(value: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 }
-function entityLabel(kind: AccountStorageEntityKind): string {
+function entityLabel(kind: AccountStorageEntryKind): string {
+  if (kind === 'folder') return 'Folder';
   if (kind === 'table') return 'Table';
   if (kind === 'document') return 'Document';
   return 'Assets';
 }
-function entityIcon(kind: AccountStorageEntityKind) {
+function entityIcon(kind: AccountStorageEntryKind) {
+  if (kind === 'folder') return <FolderOutlined aria-hidden="true" />;
   if (kind === 'table') return <TableOutlined aria-hidden="true" />;
   if (kind === 'document') return <FileTextOutlined aria-hidden="true" />;
   return <AppstoreOutlined aria-hidden="true" />;
 }
-function entityDestination(entity: AccountStorageEntity, projectId: string): string | null {
+function entityDestination(entity: AccountStorageDetailEntity, projectId: string): string | null {
   if (!entity.sourceAvailable) return null;
   if (entity.kind === 'table') return `/${projectId}/${entity.id}`;
   if (entity.kind === 'document') return `/${projectId}/doc/${entity.id}`;
@@ -225,7 +246,7 @@ function ProjectButton({ project, selected, onSelect }: {
 
 function DetailPane({ projectId, entity, onClose, onOpenSource }: {
   projectId: string;
-  entity: AccountStorageEntity;
+  entity: AccountStorageDetailEntity;
   onClose: () => void;
   onOpenSource: () => void;
 }) {
@@ -270,7 +291,9 @@ function DetailPane({ projectId, entity, onClose, onOpenSource }: {
 export function AccountStorageSection() {
   const router = useRouter();
   const [selectedProject, setSelectedProject] = useState<AccountStorageProject | null>(null);
-  const [selectedEntity, setSelectedEntity] = useState<AccountStorageEntity | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<AccountStorageDetailEntity | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [directoryPath, setDirectoryPath] = useState<AccountStorageBreadcrumb[]>([]);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sort, setSort] = useState<AccountStorageSort>('size_desc');
@@ -283,8 +306,8 @@ export function AccountStorageSection() {
   }, [search]);
 
   const entitiesQuery = useQuery({
-    queryKey: ['account-storage-entities', selectedProject?.id, debouncedSearch, sort, offset],
-    queryFn: () => fetchProjectEntities(selectedProject!.id, debouncedSearch, sort, offset),
+    queryKey: ['account-storage-entities', selectedProject?.id, currentFolderId, debouncedSearch, sort, offset],
+    queryFn: () => fetchProjectEntities(selectedProject!.id, debouncedSearch, sort, offset, currentFolderId),
     enabled: Boolean(selectedProject && selectedProject.fileCount > 0),
     retry: false,
     staleTime: 0,
@@ -299,8 +322,22 @@ export function AccountStorageSection() {
   const warning = summaryQuery.data ? usageWarning(summaryQuery.data.physicalUsedBytes, summaryQuery.data.quotaBytes) : null;
   const entityPage = entitiesQuery.data;
 
+  useEffect(() => {
+    if (entityPage) setDirectoryPath(entityPage.breadcrumb);
+  }, [entityPage]);
+
   function selectProject(project: AccountStorageProject) {
-    setSelectedProject(project); setSelectedEntity(null); setSearch(''); setDebouncedSearch(''); setSort('size_desc'); setOffset(0);
+    setSelectedProject(project); setSelectedEntity(null); setCurrentFolderId(null); setDirectoryPath([]); setSearch(''); setDebouncedSearch(''); setSort('size_desc'); setOffset(0);
+  }
+  function navigateToFolder(folderId: string | null, path: AccountStorageBreadcrumb[]) {
+    setCurrentFolderId(folderId); setDirectoryPath(path); setSelectedEntity(null); setSearch(''); setDebouncedSearch(''); setOffset(0);
+  }
+  function selectEntry(entity: AccountStorageEntity) {
+    if (entity.kind === 'folder') {
+      navigateToFolder(entity.id, [...directoryPath, { id: entity.id, name: entity.name }]);
+      return;
+    }
+    if (isDetailEntity(entity)) setSelectedEntity(entity);
   }
   function openSelectedEntity() {
     if (!selectedProject || !selectedEntity) return;
@@ -333,8 +370,9 @@ export function AccountStorageSection() {
             </nav>
 
             <div className={styles.entitiesPane}>
+              {selectedProject ? <nav className={styles.breadcrumbs} aria-label="Project storage path"><button type="button" aria-current={currentFolderId === null ? 'page' : undefined} onClick={() => navigateToFolder(null, [])}>{selectedProject.name}</button>{directoryPath.map((part, index) => <span key={part.id} className={styles.breadcrumbPart}><RightOutlined aria-hidden="true" /><button type="button" aria-current={index === directoryPath.length - 1 ? 'page' : undefined} onClick={() => navigateToFolder(part.id, directoryPath.slice(0, index + 1))}>{part.name || 'Untitled folder'}</button></span>)}</nav> : null}
               <div className={styles.entitiesToolbar}>
-                <label><span className={styles.visuallyHidden}>Search project items</span><input type="search" role="searchbox" aria-label="Search project items" placeholder="Search tables, documents, assets" value={search} onChange={(event) => setSearch(event.target.value)} disabled={!selectedProject} /></label>
+                <label><span className={styles.visuallyHidden}>Search folders, tables, documents, assets</span><input type="search" role="searchbox" aria-label="Search folders, tables, documents, assets" placeholder="Search folders, tables, documents, assets" value={search} onChange={(event) => setSearch(event.target.value)} disabled={!selectedProject} /></label>
                 <label className={styles.sortLabel}><span>Sort items</span><select aria-label="Sort items" value={sort} onChange={(event) => { setSort(event.target.value as AccountStorageSort); setOffset(0); setSelectedEntity(null); }} disabled={!selectedProject}>{SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               </div>
               {!selectedProject ? <p className={styles.emptyState}>Select a project to view its stored content.</p> : null}
@@ -342,7 +380,7 @@ export function AccountStorageSection() {
               {selectedProject && selectedProject.fileCount > 0 && entitiesQuery.isLoading && !entityPage ? <p className={styles.emptyState} role="status">Loading project items</p> : null}
               {selectedProject && selectedProject.fileCount > 0 && entitiesQuery.error && !entityPage ? <div className={styles.entityError} role="alert"><span>Project items could not be loaded.</span><button type="button" onClick={() => void entitiesQuery.refetch()}>Retry</button></div> : null}
               {selectedProject && entityPage && entityPage.items.length === 0 ? <p className={styles.emptyState}>No matching project items.</p> : null}
-              {selectedProject && entityPage && entityPage.items.length > 0 ? <><div className={styles.entityList} role="list" aria-label="Project storage items">{entityPage.items.map((entity) => { const name = entity.name || `Untitled ${entityLabel(entity.kind).toLowerCase()}`; return <button key={`${entity.kind}-${entity.id}`} type="button" role="listitem" className={`${styles.entityRow} ${selectedEntity?.id === entity.id && selectedEntity.kind === entity.kind ? styles.selectedEntity : ''}`} onClick={() => setSelectedEntity(entity)}><span className={styles.entityIcon}>{entityIcon(entity.kind)}</span><span className={styles.entityIdentity}><strong>{name}</strong><span>{entityLabel(entity.kind)} · {formatCreatedAt(entity.createdAt)}</span></span><span className={styles.entitySize}>{formatStorageBytes(entity.sizeBytes)}</span></button>; })}</div><div className={styles.pagination}><span>{entityPage.total} {entityPage.total === 1 ? 'item' : 'items'}</span><div><button type="button" onClick={() => { setOffset(Math.max(0, offset - entityPage.limit)); setSelectedEntity(null); }} disabled={offset === 0}>Previous page</button><button type="button" onClick={() => { setOffset(offset + entityPage.limit); setSelectedEntity(null); }} disabled={offset + entityPage.limit >= entityPage.total}>Next page</button></div></div></> : null}
+              {selectedProject && entityPage && entityPage.items.length > 0 ? <><div className={styles.entityList} role="list" aria-label="Project storage items">{entityPage.items.map((entity) => { const name = entity.name || `Untitled ${entityLabel(entity.kind).toLowerCase()}`; return <button key={`${entity.kind}-${entity.id}`} type="button" role="listitem" className={`${styles.entityRow} ${selectedEntity?.id === entity.id && selectedEntity.kind === entity.kind ? styles.selectedEntity : ''}`} onClick={() => selectEntry(entity)}><span className={styles.entityIcon}>{entityIcon(entity.kind)}</span><span className={styles.entityIdentity}><strong>{name}</strong><span>{entityLabel(entity.kind)} · {formatCreatedAt(entity.createdAt)}</span></span><span className={styles.entitySize}>{formatStorageBytes(entity.sizeBytes)}</span></button>; })}</div><div className={styles.pagination}><span>{entityPage.total} {entityPage.total === 1 ? 'item' : 'items'}</span><div><button type="button" onClick={() => { setOffset(Math.max(0, offset - entityPage.limit)); setSelectedEntity(null); }} disabled={offset === 0}>Previous page</button><button type="button" onClick={() => { setOffset(offset + entityPage.limit); setSelectedEntity(null); }} disabled={offset + entityPage.limit >= entityPage.total}>Next page</button></div></div></> : null}
             </div>
             {selectedProject && selectedEntity ? <DetailPane projectId={selectedProject.id} entity={selectedEntity} onClose={() => setSelectedEntity(null)} onOpenSource={openSelectedEntity} /> : null}
           </div>

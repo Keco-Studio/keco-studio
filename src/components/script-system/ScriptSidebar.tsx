@@ -12,6 +12,7 @@ import { writeScriptProjectPreference } from '@/lib/script-system/projectPrefere
 import paperIcon from '@/assets/images/paper.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
+import importIcon from '@/assets/images/simulator/import.svg';
 import { useScriptWorkspaceMembership } from './useScriptWorkspaceMembership';
 import {
   ScriptContextMenu,
@@ -29,23 +30,7 @@ export type ScriptSidebarProps = {
 };
 
 function ImportIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 3v12" />
-      <path d="m7 10 5 5 5-5" />
-      <path d="M5 21h14" />
-    </svg>
-  );
+  return <Image src={importIcon} alt="" width={18} height={18} aria-hidden="true" />;
 }
 
 function ChevronDownIcon() {
@@ -386,11 +371,11 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   return (
     <aside
       className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}
-      aria-label="Keco Script workspace"
+      aria-label="Script Generator workspace"
       aria-hidden={!isSidebarVisible}
     >
       <div className={styles.brand}>
-        <strong className={styles.brandTitle}>Keco Script</strong>
+        <strong className={styles.brandTitle}>Script Generator</strong>
         <p className={styles.brandSubtitle}>
           Manage and config game assets for game designers.
         </p>
@@ -447,11 +432,13 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
           aria-current={onImportRoute ? 'page' : undefined}
           onClick={goToImport}
         >
-          <span className={styles.importIcon}>
-            <ImportIcon />
-          </span>
-          <span>Import</span>
-        </button>
+              <span className={styles.importIcon}>
+                <ImportIcon />
+              </span>
+              <span className={styles.importCopy}>
+                <strong>Import</strong>
+              </span>
+            </button>
 
         <ul className={styles.tree} role="tree" aria-label="Workspace documents">
           {workspaceDocs.map((doc) => {

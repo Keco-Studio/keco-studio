@@ -36,9 +36,21 @@
   pointer-events: none;
 }
 
+.panelSlot {
+  --agent-panel-width-ratio: 26.5vw;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  transition: flex-basis 0.18s ease, width 0.18s ease;
+}
+
+.panelSlotOpen {
+  flex-basis: clamp(300px, var(--agent-panel-width-ratio), 390px);
+  width: clamp(300px, var(--agent-panel-width-ratio), 390px);
+}
+
 .panel {
   --top-nav-height: 4rem;
-  --agent-panel-width-ratio: 26.5vw;
   --agent-blue: #1687ff;
   --agent-blue-hover: #0877eb;
   --agent-blue-soft: #edf7ff;
@@ -47,12 +59,11 @@
   --agent-line: #e2e8f0;
   --agent-surface: #f6f8fb;
   position: relative;
-  flex: 0 0 clamp(300px, var(--agent-panel-width-ratio), 390px);
-  width: clamp(300px, var(--agent-panel-width-ratio), 390px);
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   height: 100%;
   min-height: 0;
-  --agent-nav-bg: #f8fafc;
+  --agent-nav-bg: #fff;
   background: var(--agent-nav-bg);
   border-left: 1px solid var(--agent-line);
   display: flex;
@@ -81,7 +92,7 @@
 }
 .modeToggle:hover:not(:disabled) {
   border-color: #a8d4ff;
-  background: #f3f9ff;
+  background: var(--keco-control-hover-bg);
   color: #1876dc;
 }
 .modeToggle:disabled {
@@ -131,7 +142,7 @@
   z-index: 1010;
 }
 .scrollJumpBtn:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .bubble {
@@ -152,7 +163,7 @@
   gap: 10px;
   width: fit-content;
   max-width: 300px;
-  background: #2563eb;
+  background: #0b99ff;
   color: #fff;
   border-radius: 20px;
   padding: 12px 16px;
@@ -280,12 +291,8 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   max-width: 100%;
   min-width: 0;
   min-height: auto;
-  background: #ffffff;
   color: #111827;
-  border: 1px solid #e8ebf0;
-  border-radius: 22px;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.04);
-  padding: 14px 16px;
+  padding: 0;
   overflow-wrap: anywhere;
 }
 .assistantThinkingCard {
@@ -1053,7 +1060,7 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   object-fit: contain;
 }
 .attachBtn:hover:not(:disabled) {
-  background: #f3f6fb;
+  background: var(--keco-control-hover-bg);
   color: #111827;
 }
 .attachBtn:disabled {

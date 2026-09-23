@@ -15,6 +15,7 @@
   flex-direction: column;
   box-sizing: border-box;
   font-family: 'Roboto', sans-serif;
+  overflow: hidden;
 }
 
 .header {
@@ -160,7 +161,7 @@
 
 /* .addOptionBtn:hover,
 .removeOptionBtn:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 } */
 
@@ -447,7 +448,7 @@
 }
 
 .cancelBtn:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 }
 
@@ -567,7 +568,7 @@
 }
 
 .confirmCancelBtn:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 }
 

@@ -42,7 +42,7 @@
 - Consumes: `project_storage_files`, `project_storage_entity_bindings`, `private.storage_refresh_file_entity_binding(uuid)`, `private.storage_project_entities(uuid)`, `account_storage_summary()`.
 - Produces: `account_storage_project_entities(uuid,text,text,integer,integer,uuid)` returning `{items,total,limit,offset,breadcrumb}`.
 
-- [ ] **Step 1: Add the forward-only repair migration**
+- [x] **Step 1: Add the forward-only repair migration**
 
 Create an idempotent migration that:
 
@@ -59,11 +59,11 @@ Create an idempotent migration that:
 11. Replaces `account_storage_summary()` so project item counts include each Folder, Table, Document, and enabled Assets workspace once while used bytes remain the canonical logical plus physical total.
 12. Revokes private helpers from API roles and grants only the public reader RPC to `authenticated`.
 
-- [ ] **Step 2: Add static migration contract coverage**
+- [x] **Step 2: Add static migration contract coverage**
 
 Assert the new SQL includes the later migration, `storage.objects` metadata import, conflict-safe registry writes, binding refresh, recursive Folder ancestry/descendant CTEs, root-only Assets existence logic, the new RPC parameter, breadcrumb JSON, item-count calculation, and explicit revoke/grant statements.
 
-- [ ] **Step 3: Add live database behavior coverage**
+- [x] **Step 3: Add live database behavior coverage**
 
 Extend the PostgreSQL behavior suite to create nested Folders, a child Table with one physical media object, a child Document, an enabled empty Assets workspace, and an unregistered historical Storage object. Assert:
 
@@ -78,7 +78,7 @@ expect(importedRegistryRow.size_bytes).toBe(authoritativeObjectBytes);
 
 Run the repair logic twice and assert registry counts and quota totals do not change on the second run.
 
-- [ ] **Step 4: Run database verification**
+- [x] **Step 4: Run database verification**
 
 Run:
 
@@ -89,7 +89,7 @@ npm run test:db -- --runInBand tests/unit/database/account-project-storage.behav
 
 Expected: all Account Storage migration and live behavior tests pass.
 
-- [ ] **Step 5: Review and commit the database task**
+- [x] **Step 5: Review and commit the database task**
 
 Inspect the SQL for ownership ambiguity, duplicate counting, unsafe SECURITY DEFINER search paths, API-role grants, and migration idempotency. Commit only the migration and its focused tests:
 
@@ -111,7 +111,7 @@ git commit -m "fix: repair hierarchical account storage totals"
 - Consumes: the six-argument `account_storage_project_entities` RPC from Task 1.
 - Produces: `AccountStorageEntryKind`, `AccountStorageBreadcrumb`, and `readProjectStorageEntities(..., { parentFolderId })`.
 
-- [ ] **Step 1: Evolve shared TypeScript contracts**
+- [x] **Step 1: Evolve shared TypeScript contracts**
 
 Define:
 
@@ -123,7 +123,7 @@ export type AccountStorageBreadcrumb = { id: string; name: string };
 
 Change the list entry to use `AccountStorageEntryKind`, rename its placement field to `parentFolderId`, and require `breadcrumb: AccountStorageBreadcrumb[]` on `AccountStorageEntityPage`. Keep detail requests restricted to `AccountStorageEntityKind`.
 
-- [ ] **Step 2: Validate and forward directory state in the server service**
+- [x] **Step 2: Validate and forward directory state in the server service**
 
 Add strict readers for Folder list rows and breadcrumb parts. Extend the service input with `parentFolderId?: string | null`, validate it as UUID when non-null, and call:
 
@@ -140,11 +140,11 @@ client.rpc('account_storage_project_entities', {
 
 Reject malformed breadcrumbs, Folder detail kinds, unsafe integers, and mismatched logical plus physical totals exactly as the current readers reject malformed entity payloads.
 
-- [ ] **Step 3: Add API query validation**
+- [x] **Step 3: Add API query validation**
 
 Accept an optional UUID `parentFolderId` query parameter, normalize absence to null, pass it to `readProjectStorageEntities`, and retain strict rejection of unknown parameters.
 
-- [ ] **Step 4: Add and run service/API tests**
+- [x] **Step 4: Add and run service/API tests**
 
 Cover root null forwarding, child Folder UUID forwarding, Folder row parsing, breadcrumb parsing, invalid parent IDs, malformed Folder payloads, and the rule that Folder cannot be requested from the detail route.
 
@@ -175,11 +175,11 @@ git commit -m "feat: expose account storage directories"
 - Consumes: Task 2's directory page and breadcrumb contract.
 - Produces: root/Folder navigation while preserving Table/Document/Assets detail behavior.
 
-- [ ] **Step 1: Add current-directory state and fetching**
+- [x] **Step 1: Add current-directory state and fetching**
 
 Track `currentFolderId: string | null`. Include it in the React Query key and request URL. Reset it on project changes. On Folder navigation, clear selected detail, search/debounced search, and offset; preserve sort. Generate breadcrumb controls from the response rather than local Folder guesses.
 
-- [ ] **Step 2: Render Folder entries and breadcrumbs**
+- [x] **Step 2: Render Folder entries and breadcrumbs**
 
 Use the existing Ant Design `FolderOutlined` and `RightOutlined` icons. Folder rows display `Folder · <created date>` and recursive size. Clicking a Folder calls directory navigation; clicking Table, Document, or Assets selects the detail pane. Breadcrumb buttons navigate to root or an ancestor Folder.
 
@@ -192,11 +192,11 @@ Project storage path
 
 Do not render an Open Folder detail action and do not render media in the directory list.
 
-- [ ] **Step 3: Add responsive breadcrumb styling**
+- [x] **Step 3: Add responsive breadcrumb styling**
 
 Add a single-line, horizontally scrollable breadcrumb above the toolbar with stable height and visible focus states. Reuse existing row spacing/colors; do not introduce cards or nested panels. Confirm long Folder names truncate without overlapping sort/search controls.
 
-- [ ] **Step 4: Add and run component tests**
+- [x] **Step 4: Add and run component tests**
 
 Cover:
 
@@ -234,11 +234,11 @@ git commit -m "feat: browse account storage folders"
 - Consumes: complete database, API, and UI implementation.
 - Produces: browser-level proof for hierarchical totals and root Assets behavior.
 
-- [ ] **Step 1: Extend E2E fixtures**
+- [x] **Step 1: Extend E2E fixtures**
 
 Return a root page containing a Folder and Assets, a child page containing Table and Document, stable breadcrumbs, and detail responses whose item totals equal their rows. Record `parentFolderId` query values so assertions prove root and child requests.
 
-- [ ] **Step 2: Add browser behavior coverage**
+- [x] **Step 2: Add browser behavior coverage**
 
 Verify selecting a project shows Folder and Assets, opening Folder shows only its direct Table/Document entries, breadcrumbs return to root, Assets remains root-only, detail panes still open, and search/sort are forwarded for the active directory.
 

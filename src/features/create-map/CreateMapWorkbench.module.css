@@ -14,7 +14,7 @@
   min-width: 0;
   height: 100%;
   min-height: 620px;
-  grid-template-columns: 300px minmax(0, 1fr) minmax(300px, 351px);
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
   overflow: hidden;
   color: var(--create-map-ink);
   background: var(--create-map-surface);
@@ -113,17 +113,27 @@
   letter-spacing: 0;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, border-radius 0.16s ease;
 }
 
 .projectButton:hover:not(:disabled) {
-  background: rgba(221, 225, 230, 0.45);
+  background: var(--keco-control-hover-bg);
 }
 
-.projectButton:focus,
+.projectButton:focus {
+  outline: none;
+}
+
 .projectButton:focus-visible {
   outline: 2px solid #8ecfff;
   outline-offset: 2px;
+}
+
+.projectButton[aria-expanded='true'] {
+  border-color: #d7dde5;
+  border-bottom-color: transparent;
+  border-radius: 11px 11px 0 0;
+  background: #ffffff;
 }
 
 .projectButton:disabled {
@@ -153,21 +163,35 @@
 .projectMenu {
   position: absolute;
   z-index: 50;
-  top: calc(100% + 6px);
+  top: calc(100% - 1px);
   right: 0;
   left: 0;
   padding: 4px;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid #d7dde5;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   background: #ffffff;
-  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-shadow: 0 12px 28px rgba(31, 41, 55, 0.22), 0 2px 6px rgba(31, 41, 55, 0.12);
   box-sizing: border-box;
 }
 
 .projectOptions {
   max-height: 108px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c9ced5 transparent;
+}
+
+.projectOptions::-webkit-scrollbar {
+  width: 10px;
+}
+
+.projectOptions::-webkit-scrollbar-thumb {
+  background: #c9ced5;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
 }
 
 .projectOption {
@@ -192,7 +216,7 @@
 
 .projectOption:hover,
 .projectOption:focus-visible {
-  background: #f4f6f8;
+  background: var(--keco-control-hover-bg);
   outline: none;
 }
 
@@ -334,7 +358,7 @@
 
 .savedMapsAddButton:hover:not(:disabled) {
   color: #0f172a;
-  background: #eef2f7;
+  background: var(--keco-control-hover-bg);
 }
 
 .savedMapsAddButton:disabled {
@@ -412,7 +436,7 @@
 }
 
 .chatBackButton:hover {
-  background: #eef2f7;
+  background: var(--keco-control-hover-bg);
 }
 
 .chatTitle {
@@ -450,7 +474,7 @@
 
 .chatHeaderIconButton:hover:not(:disabled) {
   color: #0f172a;
-  background: #eef2f7;
+  background: var(--keco-control-hover-bg);
 }
 
 .chatHeaderIconButton:disabled {
@@ -536,36 +560,72 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 14px 16px;
   color: #1e293b;
-  background: #fff;
-  border: 1px solid #e8edf2;
-  border-radius: 22px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.chatGenerateButton {
-  display: inline-flex;
-  width: 100%;
-  min-height: 44px;
+.mapResourceCard {
+  display: flex;
+  min-height: 72px;
   align-items: center;
-  justify-content: center;
-  align-self: stretch;
-  margin-top: 4px;
-  padding: 0 20px;
-  border: 1px solid #0b99ff;
-  border-radius: 8px;
-  color: #fff;
-  background: var(--create-map-blue);
-  font: inherit;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid #e3e8f0;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.mapResourceCardCopy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.mapResourceCardCopy strong {
+  color: #0b99ff;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mapResourceCardCopy small {
+  color: #68737c;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.mapResourceAction {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #27313a;
+  background: transparent;
   cursor: pointer;
 }
 
-.chatGenerateButton:disabled {
-  opacity: 0.45;
+.mapResourceAction:hover,
+.mapResourceAction:focus-visible {
+  background: var(--keco-control-hover-bg);
+  outline: none;
+}
+
+.mapResourceAction:disabled {
   cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mapPlanDocumentIcon {
+  flex: 0 0 auto;
+  color: #0b99ff;
+  font-size: 20px;
 }
 
 .chatComposer {
@@ -619,7 +679,7 @@
 
 .chatAttachmentRemove:hover:not(:disabled) {
   color: #0f172a;
-  background: #eef2f7;
+  background: var(--keco-control-hover-bg);
 }
 
 .chatAttachmentRemove:disabled {
@@ -768,71 +828,6 @@
   box-shadow: none;
 }
 
-.mapResourceCard {
-  display: flex;
-  min-height: 72px;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  padding: 14px 16px;
-  border: 1px solid #e3e8f0;
-  border-radius: 22px;
-  background: #fff;
-}
-
-.mapResourceCardCopy {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 2px;
-}
-
-.mapResourceCardCopy strong {
-  color: #0b99ff;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.mapResourceCardCopy small {
-  color: #68737c;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.mapResourceAction {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  color: #27313a;
-  background: transparent;
-  cursor: pointer;
-}
-
-.mapResourceAction:hover,
-.mapResourceAction:focus-visible {
-  background: #eef2f7;
-  outline: none;
-}
-
-.mapResourceAction:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.mapPlanDocumentIcon {
-  flex: 0 0 auto;
-  color: #0b99ff;
-  font-size: 20px;
-}
-
 .seedLabelStack {
   display: grid;
   gap: 2px;
@@ -884,7 +879,7 @@
 }
 
 .planDetailsClose:hover {
-  background: #eef2f7;
+  background: var(--keco-control-hover-bg);
 }
 
 .generationFooter {
@@ -2152,7 +2147,7 @@
 
 .miniIconButton:hover:not(:disabled) {
   color: #27313a;
-  background: #e7ebee;
+  background: var(--keco-control-hover-bg);
 }
 
 .miniIconButton:disabled {
@@ -2198,7 +2193,7 @@
 }
 
 .savedMapButton:hover:not(:disabled) {
-  background: #f3f6f8;
+  background: var(--keco-control-hover-bg);
 }
 
 .savedMapButtonActive {
@@ -2251,17 +2246,6 @@
   white-space: nowrap;
 }
 
-.versionTag {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: 999px;
-  color: #0b78d0;
-  background: #e8f3fc;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: lowercase;
-}
-
 .savedMapsState {
   display: flex;
   min-height: 42px;
@@ -2272,6 +2256,11 @@
   color: #68747e;
   font-size: 10px;
   line-height: 1.35;
+}
+
+.savedMapsEmpty {
+  min-height: 0;
+  flex: 1;
 }
 
 .generationStatus {

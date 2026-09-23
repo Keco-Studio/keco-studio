@@ -43,6 +43,7 @@ import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
 import { getStudioLibraryRedirectPath } from '@/lib/studioLibraryIsolation';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { resolveTableUserRole } from '@/components/libraries/utils/tableUserRole';
 
 export default function LibraryPage() {
   const params = useParams();
@@ -54,7 +55,6 @@ export default function LibraryPage() {
   
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const { data: projectRole } = useProjectRoleQuery(projectId, userProfile?.id);
-  const userRole: CollaboratorRole = projectRole?.role ?? 'viewer';
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
@@ -123,6 +123,11 @@ export default function LibraryPage() {
     queryFn: () => getProject(supabase, projectId),
     enabled: !!projectId,
   });
+  const userRole: CollaboratorRole = resolveTableUserRole(
+    projectRole?.role,
+    'viewer',
+    project?.owner_id === userProfile?.id,
+  ) ?? 'viewer';
 
   const { data: library, isLoading: libraryLoading, error: libraryError } = useQuery({
     queryKey: queryKeys.library(libraryId),
@@ -295,6 +300,7 @@ export default function LibraryPage() {
           payload.dataType === 'formula'
             ? payload.formulaExpression
             : undefined,
+        insertAfterFieldId: payload.insertAfterPropertyId,
       });
       await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
       invalidateFormulaFieldMeta();
@@ -470,6 +476,7 @@ export default function LibraryPage() {
               }
               properties={tableProperties}
               overrideRows={versionAssetRows}
+              projectRole={userRole}
               onAddProperty={handleAddProperty}
             />
           </RowStoreProvider>
@@ -479,58 +486,60 @@ export default function LibraryPage() {
         <div id="library-asset-detail-slot" className={styles.assetDetailSlot} />
 
         {/* Version Control Sidebar */}
-        {isVersionControlOpen && (
-          <VersionControlSidebar
-            libraryId={libraryId}
-            isOpen={isVersionControlOpen}
-            onClose={() => {
-              setIsVersionControlOpen(false);
-              // Clear selection to use current React Query data
-              setSelectedVersionId(null);
-              setVersionAssetRows(null);
-            }}
-            selectedVersionId={selectedVersionId}
-            highlightedVersionId={highlightedVersionId}
-            onVersionSelect={async (versionId) => {
-              setSelectedVersionId(versionId);
-              // Reload versions to ensure we have the latest snapshot data
-              if (versionId && versionId !== '__current__') {
+        <div className={styles.versionHistorySlot}>
+          {isVersionControlOpen && (
+            <VersionControlSidebar
+              libraryId={libraryId}
+              isOpen={isVersionControlOpen}
+              onClose={() => {
+                setIsVersionControlOpen(false);
+                // Clear selection to use current React Query data
+                setSelectedVersionId(null);
+                setVersionAssetRows(null);
+              }}
+              selectedVersionId={selectedVersionId}
+              highlightedVersionId={highlightedVersionId}
+              onVersionSelect={async (versionId) => {
+                setSelectedVersionId(versionId);
+                // Reload versions to ensure we have the latest snapshot data
+                if (versionId && versionId !== '__current__') {
+                  try {
+                    const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+                    setVersions(loadedVersions);
+                  } catch (e: any) {
+                    console.error('Failed to reload versions:', e);
+                  }
+                }
+              }}
+              onRestoreSuccess={async (restoredVersionId: string, snapshotData?: any) => {
+                showSuccessToast('Library restored');
                 try {
                   const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
                   setVersions(loadedVersions);
+                  if (snapshotData) {
+                    applySnapshot(snapshotData);
+                  } else {
+                    await refreshAssetsFromServer();
+                  }
+                  await invalidateLibraryData(queryClient, { projectId, libraryId });
+                  await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
+
+                  // Highlight the restored version for 1.5 seconds
+                  setHighlightedVersionId(restoredVersionId);
+
+                  // After highlight animation, clear version selection to show current data
+                  setTimeout(() => {
+                    setHighlightedVersionId(null);
+                    setSelectedVersionId(null);
+                    setVersionAssetRows(null);
+                  }, 1500); // 1.5 seconds for highlight animation
                 } catch (e: any) {
-                  console.error('Failed to reload versions:', e);
+                  console.error('Failed to reload data after restore:', e);
                 }
-              }
-            }}
-            onRestoreSuccess={async (restoredVersionId: string, snapshotData?: any) => {
-              showSuccessToast('Library restored');
-              try {
-                const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
-                setVersions(loadedVersions);
-                if (snapshotData) {
-                  applySnapshot(snapshotData);
-                } else {
-                  await refreshAssetsFromServer();
-                }
-                await invalidateLibraryData(queryClient, { projectId, libraryId });
-                await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
-                
-                // Highlight the restored version for 1.5 seconds
-                setHighlightedVersionId(restoredVersionId);
-                
-                // After highlight animation, clear version selection to show current data
-                setTimeout(() => {
-                  setHighlightedVersionId(null);
-                  setSelectedVersionId(null);
-                  setVersionAssetRows(null);
-                }, 1500); // 1.5 seconds for highlight animation
-              } catch (e: any) {
-                console.error('Failed to reload data after restore:', e);
-              }
-            }}
-          />
-        )}
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {!authLoading && !isAuthenticated && <div className={styles.authWarning}>Please sign in to edit.</div>}

@@ -242,8 +242,9 @@ export function ChatPanel() {
 
   if (!currentProjectId) return null;
 
-  if (!open) {
-    return (
+  return (
+    <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''}`}>
+      {!open ? (
       <button
         className={`${styles.launcher} ${isLauncherDragging ? styles.launcherDragging : ''}`}
         data-testid="agent-launcher"
@@ -264,11 +265,8 @@ export function ChatPanel() {
           aria-hidden="true"
         />
       </button>
-    );
-  }
-
-  return (
-    <div className={styles.panel} data-testid="agent-panel">
+      ) : (
+      <div className={styles.panel} data-testid="agent-panel">
       <AgentPanelHeader
         canManageConversations={Boolean(userProfile?.id)}
         title={headerTitle}
@@ -347,6 +345,8 @@ export function ChatPanel() {
             onStop={stopStreaming}
           />
         </>
+      )}
+      </div>
       )}
     </div>
   );

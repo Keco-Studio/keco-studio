@@ -142,7 +142,7 @@
 }
 
 .cancelButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .okButton {
