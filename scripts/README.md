@@ -72,6 +72,13 @@ Do not enable enforcement before the dry-run review and reconciliation gate are
 complete. Disabling enforcement is the rollback path; accounting rows remain
 available for a later re-enable and reconciliation.
 
+`npm run storage:backfill -- --apply` is the production historical-repair path.
+Do not invoke `service_repair_historical_project_storage()` as part of schema
+deployment: it performs a production-wide set-based repair in one transaction.
+The operator command imports objects idempotently and independently from the
+schema migration, so a failed run can be diagnosed and retried without rolling
+back schema installation.
+
 ## CI seeding
 
 GitHub Actions Playwright tests do **not** run `npm run seed:api`.

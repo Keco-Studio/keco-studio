@@ -302,6 +302,13 @@ describe('account project storage migration', () => {
     expect(hierarchySql).toMatch(
       /grant execute on function public\.service_repair_historical_project_storage\(\)[\s\S]*to service_role/i,
     );
+    const schemaOnlySql = hierarchySql.replace(
+      /create or replace function public\.service_repair_historical_project_storage\(\)[\s\S]*?\n\$\$;/i,
+      '',
+    );
+    expect(schemaOnlySql).not.toMatch(
+      /\b(?:select(?:\s+\*)?\s+(?:from\s+)?|perform\s+)public\.service_repair_historical_project_storage\s*\(\s*\)\s*;/i,
+    );
   });
 
   it('returns direct directory entries with recursive folder totals and breadcrumbs', () => {
