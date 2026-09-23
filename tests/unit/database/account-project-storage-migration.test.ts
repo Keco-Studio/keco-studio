@@ -362,7 +362,7 @@ describe('account project storage migration', () => {
     expect(hierarchySql).not.toMatch(/create or replace function public\.account_storage_summary\(\)/i);
   });
 
-  it('adds v3 compatibility wrappers for fresh-v5 and older v4/v2 databases', () => {
+  it('adds v3 compatibility wrappers for fresh-v5 and all older implementations', () => {
     expect(v3CompatibilitySql).toMatch(
       /to_regprocedure\([\s\S]*account_storage_project_entities_v3\(uuid,text,text,integer,integer,uuid\)[\s\S]*\) is null/i,
     );
@@ -373,6 +373,12 @@ describe('account project storage migration', () => {
       /create function public\.account_storage_project_entities_v3\([\s\S]*select public\.account_storage_project_entities_v2\(/i,
     );
     expect(v3CompatibilitySql).toMatch(
+      /to_regprocedure\([\s\S]*account_storage_project_entities\(uuid,text,text,integer,integer,uuid\)[\s\S]*\) is not null/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
+      /create function public\.account_storage_project_entities_v3\([\s\S]*select public\.account_storage_project_entities\(/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
       /create function public\.account_storage_project_entities_v3\([\s\S]*select public\.account_storage_project_entities_v5\(/i,
     );
     expect(v3CompatibilitySql).toMatch(
@@ -380,6 +386,12 @@ describe('account project storage migration', () => {
     );
     expect(v3CompatibilitySql).toMatch(
       /create function public\.account_storage_summary_v3\(\)[\s\S]*select public\.account_storage_summary_v2\(\)/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
+      /to_regprocedure\([\s\S]*account_storage_summary\(\)[\s\S]*\) is not null/i,
+    );
+    expect(v3CompatibilitySql).toMatch(
+      /create function public\.account_storage_summary_v3\(\)[\s\S]*select public\.account_storage_summary\(\)/i,
     );
     expect(v3CompatibilitySql).toMatch(
       /create function public\.account_storage_summary_v3\(\)[\s\S]*select public\.account_storage_summary_v5\(\)/i,
