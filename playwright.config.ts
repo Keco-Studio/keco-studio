@@ -32,9 +32,17 @@ process.env.MCP_CONNECTION_ID_SIGNING_SECRET ??=
   'keco-playwright-mcp-connection-signing-secret-2026-07-24';
 const playwrightCronSecret = 'keco-playwright-cron-secret-2026-08-15';
 process.env.CRON_SECRET = playwrightCronSecret;
+const playwrightStripeSecretKey = process.env.STRIPE_SECRET_KEY ?? 'sk_test_keco_playwright';
+const playwrightStripeWebhookSecret = 'whsec_keco_playwright_20260922';
 const playwrightPort = process.env.PLAYWRIGHT_PORT ?? '3000';
 const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 const playwrightDistDir = process.env.PLAYWRIGHT_PORT ? '.next-playwright' : '.next';
+const configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const localMcpUrl = configuredSupabaseUrl
+  && ['127.0.0.1', 'localhost'].includes(new URL(configuredSupabaseUrl).hostname)
+  ? `${new URL(configuredSupabaseUrl).origin}/functions/v1/mcp`
+  : null;
+const playwrightMcpReadyPort = process.env.PLAYWRIGHT_MCP_READY_PORT ?? '54319';
 
 export default defineConfig({
   testDir: './tests',
@@ -78,7 +86,13 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      grepInvert: /@mobile/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'mobile-chrome',
+      grep: /@mobile/,
+      use: { ...devices['Pixel 5'] },
     },
 
     // {
@@ -113,15 +127,32 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
-    command: `node scripts/run-playwright-dev-server.mjs ${playwrightPort}`,
-    url: playwrightBaseUrl,
-    reuseExistingServer: !process.env.CI && !process.env.PLAYWRIGHT_PORT,
-    gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-    env: {
-      ...process.env,
-      CRON_SECRET: playwrightCronSecret,
-      NEXT_DIST_DIR: playwrightDistDir,
+  webServer: [
+    {
+      command: `node scripts/run-playwright-dev-server.mjs ${playwrightPort}`,
+      url: playwrightBaseUrl,
+      reuseExistingServer: !process.env.CI && !process.env.PLAYWRIGHT_PORT,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+      env: {
+        ...process.env,
+        CRON_SECRET: playwrightCronSecret,
+        STRIPE_SECRET_KEY: playwrightStripeSecretKey,
+        STRIPE_WEBHOOK_SECRET: playwrightStripeWebhookSecret,
+        NEXT_DIST_DIR: playwrightDistDir,
+      },
     },
-  },
+    ...(localMcpUrl
+      ? [{
+          command: 'node scripts/run-playwright-mcp-server.mjs',
+          url: `http://127.0.0.1:${playwrightMcpReadyPort}/ready`,
+          reuseExistingServer: false,
+          timeout: 120_000,
+          gracefulShutdown: { signal: 'SIGTERM' as const, timeout: 10_000 },
+          env: {
+            ...process.env,
+            PLAYWRIGHT_MCP_READY_PORT: playwrightMcpReadyPort,
+          },
+        }]
+      : []),
+  ],
 });

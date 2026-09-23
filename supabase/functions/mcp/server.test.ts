@@ -33,7 +33,6 @@ const PROJECT_WRITE_TOOL_NAMES = [
   "complete_image_uploads",
   "prepare_project_asset_uploads",
   "complete_project_game_asset_uploads",
-  "create_folder",
 ];
 const GDS_TOOL_NAMES = [
   "list_game_design_systems",
@@ -125,6 +124,9 @@ const accountContext = {
   supabase: {
     rpc(name: string) {
       if (name === "mcp_has_writable_project") {
+        return Promise.resolve({ data: false, error: null });
+      }
+      if (name === "mcp_has_admin_project") {
         return Promise.resolve({ data: false, error: null });
       }
       if (name === "mcp_list_accessible_projects") {
@@ -274,7 +276,6 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
       "complete_image_uploads",
       "prepare_project_asset_uploads",
       "complete_project_game_asset_uploads",
-      "create_folder",
     ]
   ) {
     const tool = tools.find((candidate) => candidate.name === name)!;

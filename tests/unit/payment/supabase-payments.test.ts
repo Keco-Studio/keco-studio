@@ -6,42 +6,52 @@ jest.mock('@/lib/server/supabaseServiceRole', () => ({
   getSupabaseServiceRoleClient,
 }));
 
-import { updatePaymentOrderFromStripe } from '@/lib/supabase-payments';
+import { processStripeCheckoutEvent } from '@/lib/supabase-payments';
 
-describe('Stripe payment Credit grants', () => {
-  it('grants the purchased plan Credits for a paid Checkout session', async () => {
-    const maybeSingle = jest.fn().mockResolvedValue({
-      data: {
-        id: 'pay_1',
-        user_id: '11111111-1111-4111-8111-111111111111',
-        plan_id: 'plan-studio',
-        plan_label: 'Studio',
-      },
+describe('atomic Stripe webhook processing', () => {
+  it('maps a Checkout event to one service-role RPC call', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: { processed: true, orderId: 'pay_1' },
       error: null,
     });
-    const selectEq = jest.fn(() => ({ maybeSingle }));
-    const select = jest.fn(() => ({ eq: selectEq }));
-    const updateEq = jest.fn().mockResolvedValue({ error: null });
-    const update = jest.fn(() => ({ eq: updateEq }));
-    const insert = jest.fn().mockResolvedValue({ error: null });
-    const from = jest.fn((table: string) => {
-      if (table === 'payment_orders') return { select, update };
-      if (table === 'credit_ledger_entries') return { insert };
-      throw new Error(`Unexpected table: ${table}`);
-    });
-    getSupabaseServiceRoleClient.mockReturnValue({ from });
+    getSupabaseServiceRoleClient.mockReturnValue({ rpc });
 
-    await updatePaymentOrderFromStripe({
+    await expect(processStripeCheckoutEvent({
+      eventId: 'evt_1',
+      eventType: 'checkout.session.completed',
       sessionId: 'cs_test_paid',
       status: 'paid',
       paymentIntentId: 'pi_test_paid',
-    });
+      payload: { objectId: 'cs_test_paid' },
+      creditAmount: 50_000,
+    })).resolves.toEqual({ processed: true, orderId: 'pay_1' });
 
-    expect(insert).toHaveBeenCalledWith({
-      user_id: '11111111-1111-4111-8111-111111111111',
-      credit_delta: 50_000,
-      reason: 'Stripe Studio purchase',
-      reference_key: 'stripe-checkout:cs_test_paid',
+    expect(rpc).toHaveBeenCalledWith('process_stripe_checkout_event', {
+      p_event_id: 'evt_1',
+      p_event_type: 'checkout.session.completed',
+      p_session_id: 'cs_test_paid',
+      p_status: 'paid',
+      p_payment_intent_id: 'pi_test_paid',
+      p_payload: { objectId: 'cs_test_paid' },
+      p_credit_amount: 50_000,
     });
+  });
+
+  it('maps RPC failures without falling back to non-atomic writes', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'transaction failed' },
+    });
+    getSupabaseServiceRoleClient.mockReturnValue({ rpc });
+
+    await expect(processStripeCheckoutEvent({
+      eventId: 'evt_2',
+      eventType: 'customer.created',
+      sessionId: null,
+      status: null,
+      paymentIntentId: null,
+      payload: { objectId: 'cus_1' },
+      creditAmount: 0,
+    })).rejects.toThrow('Failed to process Stripe webhook: transaction failed');
   });
 });

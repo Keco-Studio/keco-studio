@@ -27,7 +27,6 @@ const ACCOUNT_WRITE_TOOL_NAMES = [
   "complete_image_uploads",
   "prepare_project_asset_uploads",
   "complete_project_game_asset_uploads",
-  "create_folder",
 ];
 const GDS_TOOL_NAMES = [
   "list_game_design_systems",
@@ -68,6 +67,7 @@ function accountContext(
   calls: RpcCall[],
   options: {
     writable?: boolean;
+    admin?: boolean;
     userId?: string;
     resolvedRole?: "admin" | "editor" | "viewer";
     failWritableDiscovery?: boolean;
@@ -139,6 +139,9 @@ function accountContext(
             throw new Error("Writable project discovery failed.");
           }
           return { data: writable, error: null };
+        }
+        if (name === "mcp_has_admin_project") {
+          return { data: options.admin ?? false, error: null };
         }
         if (name === "mcp_list_accessible_projects") {
           return {
@@ -375,6 +378,8 @@ Deno.test("account schemas require projectId except list_projects", async () => 
   assertEquals(calls[0].name, "mcp_begin_account_operation");
   assertEquals(calls[1].name, "mcp_has_writable_project");
   assertEquals(calls[1].parameters, undefined);
+  assertEquals(calls[2].name, "mcp_has_admin_project");
+  assertEquals(calls[2].parameters, undefined);
 });
 
 Deno.test("account story graph read resolves live access before its snapshot", async () => {
@@ -560,10 +565,10 @@ Deno.test("viewer target writes fail even when write tools are advertised", asyn
   assertEquals(calls.some((call) => call.name === "mcp_create_table"), false);
 });
 
-Deno.test("account create_folder allows admin and rejects editor after live resolution", async () => {
+Deno.test("account create_folder is registered only for admin-capable sessions", async () => {
   const adminCalls: RpcCall[] = [];
   const admin = await rpc(
-    accountContext(adminCalls, { resolvedRole: "admin" }),
+    accountContext(adminCalls, { admin: true, resolvedRole: "admin" }),
     "tools/call",
     {
       name: "create_folder",
@@ -586,11 +591,23 @@ Deno.test("account create_folder allows admin and rejects editor after live reso
     },
   );
   assertEquals(editor.result?.isError, true);
-  assertMatch(JSON.stringify(editor.result), /PROJECT_WRITE_FORBIDDEN/);
+  assertMatch(JSON.stringify(editor.result), /Tool create_folder not found/);
   assertEquals(
     editorCalls.some((call) => call.name === "mcp_create_folder"),
     false,
   );
+});
+
+Deno.test("editor-only account discovery keeps ordinary writes and omits create_folder", async () => {
+  const message = await rpc(
+    accountContext([], { writable: true, admin: false, resolvedRole: "editor" }),
+    "tools/list",
+  );
+  const names = (message.result?.tools as Array<{ name: string }>).map((tool) =>
+    tool.name
+  );
+  assertEquals(names.includes("add_table_field"), true);
+  assertEquals(names.includes("create_folder"), false);
 });
 
 Deno.test("account image upload phases resolve live write access independently", async () => {

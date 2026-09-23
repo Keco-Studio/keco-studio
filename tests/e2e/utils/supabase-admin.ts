@@ -12,6 +12,15 @@ export type TemporaryUser = {
   password: string;
 };
 
+export type McpAuthorizationFixture = {
+  projectId: string;
+  tableId: string;
+  owner: TemporaryUser;
+  viewer: TemporaryUser;
+  editor: TemporaryUser;
+  admin: TemporaryUser;
+};
+
 export function getE2EAdminClient(): SupabaseClient {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('E2E Supabase service-role environment is not configured');
@@ -111,6 +120,49 @@ export async function addProjectCollaborator(
 export async function removeProjectFixture(admin: SupabaseClient, projectId: string): Promise<void> {
   const { error } = await admin.from('projects').delete().eq('id', projectId);
   if (error) throw error;
+}
+
+export async function createMcpAuthorizationFixture(
+  admin: SupabaseClient
+): Promise<McpAuthorizationFixture> {
+  const users: TemporaryUser[] = [];
+  let projectId = '';
+  try {
+    for (const role of ['owner', 'viewer', 'editor', 'admin'] as const) {
+      users.push(await createTemporaryUser(admin, `mcp-${role}-e2e`));
+    }
+    const [owner, viewer, editor, adminUser] = users;
+    projectId = await createProjectFixture(admin, owner.id);
+    await Promise.all([
+      addProjectCollaborator(admin, projectId, viewer.id, 'viewer', owner.id),
+      addProjectCollaborator(admin, projectId, editor.id, 'editor', owner.id),
+      addProjectCollaborator(admin, projectId, adminUser.id, 'admin', owner.id),
+    ]);
+
+    const { data: table, error } = await admin
+      .from('libraries')
+      .insert({
+        project_id: projectId,
+        name: `MCP role table ${crypto.randomUUID().slice(0, 8)}`,
+        description: 'Isolated MCP role authorization fixture',
+      })
+      .select('id')
+      .single();
+    if (error || !table) throw error ?? new Error('Failed to create MCP table fixture');
+
+    return {
+      projectId,
+      tableId: table.id as string,
+      owner,
+      viewer,
+      editor,
+      admin: adminUser,
+    };
+  } catch (error) {
+    if (projectId) await removeProjectFixture(admin, projectId).catch(() => undefined);
+    await Promise.all(users.map((user) => deleteTemporaryUser(admin, user).catch(() => undefined)));
+    throw error;
+  }
 }
 
 export async function createFolderFixture(
