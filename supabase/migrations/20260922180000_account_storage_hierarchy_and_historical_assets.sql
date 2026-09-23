@@ -311,9 +311,9 @@ select public.service_repair_historical_project_storage();
 
 -- Assets existence is controlled by the root workspace, not by a positive
 -- physical subtotal. This also lets its detail endpoint return an empty list.
--- Use new function identities throughout this hierarchy. Replacing functions
--- used by the live Account page can wait indefinitely for in-flight calls.
-create or replace function private.storage_project_hierarchy_entities_v3(p_project_id uuid)
+-- Use identities that have never been deployed. Production may already have
+-- long-running v3/v4 calls, so this migration must not replace either version.
+create function private.storage_project_hierarchy_entities_v5(p_project_id uuid)
 returns table (
   entity_id uuid,
   entity_kind text,
@@ -391,7 +391,7 @@ as $$
     );
 $$;
 
-create or replace function private.storage_project_directory_entries_v3(
+create function private.storage_project_directory_entries_v5(
   p_project_id uuid,
   p_parent_folder_id uuid
 )
@@ -413,7 +413,7 @@ security definer
 set search_path = ''
 as $$
   with recursive entities as (
-    select * from private.storage_project_hierarchy_entities_v3(p_project_id)
+    select * from private.storage_project_hierarchy_entities_v5(p_project_id)
   ), folder_tree as (
     select folder.id as root_id, folder.id as descendant_id
     from public.folders folder
@@ -476,7 +476,7 @@ as $$
   select * from directory_entries;
 $$;
 
-create or replace function public.account_storage_project_entities_v4(
+create function public.account_storage_project_entities_v5(
   p_project_id uuid,
   p_query text default null,
   p_sort text default 'size_desc',
@@ -531,7 +531,7 @@ begin
   end if;
 
   select count(*) into v_total
-  from private.storage_project_directory_entries_v3(p_project_id, p_parent_folder_id) entry
+  from private.storage_project_directory_entries_v5(p_project_id, p_parent_folder_id) entry
   where nullif(btrim(p_query), '') is null
     or entry.display_name ilike '%' || btrim(p_query) || '%';
 
@@ -549,7 +549,7 @@ begin
   )), '[]'::jsonb) into v_items
   from (
     select entry.*
-    from private.storage_project_directory_entries_v3(p_project_id, p_parent_folder_id) entry
+    from private.storage_project_directory_entries_v5(p_project_id, p_parent_folder_id) entry
     where nullif(btrim(p_query), '') is null
       or entry.display_name ilike '%' || btrim(p_query) || '%'
     order by
@@ -575,7 +575,7 @@ $$;
 
 -- Use a versioned RPC so deployment never replaces the summary function that
 -- the currently deployed application may still be executing.
-create or replace function public.account_storage_summary_v4()
+create function public.account_storage_summary_v5()
 returns jsonb
 language plpgsql
 security definer
@@ -614,11 +614,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_hierarchy_entities_v3(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities_v5(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity),
       'ownedByCurrentUser', true
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity) as sort_bytes
     from public.projects project
     left join public.profiles profile on profile.id = project.owner_id
     where project.owner_id = v_actor
@@ -632,11 +632,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_hierarchy_entities_v3(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities_v5(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity),
       'ownedByCurrentUser', false
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity) as sort_bytes
     from public.projects project
     join public.project_collaborators collaborator
       on collaborator.project_id = project.id
@@ -670,19 +670,19 @@ begin
 end;
 $$;
 
-revoke all on function private.storage_project_hierarchy_entities_v3(uuid)
+revoke all on function private.storage_project_hierarchy_entities_v5(uuid)
   from public, anon, authenticated, service_role;
 revoke all on function private.storage_activate_assets_workspace_from_file()
   from public, anon, authenticated, service_role;
-revoke all on function private.storage_project_directory_entries_v3(uuid, uuid)
+revoke all on function private.storage_project_directory_entries_v5(uuid, uuid)
   from public, anon, authenticated, service_role;
-revoke all on function public.account_storage_project_entities_v4(uuid, text, text, integer, integer, uuid)
+revoke all on function public.account_storage_project_entities_v5(uuid, text, text, integer, integer, uuid)
   from public, anon, service_role;
-grant execute on function public.account_storage_project_entities_v4(uuid, text, text, integer, integer, uuid)
+grant execute on function public.account_storage_project_entities_v5(uuid, text, text, integer, integer, uuid)
   to authenticated;
-revoke all on function public.account_storage_summary_v4()
+revoke all on function public.account_storage_summary_v5()
   from public, anon, service_role;
-grant execute on function public.account_storage_summary_v4()
+grant execute on function public.account_storage_summary_v5()
   to authenticated;
 revoke all on function public.service_repair_historical_project_storage()
   from public, anon, authenticated;
