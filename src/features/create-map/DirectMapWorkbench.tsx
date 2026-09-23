@@ -334,7 +334,7 @@ export function DirectMapWorkbench() {
         setOpeningMapId(null);
       }
     }
-  }, [closeDrawers, draft, generation, service]);
+  }, [draft, generation, service]);
 
   useEffect(() => {
     if (!requestedMapId) {
@@ -408,7 +408,6 @@ export function DirectMapWorkbench() {
     isCurrent: revision.revisionId === image?.sourceRevisionId,
   }));
 
-  const showGenerateInChat = Boolean(draft.identity) && ['idle', 'awaiting-confirmation', 'failed', 'ready'].includes(generation.phase);
   const showRightPanel = viewMode === 'detail' && planDetailsOpen;
 
   return (
@@ -459,10 +458,7 @@ export function DirectMapWorkbench() {
             }}
             onCreate={enterCreateDetail}
             onAsk={(prompt) => void createPlan(prompt)}
-            onGenerate={() => void generation.generate()}
             canAsk={Boolean(projectId) && !readOnly}
-            canGenerate={canGenerate}
-            showGenerate={showGenerateInChat}
             busy={busy}
             readOnly={readOnly}
             error={actionError}

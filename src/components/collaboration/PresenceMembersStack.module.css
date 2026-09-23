@@ -27,7 +27,7 @@
 }
 
 .expandCollaboratorsButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   transform: scale(1.05);
 }
 
@@ -101,7 +101,7 @@
 }
 
 .memberItem:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .memberInfo {

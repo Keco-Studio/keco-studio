@@ -480,20 +480,57 @@ export async function ensureDefaultLibraryField(
   return { fieldId: existingField.id as string, created: false };
 }
 
+export type AddLibraryFieldPayload = {
+  label: string;
+  dataType: PropertyConfig['dataType'];
+  description?: string;
+  required?: boolean;
+  enumOptions?: string[];
+  referenceLibraries?: string[];
+  formulaExpression?: string;
+};
+
+export async function insertLibraryFieldAfter(
+  supabase: SupabaseClient,
+  libraryId: string,
+  afterFieldId: string,
+  payload: AddLibraryFieldPayload,
+): Promise<{ id: string }> {
+  const { data, error } = await supabase.rpc('insert_library_field_after', {
+    p_library_id: libraryId,
+    p_after_field_id: afterFieldId,
+    p_label: payload.label.trim(),
+    p_data_type: payload.dataType,
+    p_description: payload.description?.trim() || null,
+    p_required: payload.required ?? false,
+    p_enum_options: payload.dataType === 'enum'
+      ? (payload.enumOptions ?? []).map((value) => value.trim()).filter(Boolean)
+      : null,
+    p_reference_libraries: payload.dataType === 'reference' ? (payload.referenceLibraries ?? []) : null,
+    p_formula_expression: payload.dataType === 'formula' ? payload.formulaExpression?.trim() || null : null,
+  });
+  if (error) throw error;
+  if (!data) throw new Error('Failed to insert column.');
+
+  const id = String(data);
+  if (payload.dataType === 'formula') {
+    await recalculateAndPersistFormulaFieldValues(supabase, libraryId, id);
+  }
+  if (payload.dataType === 'boolean') {
+    await backfillBooleanFieldDefaults(supabase, libraryId, id);
+  }
+  return { id };
+}
+
 /** Add one field to the single flat schema for a library. */
 export async function addLibraryField(
   supabase: SupabaseClient,
   libraryId: string,
-  payload: {
-    label: string;
-    dataType: PropertyConfig['dataType'];
-    description?: string;
-    required?: boolean;
-    enumOptions?: string[];
-    referenceLibraries?: string[];
-    formulaExpression?: string;
-  }
+  payload: AddLibraryFieldPayload & { insertAfterFieldId?: string }
 ): Promise<{ id: string }> {
+  if (payload.insertAfterFieldId) {
+    return insertLibraryFieldAfter(supabase, libraryId, payload.insertAfterFieldId, payload);
+  }
   await verifyLibraryUpdatePermission(supabase, libraryId);
 
   const { data: existingRows, error: fetchError } = await supabase

@@ -2,6 +2,7 @@
 
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
+import { EmptyContentState } from '@/components/shared/EmptyContentState';
 import type { SavedMapSummary } from '../services/createMapService';
 import styles from '../CreateMapWorkbench.module.css';
 
@@ -83,7 +84,9 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
         </div>
       ) : null}
       {!props.isLoading && !props.error && filtered.length === 0
-        ? <p className={styles.savedMapsState}>No saved maps</p>
+        ? (
+          <EmptyContentState compact className={styles.savedMapsEmpty} message="No saved maps yet" />
+        )
         : null}
 
       {filtered.length > 0 ? (
@@ -101,11 +104,10 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
                   disabled={props.disabled || opening}
                   onClick={() => props.onOpen(map)}
                 >
-                  <span className={styles.savedMapCopy}>
-                    <span className={styles.savedMapTitleRow}>
-                      <strong>{map.name}</strong>
-                      <span className={styles.versionTag}>v{map.schemaVersion}</span>
-                    </span>
+                    <span className={styles.savedMapCopy}>
+                      <span className={styles.savedMapTitleRow}>
+                        <strong>{map.name}</strong>
+                      </span>
                     {opening ? (
                       <span className={styles.savedMapMeta}>Opening...</span>
                     ) : (

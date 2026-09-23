@@ -21,8 +21,8 @@
   z-index: 20;
   box-sizing: border-box;
   display: flex;
-  flex: 0 0 228px;
-  width: 228px;
+  flex: 0 0 300px;
+  width: 300px;
   align-self: stretch;
   min-width: 0;
   min-height: 0;
@@ -62,13 +62,13 @@
   width: 185.5px;
   height: 22px;
   color: #16325D;
-  font-family: Archivo, sans-serif;
+  font-family: Archivo, 'Roboto', sans-serif;
   font-size: 16px;
   font-weight: 700;
   font-style: normal;
-  line-height: 100%;
+  line-height: 1.2;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .brandSubtitle {
@@ -105,21 +105,27 @@
   line-height: 150%;
   letter-spacing: 0;
   text-align: left;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, border-radius 0.16s ease;
 }
 
 .projectButton:hover {
   background: rgba(221, 225, 230, 0.45);
 }
 
-.projectButton:focus,
+.projectButton:focus {
+  outline: none;
+}
+
 .projectButton:focus-visible {
   outline: 2px solid #8ecfff;
   outline-offset: 2px;
 }
 
 .projectButton[aria-expanded='true'] {
-  background: rgba(221, 225, 230, 0.45);
+  border-color: #d7dde5;
+  border-bottom-color: transparent;
+  border-radius: 11px 11px 0 0;
+  background: #ffffff;
 }
 
 .projectName {
@@ -147,19 +153,33 @@
   z-index: 50;
   left: 0;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% - 1px);
   padding: 4px;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid #d7dde5;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   background: #ffffff;
-  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-shadow: 0 12px 28px rgba(31, 41, 55, 0.22), 0 2px 6px rgba(31, 41, 55, 0.12);
   box-sizing: border-box;
 }
 
 .projectOptions {
   max-height: 108px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c9ced5 transparent;
+}
+
+.projectOptions::-webkit-scrollbar {
+  width: 10px;
+}
+
+.projectOptions::-webkit-scrollbar-thumb {
+  background: #c9ced5;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
 }
 
 .projectOption {
@@ -184,7 +204,7 @@
 
 .projectOption:hover,
 .projectOption:focus-visible {
-  background: #f4f6f8;
+  background: var(--keco-control-hover-bg);
   outline: none;
 }
 
@@ -239,8 +259,12 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
   font-family: inherit;
+}
+
+.importButton:hover {
+  background: var(--script-surface-1);
 }
 
 .importButtonActive {
@@ -251,10 +275,25 @@
 .importIcon {
   color: var(--script-ink-350);
   display: inline-flex;
+  line-height: 1;
 }
 
 .importButtonActive .importIcon {
   color: var(--script-blue);
+}
+
+.importCopy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.importCopy strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree {

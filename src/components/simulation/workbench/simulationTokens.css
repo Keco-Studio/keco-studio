@@ -43,7 +43,7 @@
   --simulation-font-display: 'Koulen', sans-serif;
   --simulation-font-data: 'Nunito', 'Roboto', sans-serif;
   --simulation-radius: 8px;
-  --simulation-sidebar-width: 228px;
+  --simulation-sidebar-width: 300px;
   --simulation-header-height: 64px;
   --simulation-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
   --simulation-shadow-popover: 0 18px 45px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.08);

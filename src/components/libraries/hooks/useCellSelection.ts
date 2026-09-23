@@ -28,6 +28,66 @@ export type SelectionBorderClassNames = {
   selectionBorderRight: string;
 };
 
+const AUTO_SCROLL_EDGE_PX = 48;
+const AUTO_SCROLL_MAX_SPEED_PX = 18;
+
+function findVerticalScrollParent(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current) {
+    const { overflowY } = window.getComputedStyle(current);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && current.scrollHeight > current.clientHeight) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function createVerticalAutoScroller(
+  sourceElement: HTMLElement,
+  onScroll: (event: MouseEvent) => void,
+) {
+  const scrollParent = findVerticalScrollParent(sourceElement);
+  let pointerEvent: MouseEvent | null = null;
+  let frame: number | null = null;
+
+  const tick = () => {
+    frame = null;
+    if (!scrollParent || !pointerEvent) return;
+
+    const rect = scrollParent.getBoundingClientRect();
+    const topDistance = pointerEvent.clientY - rect.top;
+    const bottomDistance = rect.bottom - pointerEvent.clientY;
+    const topSpeed = Math.max(0, AUTO_SCROLL_EDGE_PX - topDistance);
+    const bottomSpeed = Math.max(0, AUTO_SCROLL_EDGE_PX - bottomDistance);
+    const delta = topSpeed > 0
+      ? -Math.ceil((topSpeed / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX)
+      : bottomSpeed > 0
+        ? Math.ceil((bottomSpeed / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX)
+        : 0;
+
+    if (delta === 0) return;
+    const previousTop = scrollParent.scrollTop;
+    scrollParent.scrollTop += delta;
+    if (scrollParent.scrollTop === previousTop) return;
+
+    onScroll(pointerEvent);
+    if (frame === null) frame = window.requestAnimationFrame(tick);
+  };
+
+  return {
+    update(event: MouseEvent) {
+      pointerEvent = event;
+      if (frame === null) frame = window.requestAnimationFrame(tick);
+    },
+    stop() {
+      pointerEvent = null;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+    },
+  };
+}
+
 /**
  * useCellSelection - Handle cell and row selection, drag-to-select, fill-drag (Excel-like fill down)
  *
@@ -207,11 +267,13 @@ export function useCellSelection({
       if (isAlreadySingleSelected) {
         let promoted = false;
         let dragFrame: number | null = null;
+        let autoScroller: ReturnType<typeof createVerticalAutoScroller> | null = null;
 
         const finishCellDrag = () => {
           if (!isDraggingCellsRef.current) return;
           isDraggingCellsRef.current = false;
           if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+          autoScroller?.stop();
           document.body.style.userSelect = '';
           const allRowsForSelection = getAllRowsForCellSelection();
           const endCell = dragCurrentCellRef.current || { rowId, propertyKey };
@@ -247,6 +309,7 @@ export function useCellSelection({
         };
 
         const dragMoveHandler = (moveEvent: MouseEvent) => {
+          autoScroller?.update(moveEvent);
           const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
           if (!elementBelow) return;
           const cellElement = elementBelow.closest('td');
@@ -299,11 +362,13 @@ export function useCellSelection({
         const dragEndHandler = () => {
           document.removeEventListener('mousemove', dragMoveHandler);
           document.removeEventListener('mouseup', dragEndHandler);
+          autoScroller?.stop();
           if (promoted) {
             finishCellDrag();
           }
         };
 
+        autoScroller = createVerticalAutoScroller(e.currentTarget as HTMLElement, dragMoveHandler);
         document.addEventListener('mousemove', dragMoveHandler);
         document.addEventListener('mouseup', dragEndHandler);
         return;
@@ -337,9 +402,11 @@ export function useCellSelection({
       setDragCurrentCell(startCell);
       dragCurrentCellRef.current = startCell;
       let dragFrame: number | null = null;
+      let autoScroller: ReturnType<typeof createVerticalAutoScroller> | null = null;
 
       const dragMoveHandler = (moveEvent: MouseEvent) => {
         if (!isDraggingCellsRef.current) return;
+        autoScroller?.update(moveEvent);
         const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
         if (!elementBelow) return;
         const cellElement = elementBelow.closest('td');
@@ -378,6 +445,7 @@ export function useCellSelection({
         document.removeEventListener('mousemove', dragMoveHandler);
         document.removeEventListener('mouseup', dragEndHandler);
         if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+        autoScroller?.stop();
         document.body.style.userSelect = '';
         const allRowsForSelection = getAllRowsForCellSelection();
         const endCell = dragCurrentCellRef.current || { rowId, propertyKey };
@@ -412,6 +480,7 @@ export function useCellSelection({
         dragCurrentCellRef.current = null;
       };
 
+      autoScroller = createVerticalAutoScroller(e.currentTarget as HTMLElement, dragMoveHandler);
       document.addEventListener('mousemove', dragMoveHandler);
       document.addEventListener('mouseup', dragEndHandler);
       document.body.style.userSelect = 'none';
@@ -479,6 +548,7 @@ export function useCellSelection({
       let hasMoved = false;
       let isClick = true;
       const DRAG_THRESHOLD = 5;
+      let autoScroller: ReturnType<typeof createVerticalAutoScroller> | null = null;
 
       const resolveFillTargetCell = (clientX: number, clientY: number): { rowId: string; propertyKey: string } | null => {
         const getRowAndPropertyFromElement = (el: Element | null) => {
@@ -551,6 +621,7 @@ export function useCellSelection({
 
       const fillDragMoveHandler = (moveEvent: MouseEvent) => {
         moveEvent.preventDefault();
+        autoScroller?.update(moveEvent);
         const deltaX = Math.abs(moveEvent.clientX - startX);
         const deltaY = Math.abs(moveEvent.clientY - startY);
         if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
@@ -589,6 +660,7 @@ export function useCellSelection({
       const fillDragEndHandler = async (endEvent: MouseEvent) => {
         document.removeEventListener('mousemove', fillDragMoveHandler);
         document.removeEventListener('mouseup', fillDragEndHandlerWrapper);
+        autoScroller?.stop();
         try {
           if (isClick || !hasMoved) {
             if (isFillingCellsRef.current) {
@@ -640,6 +712,7 @@ export function useCellSelection({
       const fillDragEndHandlerWrapper = (e: MouseEvent) => {
         fillDragEndHandler(e);
       };
+      autoScroller = createVerticalAutoScroller(e.currentTarget as HTMLElement, fillDragMoveHandler);
       document.addEventListener('mousemove', fillDragMoveHandler);
       document.addEventListener('mouseup', fillDragEndHandlerWrapper);
     },

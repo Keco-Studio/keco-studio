@@ -35,7 +35,7 @@ async function createLibraryForDatatypeTests(page: Page): Promise<void> {
 }
 
 async function addColumn(page: Page, name: string, dataTypeLabel: string): Promise<void> {
-  const addColumnButton = page.getByRole('button', { name: /add new column/i }).first();
+  const addColumnButton = page.getByRole('button', { name: /insert column right/i }).first();
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
 
   const addModal = page.getByRole('dialog', { name: /add column/i }).first();

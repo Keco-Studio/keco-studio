@@ -26,6 +26,8 @@ type DataType = NonNullable<PropertyConfig['dataType']>;
 export type AddColumnFormPayload = {
   name: string;
   dataType: DataType;
+  /** Internal placement metadata supplied by the table header context menu. */
+  insertAfterPropertyId?: string;
   description?: string;
   /** For enum type: predefined option values */
   enumOptions?: string[];

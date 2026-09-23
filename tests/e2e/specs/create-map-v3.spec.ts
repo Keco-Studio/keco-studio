@@ -1033,4 +1033,101 @@ test.describe('Create Map V3 mocked workflow', () => {
     }
     expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
   });
+
+  test('@mobile restores drawers and paints the collision grid with touch', async ({ page }, testInfo) => {
+    expect(await page.evaluate(() => navigator.maxTouchPoints)).toBeGreaterThan(0);
+
+    const backend = new CreateMapV3MockBackend();
+    const browserFailures = await loginAndOpen(page, backend);
+    await page.getByRole('button', { name: 'Open source panel' }).click();
+    await createSavedMap(page);
+    await page.getByRole('button', { name: 'Close source panel' }).click();
+    await generateReadyMap(page);
+    await expect(page.getByText('Map ready', { exact: true })).toBeVisible();
+    await expect(page.getByText('Grid ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
+
+    const workbench = page.getByTestId('create-map-workbench');
+    const inspector = page.getByLabel('Map plan and generation');
+    const sourcePanel = page.getByLabel('Map source and references');
+    const workbenchBox = await workbench.boundingBox();
+    if (!workbenchBox) throw new Error('Create Map workbench is not visible');
+
+    await page.getByRole('button', { name: 'Close inspector panel' }).click();
+    await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+      workbenchBox.x + workbenchBox.width - 1,
+    );
+    await page.getByRole('button', { name: 'Open source panel' }).click();
+    await expect.poll(async () => (await sourcePanel.boundingBox())?.x ?? Number.NEGATIVE_INFINITY)
+      .toBeGreaterThanOrEqual(workbenchBox.x - 1);
+    await page.getByRole('button', { name: 'View map plan' }).click();
+    await page.getByRole('button', { name: 'Close source panel' }).click();
+    await expect.poll(async () => (await inspector.boundingBox())?.x ?? Number.POSITIVE_INFINITY)
+      .toBeLessThan(workbenchBox.x + workbenchBox.width - 1);
+    await expect(page.getByText('Map ready', { exact: true })).toBeVisible();
+    await expect(page.getByText('Grid ready', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close inspector panel' }).click();
+
+    const overlay = page.getByLabel('Editable collision grid');
+    const bounds = await overlay.boundingBox();
+    if (!bounds) throw new Error('Collision overlay is not visible');
+    const cellWidth = bounds.width / 64;
+    const cellHeight = bounds.height / 64;
+    const point = (column: number, row: number) => ({
+      x: bounds.x + (column + 0.5) * cellWidth,
+      y: bounds.y + (row + 0.5) * cellHeight,
+    });
+
+    const tapPoint = point(20, 20);
+    await page.touchscreen.tap(tapPoint.x, tapPoint.y);
+    await page.getByRole('button', { name: 'Open source panel' }).click();
+    await page.getByRole('button', { name: 'View map plan' }).click();
+    await page.getByRole('button', { name: 'Close source panel' }).click();
+    await expect(page.getByText('2 blocked', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close inspector panel' }).click();
+
+    const dragBounds = await overlay.boundingBox();
+    if (!dragBounds) throw new Error('Collision overlay is not visible for touch drag');
+    const dragPoint = (column: number, row: number) => ({
+      x: dragBounds.x + (column + 0.5) * (dragBounds.width / 64),
+      y: dragBounds.y + (row + 0.5) * (dragBounds.height / 64),
+    });
+    const dragStart = dragPoint(22, 20);
+    const dragEnd = dragPoint(23, 20);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: dragStart.x, y: dragStart.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: dragEnd.x, y: dragEnd.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await cdp.detach();
+    await page.getByRole('button', { name: 'Open source panel' }).click();
+    await page.getByRole('button', { name: 'View map plan' }).click();
+    await page.getByRole('button', { name: 'Close source panel' }).click();
+    await expect(page.getByText('4 blocked', { exact: true })).toBeVisible();
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Open source panel' }).click();
+    await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
+    await page.getByRole('button', { name: 'Close source panel' }).click();
+    await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Grid ready', { exact: true })).toBeVisible();
+    await expect(page.getByText('4 blocked', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Editable collision grid')).toBeVisible();
+
+    const path = testInfo.outputPath('create-map-v3-mobile-touch.png');
+    await page.screenshot({ path, fullPage: true });
+    const stats = await sharp(path).stats();
+    expect(stats.channels.slice(0, 3).some((channel) => channel.stdev >= 5)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
+  });
 });

@@ -156,7 +156,7 @@ async function addReferenceColumn(
   columnName: string,
   targetLibraryName: string,
 ): Promise<void> {
-  const addColumnButton = page.getByRole('button', { name: /add new column/i }).first();
+  const addColumnButton = page.getByRole('button', { name: /insert column right/i }).first();
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
   await addColumnButton.click();
 

@@ -21,7 +21,7 @@
 }
 
 .restoreButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   color: #21272A;
 }
 
@@ -38,5 +38,4 @@
 .restoreButtonContainer:hover .tooltip {
   display: block;
 }
-
 

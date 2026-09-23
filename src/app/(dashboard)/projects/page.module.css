@@ -87,7 +87,7 @@
 }
 
 .createProjectButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   border-color: #cbd5e1;
 }
 
@@ -141,4 +141,3 @@
   font-size: 0.875rem;
   margin-top: 0.25rem;
 }
-

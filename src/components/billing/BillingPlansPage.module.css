@@ -164,7 +164,7 @@
 }
 
 .planButton:hover:not(:disabled) {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
 }
 
 .planButton:disabled {

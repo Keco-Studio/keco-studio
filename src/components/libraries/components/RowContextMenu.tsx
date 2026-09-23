@@ -27,6 +27,14 @@ const itemStyle = {
   margin: 0,
 };
 
+const labelStyle = {
+  padding: '0.5rem 12px 0.25rem',
+  color: '#9ca3af',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  letterSpacing: '0.04em',
+};
+
 export type RowContextMenuProps = {
   visible: boolean;
   position: { x: number; y: number };
@@ -49,6 +57,7 @@ export function RowContextMenu({
       style={{ ...menuStyle, left: position.x, top: position.y }}
       onClick={(e) => e.stopPropagation()}
     >
+      <div style={labelStyle}>option</div>
       <div
         style={itemStyle}
         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--keco-blue-tint-soft)'; }}

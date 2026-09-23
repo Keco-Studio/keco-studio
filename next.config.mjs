@@ -6,6 +6,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
+  allowedDevOrigins: ['127.0.0.1'],
   transpilePackages: ['@keco/battle-core', '@keco/battle-engine'],
   reactStrictMode: true,
   // The headless codec loads these through the same native ESM dependency graph.

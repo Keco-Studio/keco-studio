@@ -20,7 +20,7 @@
 }
 
 .menuButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   color: #21272A;
 }
 
@@ -67,4 +67,3 @@
 .deleteItem:hover {
   background: var(--keco-blue-tint-soft);
 }
-

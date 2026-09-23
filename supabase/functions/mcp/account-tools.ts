@@ -1,6 +1,7 @@
 import type { McpServer } from "@mcp/server/mcp.js";
 import { z } from "zod";
 import {
+  accountHasAdminProject,
   accountHasWritableProject,
   authorizeAccountProject,
   listAccessibleProjects,
@@ -52,15 +53,22 @@ export async function registerAccountTools(
     (projectId) => authorizeAccountProject(context, projectId, "read"),
   );
   let hasWritableProject = false;
+  let hasAdminProject = false;
   try {
     hasWritableProject = await accountHasWritableProject(context);
   } catch {
     // A discovery failure must not remove the account's safe tool surface.
   }
+  try {
+    hasAdminProject = await accountHasAdminProject(context);
+  } catch {
+    // Admin-only tools fail closed independently from ordinary writes.
+  }
   if (hasWritableProject) {
     registerAccountWriteTools(
       server,
       (projectId) => authorizeAccountProject(context, projectId, "write"),
+      { includeAdminTools: hasAdminProject },
     );
     registerAccountSliceWriteTools(
       server,

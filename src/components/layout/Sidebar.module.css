@@ -1,14 +1,13 @@
 .sidebar {
-  min-width: 218px;
-  max-width: 360px;
+  min-width: 300px;
+  max-width: 300px;
   height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex-shrink: 0;
   border-right: 1px solid #e2e8f0;
-  background-color: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
+  background-color: #fff;
   padding: 12px;
   transition: transform 0.3s ease, width 0.3s ease;
   transform: translateX(0);
@@ -16,45 +15,6 @@
   z-index: 10;
   overflow: hidden;
   box-sizing: border-box;
-}
-
-.sidebarResizing {
-  transition: none;
-}
-
-.resizeHandle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 5;
-  user-select: none;
-}
-
-.resizeHandle:hover,
-.sidebarResizing .resizeHandle {
-  background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.15));
-}
-
-.resizeHandle::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 2px;
-  height: 40px;
-  border-radius: 1px;
-  background: #cbd5e1;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.resizeHandle:hover::after,
-.sidebarResizing .resizeHandle::after {
-  opacity: 1;
 }
 
 .sidebarHidden {
@@ -80,13 +40,13 @@
   width: 185.5px;
   height: 22px;
   color: #16325D;
-  font-family: Archivo, sans-serif;
+  font-family: Archivo, 'Roboto', sans-serif;
   font-size: 16px;
   font-weight: 700;
   font-style: normal;
-  line-height: 100%;
+  line-height: 1.2;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .brandSubtitle {
@@ -636,7 +596,7 @@
 }
 
 .projectQuickNavItem:hover {
-  background: #f4f6f8;
+  background: var(--keco-control-hover-bg);
 }
 
 .projectQuickNavItemActive,
@@ -674,11 +634,18 @@
   letter-spacing: 0;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, border-radius 0.16s ease;
 }
 
 .projectSelectorTrigger:hover {
-  background: rgba(221, 225, 230, 0.45);
+  background: var(--keco-control-hover-bg);
+}
+
+.projectSelectorTrigger[aria-expanded='true'] {
+  border-color: #d7dde5;
+  border-bottom-color: transparent;
+  border-radius: 11px 11px 0 0;
+  background: #ffffff;
 }
 
 .projectSelectorTrigger:focus-visible {
@@ -712,21 +679,35 @@
 
 .projectSelectorMenu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% - 1px);
   left: 0;
   width: 100%;
   padding: 4px;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid #d7dde5;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   background: #ffffff;
-  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-shadow: 0 12px 28px rgba(31, 41, 55, 0.22), 0 2px 6px rgba(31, 41, 55, 0.12);
   box-sizing: border-box;
 }
 
 .projectSelectorOptions {
   max-height: 108px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c9ced5 transparent;
+}
+
+.projectSelectorOptions::-webkit-scrollbar {
+  width: 10px;
+}
+
+.projectSelectorOptions::-webkit-scrollbar-thumb {
+  background: #c9ced5;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
 }
 
 .projectSelectorOption {
@@ -747,7 +728,7 @@
 
 .projectSelectorOption:hover,
 .projectSelectorOption:focus-visible {
-  background: #f4f6f8;
+  background: var(--keco-control-hover-bg);
   outline: none;
 }
 
@@ -821,7 +802,7 @@
 }
 
 .projectSelectorCreate:hover {
-  background: #f4f6f8;
+  background: var(--keco-control-hover-bg);
 }
 
 .projectSelectorCreate:focus-visible {
@@ -1084,7 +1065,7 @@
 .tree :global(.ant-tree-treenode.drag-over),
 .tree :global(.ant-tree-treenode.drag-over-gap-top),
 .tree :global(.ant-tree-treenode.drag-over-gap-bottom) {
-  background-color: #f8fafc !important;
+  background-color: var(--keco-control-hover-bg) !important;
   border-radius: 0.5rem;
 }
 
@@ -1302,7 +1283,7 @@
 }
 
 .itemInactive:hover {
-  background-color: #f8fafc;
+  background-color: var(--keco-control-hover-bg);
 }
 
 .createProjectButton {
@@ -1437,7 +1418,7 @@
 }
 
 .iconButton:hover {
-  background: #f8fafc;
+  background: var(--keco-control-hover-bg);
   color: #475569;
 }
 
@@ -1512,7 +1493,7 @@
 }
 
 .createButton:hover {
-  background-color: #f8fafc;
+  background-color: var(--keco-control-hover-bg);
   color: #334155;
 }
 
@@ -1723,7 +1704,7 @@
 }
 
 .assetList .itemRow:hover {
-  background-color: #f8fafc;
+  background-color: var(--keco-control-hover-bg);
 }
 
 /* Aligned create button for asset page (aligned with back button) */
@@ -1770,8 +1751,8 @@
 
 .sidebarEmptyState .emptyIcon {
   display: block;
-  width: 1.375rem;
-  height: 1.125rem;
+  width: 5.5rem;
+  height: 5.5rem;
 }
 
 .sidebarEmptyText {

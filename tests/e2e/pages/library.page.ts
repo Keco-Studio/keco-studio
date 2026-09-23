@@ -430,7 +430,7 @@ export class LibraryPage {
     await this.openLibrary(libraryName);
     await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
 
-    const addColumnButton = this.page.getByRole('button', { name: /add new column/i });
+    const addColumnButton = this.page.getByRole('button', { name: /insert column right/i });
     await expect(addColumnButton).toBeVisible({ timeout: 15000 });
     await addColumnButton.click();
 

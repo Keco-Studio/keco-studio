@@ -1,3 +1,8 @@
+import {
+  readActiveProjectPreference,
+  writeActiveProjectPreference,
+} from '@/lib/projects/activeProjectPreference';
+
 export type CreateMapProjectPreference = { projectId: string; projectName: string };
 
 const STORAGE_KEY = 'keco.create-map.projectPreference';
@@ -10,6 +15,7 @@ export function writeCreateMapProjectPreference(preference: CreateMapProjectPref
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preference));
+    writeActiveProjectPreference(preference);
     window.dispatchEvent(new CustomEvent(CREATE_MAP_PROJECT_EVENT, { detail: preference }));
   } catch {
     /* persistence is best effort */
@@ -17,6 +23,8 @@ export function writeCreateMapProjectPreference(preference: CreateMapProjectPref
 }
 
 export function readCreateMapProjectPreference(): CreateMapProjectPreference | null {
+  const activeProject = readActiveProjectPreference();
+  if (activeProject) return activeProject;
   if (typeof window === 'undefined') return null;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null') as CreateMapProjectPreference | null;

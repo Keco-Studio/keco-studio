@@ -110,9 +110,7 @@ const ImportDocumentModal = dynamic(
   { ssr: false }
 );
 
-const MIN_SIDEBAR_WIDTH = 218;
-const MAX_SIDEBAR_WIDTH = 360;
-const DEFAULT_SIDEBAR_WIDTH = 218;
+const SIDEBAR_WIDTH = 300;
 
 const ImportLibraryModal = dynamic(
   () => import("@/components/libraries/ImportLibraryModal").then((mod) => mod.ImportLibraryModal),
@@ -246,8 +244,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
-  const [isResizing, setIsResizing] = useState(false);
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -269,8 +265,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [useIndependentLibrary, setUseIndependentLibrary] = useState(false);
   const [movingDocumentId, setMovingDocumentId] = useState<string | null>(null);
   const [isMovingDocument, setIsMovingDocument] = useState(false);
-  const resizeStartX = useRef(0);
-  const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const pendingTreeDropKeysRef = useRef(new Set<string>());
   const isTreeDragPending = useCallback(
     (dragKey: string) => pendingTreeDropKeysRef.current.has(dragKey),
@@ -428,33 +422,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     },
     [updateName, setError, currentIds.projectId, queryClient, supabase]
   );
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-    resizeStartX.current = e.clientX;
-    resizeStartWidth.current = sidebarWidth;
-  }, [sidebarWidth]);
-
-  useEffect(() => {
-    if (!isResizing) return;
-    const onMove = (e: MouseEvent) => {
-      const delta = e.clientX - resizeStartX.current;
-      const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, resizeStartWidth.current + delta));
-      setSidebarWidth(next);
-    };
-    const onUp = () => setIsResizing(false);
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, [isResizing]);
 
   const {
     projects,
@@ -860,7 +827,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setEditingKey,
       onSaveRename: handleSaveRename,
     },
-    sidebarWidth
+    SIDEBAR_WIDTH
   );
 
   const handleProjectDeleteViaAPI = useCallback(
@@ -1508,11 +1475,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   return (
     <aside
-      className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''} ${isResizing ? styles.sidebarResizing : ''}`}
-      style={{ width: isSidebarVisible ? sidebarWidth : 0 }}
+      className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}
+      style={{ width: isSidebarVisible ? SIDEBAR_WIDTH : 0 }}
     >
       <div className={styles.brand}>
-        <strong className={styles.brandTitle}>Keco Studio</strong>
+        <strong className={styles.brandTitle}>Libraries</strong>
         <p className={styles.brandSubtitle}>
           Manage and config game assets for game designers.
         </p>
@@ -2138,14 +2105,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         }
       />
 
-      {isSidebarVisible && (
-        <div
-          role="separator"
-          aria-label="Resize sidebar width"
-          className={styles.resizeHandle}
-          onMouseDown={handleResizeStart}
-        />
-      )}
     </aside>
   );
 }

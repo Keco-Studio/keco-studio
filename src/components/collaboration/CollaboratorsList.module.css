@@ -568,7 +568,7 @@
 }
 
 .modalCancelButton:hover:not(:disabled) {
-  background-color: #f9fafb;
+  background-color: var(--keco-control-hover-bg);
   border-color: #9ca3af;
 }
 
@@ -735,4 +735,3 @@
     height: 1.75rem;
   }
 }
-

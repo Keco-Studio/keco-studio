@@ -207,7 +207,10 @@ describe('CI workflow gates', () => {
     );
   });
 
-  it('does not deploy migrations for a PR with no migration diff', () => {
+  it('keeps pull request migrations isolated while deployment branches always retry', () => {
+    expect(deployWorkflow).toContain(
+      "push:\n    branches:\n      - main\n      - master\n      - 'release/**'"
+    );
     expect(checkMigrationsJob).toContain(
       'BASE_COMMIT="${{ github.event.pull_request.base.sha }}"'
     );
@@ -226,20 +229,22 @@ describe('CI workflow gates', () => {
     expect(checkMigrationsJob).not.toContain(
       'Migration files detected (no changes, but unapplied migrations may exist)'
     );
-    expect(migrateDatabaseJob).not.toContain("github.ref == 'refs/heads/main'");
-    expect(migrateDatabaseJob).not.toContain("github.ref == 'refs/heads/master'");
-    expect(migrateDatabaseJob).not.toContain(
+    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/main'");
+    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/master'");
+    expect(migrateDatabaseJob).toContain(
       "startsWith(github.ref, 'refs/heads/release/')"
     );
-    expect(migrateDatabaseJob).toContain('supabase db push --include-all');
+    expect(migrateDatabaseJob).toContain('supabase db push --include-all --yes');
     expect(migrateDatabaseJob).toContain('continue-on-error: false');
     expect(deployJob).toContain(
       "needs.check-migrations.result == 'success'"
     );
-    expect(deployJob).toContain("needs.migrate-database.result == 'skipped'");
+    expect(deployJob).toContain(
+      "(needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')"
+    );
   });
 
-  it('only pushes migrations when a branch push changes migration files', () => {
+  it('always pushes migrations from deployment branches but never from pull requests', () => {
     const condition = migrateDatabaseJob.match(
       /\n    if: \|\n(?<condition>(?: {6}.*\n)+)/
     )?.groups?.condition;
@@ -247,8 +252,12 @@ describe('CI workflow gates', () => {
     expect(condition?.replace(/^ {6}/gm, '').trim()).toBe(
       [
         "(github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&",
-        "github.event_name == 'push' &&",
-        "needs.check-migrations.outputs.has-migrations == 'true'",
+        "github.event_name == 'push' && (",
+        "    needs.check-migrations.outputs.has-migrations == 'true' ||",
+        "    github.ref == 'refs/heads/main' ||",
+        "    github.ref == 'refs/heads/master' ||",
+        "    startsWith(github.ref, 'refs/heads/release/')",
+        '  )',
       ].join('\n')
     );
   });

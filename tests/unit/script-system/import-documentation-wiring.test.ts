@@ -9,9 +9,10 @@ const HELPER_COPY =
   'Choose a Studio document to add to Keco Script. After import you can edit it, then use Generate conversation to create a dialogue script and flow chart.';
 
 describe('Keco Script Import Documentation wiring', () => {
-  it('sidebar exposes Keco Script branding and Import navigation', () => {
+  it('sidebar exposes Script Generator branding and Import navigation', () => {
     const source = read('src/components/script-system/ScriptSidebar.tsx');
-    expect(source).toContain('Keco Script');
+    expect(source).toContain('Script Generator');
+    expect(source).not.toContain('Keco Script</strong>');
     expect(source).toContain(
       'Manage and config game assets for game designers.'
     );

@@ -12,7 +12,12 @@ const IDs = {
   actorUserId: "55555555-5555-4555-8555-555555555555",
 };
 
-function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionStatus = "ready") {
+function fixtureClient(
+  bytes: Uint8Array,
+  failReadBack = false,
+  readyTransitionStatus = "ready",
+  reserveError: { details: string } | null = null,
+) {
   const calls: Array<{ name: string; args: unknown }> = [];
   let downloadCount = 0;
   const bucket = {
@@ -38,6 +43,7 @@ function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionS
     async rpc(name: string, args: unknown) {
       calls.push({ name, args });
       if (name === "service_reserve_project_storage_upload") {
+        if (reserveError) return { data: null, error: reserveError };
         return { data: { reservationId: "66666666-6666-4666-8666-666666666666", ownerId: IDs.actorUserId, projectId: IDs.projectId, expectedBytes: 5242880, reused: false }, error: null };
       }
       if (name === "service_finalize_project_storage_upload") {
@@ -97,6 +103,8 @@ Deno.test("read-back failure never binds a path and marks storage_failed", async
   assertEquals((transitions[0].args as Record<string, unknown>).p_next_status, "failed");
   assertEquals((transitions[0].args as Record<string, unknown>).p_last_error_code, "storage_failed");
   assertEquals((transitions[0].args as Record<string, unknown>).p_storage_path, null);
+  assertEquals(calls.filter((call) => call.name === "service_release_project_storage_upload").length, 1);
+  assertEquals(calls.filter((call) => call.name === "remove").length, 1);
 });
 
 Deno.test("a stale ready transition conflict never returns a binding", async () => {
@@ -110,4 +118,19 @@ Deno.test("a stale ready transition conflict never returns a binding", async () 
   assertEquals((transitions[0].args as Record<string, unknown>).p_next_status, "ready");
   assertEquals((transitions[1].args as Record<string, unknown>).p_next_status, "failed");
   assertEquals((transitions[1].args as Record<string, unknown>).p_storage_path, null);
+});
+
+Deno.test("quota rejection preserves the quota error and never uploads", async () => {
+  const { client, calls } = fixtureClient(
+    png.bytes,
+    false,
+    "ready",
+    { details: "STORAGE_QUOTA_EXCEEDED" },
+  );
+  const error = await assertRejects(() => persistValidatedAsset(
+    { serviceClient: client, actorUserId: IDs.actorUserId, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
+    { id: IDs.assetId, assetKey: "oak-tree" }, png,
+  ), PixelLabMapError);
+  assertEquals(error.code, "pixellab_quota_exceeded");
+  assertEquals(calls.filter((call) => call.name === "upload").length, 0);
 });
