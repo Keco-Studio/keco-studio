@@ -309,6 +309,11 @@ export async function loginToAccount(page: Page, backend: AccountStorageMockBack
     page.getByRole('button', { name: 'Login', exact: true }).click(),
   ]);
   await page.goto('/account');
+  const credits = page.getByRole('region', { name: 'Credits' });
+  await credits
+    .getByTestId('account-credits-remaining')
+    .or(credits.getByText('Credit data could not be loaded', { exact: true }))
+    .waitFor({ state: 'visible', timeout: 15_000 });
 }
 
 export async function attemptProjectAssetUpload(

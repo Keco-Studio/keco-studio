@@ -112,6 +112,7 @@ test.describe('Cross-entry owner storage quota', () => {
       await page.goto(`${appOrigin}/`);
       await loginWithCredentials(page, editor.email, editor.password);
       await expect(page).toHaveURL(/\/projects(?:\?|$)/, { timeout: 30_000 });
+      await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 30_000 });
       ({ clientId } = await registerMcpClient({
         supabaseUrl,
         redirectUri,
