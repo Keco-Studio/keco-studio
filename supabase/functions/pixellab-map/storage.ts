@@ -6,6 +6,7 @@ import {
   finalizeServiceStorage,
   releaseServiceStorage,
   reserveServiceStorage,
+  StorageQuotaError,
 } from "../_shared/storage-quota.ts";
 
 export type AssetStorageContext = {
@@ -138,6 +139,9 @@ export async function persistValidatedAsset(
     }
     await failAsset(context, asset, "storage_failed");
     if (error instanceof PixelLabMapError) throw error;
+    if (error instanceof StorageQuotaError && error.code === "STORAGE_QUOTA_EXCEEDED") {
+      throw new PixelLabMapError("pixellab_quota_exceeded", "Project storage quota exceeded", 409);
+    }
     throw new PixelLabMapError("pixellab_upstream", "Validated asset storage failed");
   }
 }

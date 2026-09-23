@@ -1,11 +1,8 @@
 import type Stripe from 'stripe';
 import { getPaymentStatusForCheckoutEvent } from '@/lib/payment-domain';
 import { getStripe, getStripeWebhookSecret } from '@/lib/stripe';
-import {
-  hasWebhookEvent,
-  recordWebhookEvent,
-  updatePaymentOrderFromStripe,
-} from '@/lib/supabase-payments';
+import { getStudioPlanById } from '@/lib/studio-plans';
+import { processStripeCheckoutEvent } from '@/lib/supabase-payments';
 
 export const runtime = 'nodejs';
 
@@ -28,23 +25,23 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (await hasWebhookEvent(event.id)) {
-      return Response.json({ received: true });
-    }
-
     const status = getPaymentStatusForCheckoutEvent(event.type);
-    if (status) {
-      const session = event.data.object as Stripe.Checkout.Session;
-      await updatePaymentOrderFromStripe({
-        sessionId: session.id,
-        status,
-        paymentIntentId:
-          typeof session.payment_intent === 'string' ? session.payment_intent : null,
-      });
-    }
+    const object = event.data.object as Stripe.Checkout.Session;
+    const session = status ? object : null;
+    const plan = status === 'paid'
+      ? getStudioPlanById(session?.metadata?.planId ?? '')
+      : null;
 
-    await recordWebhookEvent(event.id, event.type, {
-      objectId: (event.data.object as { id?: string }).id ?? null,
+    await processStripeCheckoutEvent({
+      eventId: event.id,
+      eventType: event.type,
+      sessionId: session?.id ?? null,
+      status,
+      paymentIntentId: session && typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : null,
+      payload: { objectId: object.id ?? null },
+      creditAmount: plan?.creditAmount ?? 0,
     });
 
     return Response.json({ received: true });

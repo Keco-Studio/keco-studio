@@ -1,7 +1,7 @@
 import { reconcileAccountStorage, parseReconciliationArguments } from '../../../scripts/reconcile-account-storage';
 
 function clientFixture() {
-  const calls = { expire: 0, rebuild: 0 };
+  const calls = { expire: 0, rebuild: 0, bindings: 0 };
   return {
     calls,
     async listPhysicalStorageObjects() {
@@ -37,8 +37,10 @@ function clientFixture() {
       ];
     },
     async listAmbiguousStorageObjects() { return [{ bucketId: 'project-assets', objectPath: 'ambiguous.png' }]; },
+    async readStorageEntityBindingDrift() { return { missingBindings: 0, staleBindings: 0, conflictingBindings: 0 }; },
     async expireReservations() { calls.expire += 1; return 1; },
     async rebuildStorageQuotaTotals() { calls.rebuild += 1; return 1; },
+    async refreshStorageEntityBindings() { calls.bindings += 1; return 3; },
   };
 }
 
@@ -56,17 +58,21 @@ describe('account storage reconciliation', () => {
       physicalQuotaMismatches: 1,
       logicalQuotaMismatches: 0,
       quotaMismatches: 1,
+      missingBindings: 0,
+      staleBindings: 0,
+      conflictingBindings: 0,
       repairedReservations: 0,
       repairedQuotas: 0,
+      refreshedBindings: 0,
     });
-    expect(client.calls).toEqual({ expire: 0, rebuild: 0 });
+    expect(client.calls).toEqual({ expire: 0, rebuild: 0, bindings: 0 });
   });
 
   it('fails closed without any mutation when inventory parity is not clean', async () => {
     const client = clientFixture();
     await expect(reconcileAccountStorage(client, { applySafeRepairs: true }))
       .rejects.toThrow('Storage reconciliation aborted: inventory parity must be clean before repairs');
-    expect(client.calls).toEqual({ expire: 0, rebuild: 0 });
+    expect(client.calls).toEqual({ expire: 0, rebuild: 0, bindings: 0 });
   });
 
   it('repairs only a clean inventory and accepts the JSON quota result', async () => {
@@ -106,6 +112,48 @@ describe('account storage reconciliation', () => {
       logicalQuotaMismatches: 1,
       quotaMismatches: 2,
     });
+  });
+
+  it('reports and safely refreshes missing and stale entity bindings', async () => {
+    const client = clientFixture();
+    client.listPhysicalStorageObjects = async () => [];
+    client.listRegisteredStorageFiles = async () => [];
+    client.listRegisteredLogicalFiles = async () => [];
+    client.listStorageReservations = async () => [];
+    client.listStorageQuotas = async () => [];
+    client.listAmbiguousStorageObjects = async () => [];
+    client.readStorageEntityBindingDrift = async () => ({
+      missingBindings: 2,
+      staleBindings: 1,
+      conflictingBindings: 0,
+    });
+
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: true })).resolves.toMatchObject({
+      missingBindings: 2,
+      staleBindings: 1,
+      conflictingBindings: 0,
+      refreshedBindings: 3,
+    });
+    expect(client.calls.bindings).toBe(1);
+  });
+
+  it('fails closed on conflicting entity references', async () => {
+    const client = clientFixture();
+    client.listPhysicalStorageObjects = async () => [];
+    client.listRegisteredStorageFiles = async () => [];
+    client.listRegisteredLogicalFiles = async () => [];
+    client.listStorageReservations = async () => [];
+    client.listStorageQuotas = async () => [];
+    client.listAmbiguousStorageObjects = async () => [];
+    client.readStorageEntityBindingDrift = async () => ({
+      missingBindings: 0,
+      staleBindings: 0,
+      conflictingBindings: 1,
+    });
+
+    await expect(reconcileAccountStorage(client, { applySafeRepairs: true }))
+      .rejects.toThrow('Storage reconciliation aborted: inventory parity must be clean before repairs');
+    expect(client.calls.bindings).toBe(0);
   });
 
   it('fails closed when registry state cannot be queried', async () => {

@@ -2164,6 +2164,7 @@
 
 .savedMapsList {
   display: grid;
+  align-content: start;
   gap: 6px;
   flex: 1;
   max-height: none;
@@ -2197,7 +2198,7 @@
 
 .savedMapButtonActive {
   border-color: transparent;
-  background: transparent;
+  background: #f3f6f8;
   box-shadow: none;
 }
 
@@ -2713,7 +2714,31 @@
   }
 }
 
-@media (max-width: 1099px) {
+@media (min-width: 900px) and (max-width: 1099px) {
+  .workbench {
+    min-width: 0;
+    grid-template-columns: minmax(184px, 208px) minmax(0, 1fr) minmax(238px, 268px);
+  }
+
+  .workbenchCanvasOnly {
+    grid-template-columns: minmax(184px, 208px) minmax(0, 1fr);
+  }
+
+  .workbenchLeftCollapsed {
+    grid-template-columns: minmax(0, 1fr) minmax(238px, 268px);
+  }
+
+  .workbenchLeftCollapsed.workbenchCanvasOnly {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panelSection,
+  .inspectorSection {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 899px) {
   .workbench {
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);

@@ -3,12 +3,13 @@ import * as dotenv from 'dotenv';
 import path from 'node:path';
 
 const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images'] as const;
-const HELP = `Usage:\n  npm run storage:reconcile -- [--apply]\n\nReport mode is the default. --apply expires abandoned reservations and repairs cached totals only.\n\nRequired environment variables:\n  NEXT_PUBLIC_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY`;
+const HELP = `Usage:\n  npm run storage:reconcile -- [--apply]\n\nReport mode is the default. --apply expires abandoned reservations, repairs cached totals, and refreshes stale entity bindings.\n\nRequired environment variables:\n  NEXT_PUBLIC_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY`;
 
 export type RegisteredStorageFile = { id: string; bucketId: string; objectPath: string; ownerId: string; sizeBytes: number; lifecycleStatus: 'active' | 'pending_cleanup' };
 export type RegisteredLogicalFile = { ownerId: string; sizeBytes: number };
 export type StorageReservation = { id: string; ownerId: string; expectedBytes: number; status: string; expiresAt: string };
 export type StorageQuota = { ownerId: string; usedBytes: number; logicalUsedBytes: number; reservedBytes: number };
+export type StorageEntityBindingDrift = { missingBindings: number; staleBindings: number; conflictingBindings: number };
 export type ReconciliationReport = {
   registeredObjects: number;
   physicalObjects: number;
@@ -20,8 +21,12 @@ export type ReconciliationReport = {
   physicalQuotaMismatches: number;
   logicalQuotaMismatches: number;
   quotaMismatches: number;
+  missingBindings: number;
+  staleBindings: number;
+  conflictingBindings: number;
   repairedReservations: number;
   repairedQuotas: number;
+  refreshedBindings: number;
 };
 export type ReconciliationClient = {
   listPhysicalStorageObjects?: () => Promise<Array<{ bucketId: string; objectPath: string; sizeBytes: number }>>;
@@ -30,8 +35,10 @@ export type ReconciliationClient = {
   listStorageReservations?: () => Promise<StorageReservation[]>;
   listStorageQuotas?: () => Promise<StorageQuota[]>;
   listAmbiguousStorageObjects?: () => Promise<Array<{ bucketId: string; objectPath: string }>>;
+  readStorageEntityBindingDrift?: () => Promise<StorageEntityBindingDrift>;
   expireReservations?: () => Promise<number>;
   rebuildStorageQuotaTotals?: () => Promise<number>;
+  refreshStorageEntityBindings?: () => Promise<number>;
   storage?: { from(bucketId: string): { list(prefix?: string, options?: { limit?: number; offset?: number }): Promise<{ data: unknown[] | null; error: unknown }> } };
   from?: (table: string) => { select(columns: string): Promise<{ data: unknown[] | null; error: unknown }> };
   rpc?: (name: string, parameters?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
@@ -135,10 +142,33 @@ async function applyQuotaRebuild(client: ReconciliationClient): Promise<number> 
   }
   return Number(data.rebuiltAccounts);
 }
+async function bindingDrift(client: ReconciliationClient): Promise<StorageEntityBindingDrift> {
+  if (client.readStorageEntityBindingDrift) return client.readStorageEntityBindingDrift();
+  if (!client.rpc) return { missingBindings: 0, staleBindings: 0, conflictingBindings: 0 };
+  const result = await client.rpc('service_account_storage_entity_binding_drift');
+  const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : null;
+  const missingBindings = numberValue(data?.missingBindings);
+  const staleBindings = numberValue(data?.staleBindings);
+  const conflictingBindings = numberValue(data?.conflictingBindings);
+  if (result.error || missingBindings === null || staleBindings === null || conflictingBindings === null) {
+    throw new Error('Storage entity binding drift query failed');
+  }
+  return { missingBindings, staleBindings, conflictingBindings };
+}
+async function applyBindingRefresh(client: ReconciliationClient): Promise<number> {
+  if (client.refreshStorageEntityBindings) return client.refreshStorageEntityBindings();
+  if (!client.rpc) throw new Error('Storage entity binding repair RPC is unavailable');
+  const result = await client.rpc('service_refresh_account_storage_entity_bindings');
+  const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : null;
+  if (result.error || !Number.isSafeInteger(data?.refreshedFiles)) {
+    throw new Error('Storage entity binding repair failed');
+  }
+  return Number(data.refreshedFiles);
+}
 
 export async function reconcileAccountStorage(client: ReconciliationClient, { applySafeRepairs }: { applySafeRepairs: boolean }): Promise<ReconciliationReport> {
-  const [physical, registered, logical, pendingReservations, cachedQuotas, ambiguous] = await Promise.all([
-    physicalObjects(client), registeredFiles(client), registeredLogicalFiles(client), reservations(client), quotas(client), client.listAmbiguousStorageObjects ? client.listAmbiguousStorageObjects() : Promise.resolve([]),
+  const [physical, registered, logical, pendingReservations, cachedQuotas, ambiguous, bindings] = await Promise.all([
+    physicalObjects(client), registeredFiles(client), registeredLogicalFiles(client), reservations(client), quotas(client), client.listAmbiguousStorageObjects ? client.listAmbiguousStorageObjects() : Promise.resolve([]), bindingDrift(client),
   ]);
   const physicalByKey = new Map(physical.map(item => [key(item.bucketId, item.objectPath), item]));
   const registeredByKey = new Map(registered.map(item => [key(item.bucketId, item.objectPath), item]));
@@ -181,16 +211,17 @@ export async function reconcileAccountStorage(client: ReconciliationClient, { ap
     if (logicalMismatch) logicalQuotaMismatches += 1;
     if (physicalMismatch || logicalMismatch || reservationMismatch) quotaMismatches += 1;
   }
-  let repairedReservations = 0; let repairedQuotas = 0;
-  const parityFailure = missingObjects > 0 || unexpectedObjects > 0 || sizeMismatches > 0 || ambiguous.length > 0;
+  let repairedReservations = 0; let repairedQuotas = 0; let refreshedBindings = 0;
+  const parityFailure = missingObjects > 0 || unexpectedObjects > 0 || sizeMismatches > 0 || ambiguous.length > 0 || bindings.conflictingBindings > 0;
   if (applySafeRepairs && parityFailure) {
     throw new Error('Storage reconciliation aborted: inventory parity must be clean before repairs');
   }
   if (applySafeRepairs) {
+    if (bindings.missingBindings > 0 || bindings.staleBindings > 0) refreshedBindings = await applyBindingRefresh(client);
     if (expiredReservations.length > 0) repairedReservations = await applyExpiredReservations(client);
     if (quotaMismatches > 0) repairedQuotas = await applyQuotaRebuild(client);
   }
-  return { registeredObjects: registered.length, physicalObjects: physical.length, missingObjects, unexpectedObjects, sizeMismatches, ambiguousObjects: ambiguous.length, expiredReservations: expiredReservations.length, physicalQuotaMismatches, logicalQuotaMismatches, quotaMismatches, repairedReservations, repairedQuotas };
+  return { registeredObjects: registered.length, physicalObjects: physical.length, missingObjects, unexpectedObjects, sizeMismatches, ambiguousObjects: ambiguous.length, expiredReservations: expiredReservations.length, physicalQuotaMismatches, logicalQuotaMismatches, quotaMismatches, missingBindings: bindings.missingBindings, staleBindings: bindings.staleBindings, conflictingBindings: bindings.conflictingBindings, repairedReservations, repairedQuotas, refreshedBindings };
 }
 
 export function parseReconciliationArguments(arguments_: readonly string[]): { help: boolean; applySafeRepairs: boolean } {
@@ -206,7 +237,7 @@ export async function runReconcileAccountStorageCommand(arguments_: readonly str
   dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: false, quiet: true });
   const client = createClient(requiredEnvironment('NEXT_PUBLIC_SUPABASE_URL'), requiredEnvironment('SUPABASE_SERVICE_ROLE_KEY'), { auth: { autoRefreshToken: false, persistSession: false } }) as unknown as ReconciliationClient;
   const report = await reconcileAccountStorage(client, parsed);
-  console.info(`Storage reconciliation: mode=${parsed.applySafeRepairs ? 'apply' : 'report'} registered=${report.registeredObjects} physical=${report.physicalObjects} missing=${report.missingObjects} unexpected=${report.unexpectedObjects} size_mismatches=${report.sizeMismatches} ambiguous=${report.ambiguousObjects} expired=${report.expiredReservations} physical_quota_mismatches=${report.physicalQuotaMismatches} logical_quota_mismatches=${report.logicalQuotaMismatches} quota_mismatches=${report.quotaMismatches} repaired_reservations=${report.repairedReservations} repaired_quotas=${report.repairedQuotas}`);
+  console.info(`Storage reconciliation: mode=${parsed.applySafeRepairs ? 'apply' : 'report'} registered=${report.registeredObjects} physical=${report.physicalObjects} missing=${report.missingObjects} unexpected=${report.unexpectedObjects} size_mismatches=${report.sizeMismatches} ambiguous=${report.ambiguousObjects} expired=${report.expiredReservations} physical_quota_mismatches=${report.physicalQuotaMismatches} logical_quota_mismatches=${report.logicalQuotaMismatches} quota_mismatches=${report.quotaMismatches} missing_bindings=${report.missingBindings} stale_bindings=${report.staleBindings} conflicting_bindings=${report.conflictingBindings} repaired_reservations=${report.repairedReservations} repaired_quotas=${report.repairedQuotas} refreshed_bindings=${report.refreshedBindings}`);
 }
 if (path.basename(process.argv[1] ?? '') === 'reconcile-account-storage.ts') {
   runReconcileAccountStorageCommand(process.argv.slice(2)).catch(() => { console.error('Storage reconciliation failed'); process.exitCode = 1; });

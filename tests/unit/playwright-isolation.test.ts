@@ -24,4 +24,15 @@ describe('Playwright Next.js isolation', () => {
     expect(nextEnv).not.toContain('.next-playwright');
     expect(tsconfig).not.toContain('.next-playwright');
   });
+
+  it('starts the local MCP server without requiring an untracked env file', () => {
+    const wrapperPath = join(process.cwd(), 'scripts/run-playwright-mcp-server.mjs');
+    const wrapper = readFileSync(wrapperPath, 'utf8');
+
+    expect(wrapper).toContain("existsSync(path.join(rootDir, '.env.local'))");
+    expect(wrapper).toContain("...envFileArgs");
+    expect(wrapper).not.toContain(
+      "['functions', 'serve', 'mcp', '--env-file', '.env.local']"
+    );
+  });
 });

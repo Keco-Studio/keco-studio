@@ -146,6 +146,23 @@ it('stacks the workbench regions into one column below 900px', () => {
   );
 });
 
+it('keeps source, canvas, and inspector tracks visible at compact desktop widths', () => {
+  const css = read('src/features/create-map/CreateMapWorkbench.module.css');
+  const workbench = read('src/features/create-map/DirectMapWorkbench.tsx');
+
+  expect(css).toMatch(
+    /@media\s*\(min-width:\s*900px\)\s*and\s*\(max-width:\s*1099px\)\s*\{[\s\S]*?\.workbench\s*\{[\s\S]*?grid-template-columns:\s*minmax\(184px,\s*208px\)\s*minmax\(0,\s*1fr\)\s*minmax\(238px,\s*268px\)/
+  );
+  expect(workbench).toContain('if (window.innerWidth < 900)');
+});
+
+it('packs saved-map cards at the full available sidebar width', () => {
+  const css = read('src/features/create-map/CreateMapWorkbench.module.css');
+
+  expect(css).toMatch(/\.savedMapsList\s*\{[^}]*align-content:\s*start/s);
+  expect(css).toMatch(/\.savedMapButtonActive\s*\{[^}]*background:\s*#f3f6f8/s);
+});
+
 it('renders Create Map dashboard chrome without Studio Sidebar or ChatPanel', () => {
   const markup = renderWorkbenchMarkup(
     React.createElement(DashboardLayout, null, React.createElement(CreateMapWorkbench))
