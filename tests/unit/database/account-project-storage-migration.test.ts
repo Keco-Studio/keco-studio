@@ -273,12 +273,15 @@ describe('account project storage migration', () => {
     expect(hierarchySql).toMatch(/from public\.project_game_assets asset/i);
     expect(hierarchySql).toMatch(/from public\.map_reference_images reference/i);
     expect(hierarchySql).toMatch(/from public\.character_generation_attempts attempt/i);
-    expect(hierarchySql).toMatch(/strpos\(coalesce\(document\.content, ''\), inventory\.object_path\) > 0/i);
+    expect(hierarchySql).toMatch(/document_media as materialized/i);
+    expect(hierarchySql).toMatch(/regexp_matches\([\s\S]*storage\/v1\/object/i);
+    expect(hierarchySql).toMatch(/media\.bucket_id = inventory\.bucket_id[\s\S]*media\.object_path = inventory\.object_path/i);
+    expect(hierarchySql).not.toMatch(/strpos\(coalesce\(document\.content/i);
     expect(hierarchySql).toMatch(
       /private\.storage_json_media_paths\(value\.value_json\)[\s\S]*inventory\.object_path = media_path\.object_path/i,
     );
     expect(hierarchySql).toMatch(/insert into public\.project_storage_files/i);
-    expect(hierarchySql).toMatch(/'document_image', document\.id, 1/i);
+    expect(hierarchySql).toMatch(/'document_image', media\.document_id, 1/i);
     expect(hierarchySql).toMatch(/'library_media', asset\.id, 2/i);
     expect(hierarchySql).toMatch(/path\.source_kind, null::uuid, 4/i);
     expect(hierarchySql).toMatch(/on conflict \(bucket_id, object_path\) do nothing/i);
@@ -287,7 +290,7 @@ describe('account project storage migration', () => {
     expect(hierarchySql).toMatch(/set_config\('keco\.storage_skip_entity_binding', 'on', true\)/i);
     expect(hierarchySql).toMatch(/with media_locations as materialized/i);
     expect(hierarchySql).toMatch(/'project_asset'::text as source_kind, asset\.id as source_entity_id,\s*3 as priority/i);
-    expect(hierarchySql).toMatch(/'document_image', document\.id, 1/i);
+    expect(hierarchySql).toMatch(/'document_image', media\.document_id, 1/i);
     expect(hierarchySql).toMatch(/insert into public\.project_storage_entity_bindings[\s\S]*on conflict \(file_id\) do nothing/i);
     expect(hierarchySql).toMatch(/file\.id = any\(v_imported_ids\)/i);
     expect(hierarchySql).not.toMatch(/v_repair_started_at/i);

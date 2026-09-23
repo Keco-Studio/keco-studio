@@ -38,7 +38,7 @@ declare
 begin
 perform pg_catalog.set_config('keco.storage_skip_entity_binding', 'on', true);
 
-with storage_inventory as (
+with storage_inventory as materialized (
   select
     object.bucket_id,
     object.name as object_path,
@@ -57,6 +57,18 @@ with storage_inventory as (
     and registered.id is null
     and object.metadata ->> 'size' ~ '^[0-9]+$'
     and (object.metadata ->> 'size')::numeric between 1 and 9223372036854775807
+), document_media as materialized (
+  select distinct
+    document.id as document_id,
+    document.project_id,
+    media_match[1] as bucket_id,
+    media_match[2] as object_path
+  from public.documents document
+  cross join lateral pg_catalog.regexp_matches(
+    coalesce(document.content, ''),
+    '/storage/v1/object/(?:public|sign|authenticated)/(library-media-files|tiptap-images)/([^[:space:]?#)>"&]+)',
+    'g'
+  ) media_match
 ), native_candidates as (
   select asset.storage_bucket as bucket_id, asset.storage_path as object_path,
     asset.project_id, 'project_asset'::text as source_kind, asset.id as source_entity_id,
@@ -80,12 +92,12 @@ with storage_inventory as (
   join public.character_assets asset on asset.id = attempt.character_asset_id
   where attempt.storage_path is not null
   union all
-  select inventory.bucket_id, inventory.object_path, document.project_id,
-    'document_image', document.id, 1
+  select inventory.bucket_id, inventory.object_path, media.project_id,
+    'document_image', media.document_id, 1
   from storage_inventory inventory
-  join public.documents document
-    on inventory.bucket_id in ('library-media-files', 'tiptap-images')
-    and pg_catalog.strpos(coalesce(document.content, ''), inventory.object_path) > 0
+  join document_media media
+    on media.bucket_id = inventory.bucket_id
+    and media.object_path = inventory.object_path
   union all
   select inventory.bucket_id, inventory.object_path, library.project_id,
     'library_media', asset.id, 2
