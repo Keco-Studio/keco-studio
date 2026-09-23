@@ -172,11 +172,39 @@ async function listNativeObjects(client: BackfillClient, bucketId: AccountedStor
   return objects;
 }
 
+async function listRpcObjects(
+  client: BackfillClient,
+  bucketId: AccountedStorageBucket,
+  page: { offset: number; limit: number },
+): Promise<StorageObject[]> {
+  if (!client.rpc) throw new Error('Storage inventory RPC is unavailable');
+  const result = await client.rpc('service_account_storage_inventory', {
+    p_bucket_id: bucketId,
+    p_offset: page.offset,
+    p_limit: page.limit,
+  });
+  if (result.error || !Array.isArray(result.data)) throw new Error('Storage inventory RPC failed');
+  return result.data.map(raw => {
+    const row = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const size = typeof row.size_bytes === 'number' ? row.size_bytes : Number(row.size_bytes);
+    return {
+      bucketId,
+      objectPath: typeof row.object_path === 'string' ? row.object_path : '',
+      sizeBytes: Number.isSafeInteger(size) ? size : 0,
+      createdAt: typeof row.object_created_at === 'string' ? row.object_created_at : null,
+      mimeType: typeof row.mime_type === 'string' ? row.mime_type : null,
+      uploaderId: typeof row.uploader_id === 'string' ? row.uploader_id : null,
+    };
+  });
+}
+
 async function listObjects(client: BackfillClient, bucketId: AccountedStorageBucket): Promise<StorageObject[]> {
-  if (!client.listAccountedStorageObjects) return listNativeObjects(client, bucketId);
+  if (!client.listAccountedStorageObjects && !client.rpc) return listNativeObjects(client, bucketId);
   const objects: StorageObject[] = [];
   for (let offset = 0;; offset += PAGE_SIZE) {
-    const page = await client.listAccountedStorageObjects(bucketId, { offset, limit: PAGE_SIZE });
+    const page = client.listAccountedStorageObjects
+      ? await client.listAccountedStorageObjects(bucketId, { offset, limit: PAGE_SIZE })
+      : await listRpcObjects(client, bucketId, { offset, limit: PAGE_SIZE });
     objects.push(...page);
     if (page.length < PAGE_SIZE) return objects;
   }
