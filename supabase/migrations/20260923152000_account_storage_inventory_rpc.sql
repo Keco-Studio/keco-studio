@@ -43,6 +43,8 @@ as $$
       'library-media-files', 'project-assets', 'map-assets',
       'character-assets', 'tiptap-images'
     )
+    and object.metadata ->> 'size' ~ '^[0-9]+$'
+    and (object.metadata ->> 'size')::numeric between 1 and 9223372036854775807
   order by object.name
   limit least(greatest(p_limit, 1), 1000)
   offset greatest(p_offset, 0);

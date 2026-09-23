@@ -15,6 +15,7 @@ describe('account storage inventory RPC migration', () => {
     expect(sql).toMatch(/create function public\.service_account_storage_inventory\(/i);
     expect(sql).toMatch(/security definer[\s\S]*set search_path = ''/i);
     expect(sql).toMatch(/object\.bucket_id in \([\s\S]*'tiptap-images'[\s\S]*\)/i);
+    expect(sql).toMatch(/object\.metadata ->> 'size' ~ '\^\[0-9\]\+\$'[\s\S]*between 1 and 9223372036854775807/i);
     expect(sql).toMatch(/coalesce\([\s\S]*object\.owner[\s\S]*object\.owner_id/i);
     expect(sql).toMatch(/limit least\(greatest\(p_limit, 1\), 1000\)/i);
     expect(sql).toMatch(/revoke all on function public\.service_account_storage_inventory[\s\S]*from public, anon, authenticated/i);
