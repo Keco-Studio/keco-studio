@@ -50,7 +50,10 @@ if (existsSync(backupPath)) {
 if (!existsSync(lockPath)) throw new Error('MCP deno.lock is missing');
 
 renameSync(lockPath, backupPath);
-const child = spawn('supabase', ['functions', 'serve', 'mcp', '--env-file', '.env.local'], {
+const envFileArgs = existsSync(path.join(rootDir, '.env.local'))
+  ? ['--env-file', '.env.local']
+  : [];
+const child = spawn('supabase', ['functions', 'serve', 'mcp', ...envFileArgs], {
   cwd: rootDir,
   env: process.env,
   stdio: 'inherit',
