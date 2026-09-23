@@ -114,6 +114,51 @@ describe('account storage reconciliation', () => {
     });
   });
 
+  it('paginates native logical rows beyond the PostgREST row limit', async () => {
+    const logicalRows = Array.from({ length: 1164 }, (_, index) => ({
+      id: `logical-${String(index).padStart(4, '0')}`,
+      owner_id: 'owner-a',
+      size_bytes: 1,
+    }));
+    const client = {
+      async listPhysicalStorageObjects() { return []; },
+      async listRegisteredStorageFiles() { return []; },
+      async listStorageReservations() { return []; },
+      async listStorageQuotas() {
+        return [{ ownerId: 'owner-a', usedBytes: 0, logicalUsedBytes: 1164, reservedBytes: 0 }];
+      },
+      async listAmbiguousStorageObjects() { return []; },
+      async readStorageEntityBindingDrift() {
+        return { missingBindings: 0, staleBindings: 0, conflictingBindings: 0 };
+      },
+      from(table: string) {
+        if (table !== 'project_storage_logical_files') throw new Error(`Unexpected table ${table}`);
+        return {
+          select() {
+            const firstPage = Promise.resolve({ data: logicalRows.slice(0, 1000), error: null });
+            return Object.assign(firstPage, {
+              order() {
+                return {
+                  range(from: number, to: number) {
+                    return Promise.resolve({ data: logicalRows.slice(from, to + 1), error: null });
+                  },
+                };
+              },
+            });
+          },
+        };
+      },
+    };
+
+    await expect(reconcileAccountStorage(
+      client as unknown as Parameters<typeof reconcileAccountStorage>[0],
+      { applySafeRepairs: false },
+    )).resolves.toMatchObject({
+      logicalQuotaMismatches: 0,
+      quotaMismatches: 0,
+    });
+  });
+
   it('reports and safely refreshes missing and stale entity bindings', async () => {
     const client = clientFixture();
     client.listPhysicalStorageObjects = async () => [];
