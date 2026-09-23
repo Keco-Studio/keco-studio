@@ -306,8 +306,9 @@ after insert or update of project_id, source_kind, lifecycle_status
 on public.project_storage_files
 for each row execute function private.storage_activate_assets_workspace_from_file();
 
--- Rebuild cached physical totals after importing the historical objects.
-select public.service_repair_historical_project_storage();
+-- Historical data repair is invoked separately after schema deployment. Keeping
+-- the production-wide scan out of this transaction lets the schema commit even
+-- when backfill work needs to be retried or resumed independently.
 
 -- Assets existence is controlled by the root workspace, not by a positive
 -- physical subtotal. This also lets its detail endpoint return an empty list.
