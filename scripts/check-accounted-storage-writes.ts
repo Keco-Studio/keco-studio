@@ -24,7 +24,7 @@ function sourceFiles(rootDir: string, directory = rootDir): string[] {
   const entries = readdirSync(directory, { withFileTypes: true });
   return entries.flatMap(entry => {
     const absolute = path.join(directory, entry.name);
-    if (entry.isDirectory()) return SKIP_DIRECTORIES.has(entry.name) ? [] : sourceFiles(rootDir, absolute);
+    if (entry.isDirectory()) return SKIP_DIRECTORIES.has(entry.name) || entry.name.startsWith('.next-') ? [] : sourceFiles(rootDir, absolute);
     return entry.isFile() && SOURCE_EXTENSIONS.has(path.extname(entry.name)) ? [absolute] : [];
   });
 }
