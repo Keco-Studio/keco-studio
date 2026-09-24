@@ -2,15 +2,17 @@
 
 import { CloseOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectDocumentModal } from '@/components/script-system/SelectDocumentModal';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { createMapAgentRefreshKey, type CreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
 import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
 import { DirectMapPlanInspector } from './components/DirectMapPlanInspector';
-import { MapChatPanel, type MapChatMessage, type MapGenerationHistoryEntry } from './components/MapChatPanel';
+import { DirectMapSourceForm } from './components/DirectMapSourceForm';
 import { MapReferencePanel } from './components/MapReferencePanel';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { SavedMapsPanel } from './components/SavedMapsPanel';
@@ -59,10 +61,6 @@ const INITIAL_DIRECT_PLAN: MapPlanV3 = {
   },
 };
 
-function nextMessageId() {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export function DirectMapWorkbench() {
   const searchParams = useSearchParams();
   const requestedMapId = searchParams?.get('mapId') ?? null;
@@ -72,7 +70,6 @@ export function DirectMapWorkbench() {
   const adapter = useMemo(() => createMapDraftAdapterV3(service), [service]);
   const [plan, setPlan] = useState(INITIAL_DIRECT_PLAN);
   const [scene, setScene] = useState<MapSceneV3>(() => createEmptyMapSceneV3(INITIAL_DIRECT_PLAN));
-  const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
   const [documentId, setDocumentId] = useState('');
   const [documentName, setDocumentName] = useState('');
@@ -87,12 +84,19 @@ export function DirectMapWorkbench() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'browse' | 'detail'>('browse');
-  const [chatMessages, setChatMessages] = useState<MapChatMessage[]>([]);
   const [planDetailsOpen, setPlanDetailsOpen] = useState(false);
   const openRequestEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
   const openedRequestedMapId = useRef<string | null>(null);
   const previousGenerationPhase = useRef<string>('idle');
+  const pendingRefresh = useRef<{ projectId: string; mapId?: string } | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const { data: agentRefresh } = useQuery<CreateMapAgentRefresh | null>({
+    queryKey: createMapAgentRefreshKey,
+    queryFn: async () => null,
+    enabled: false,
+    initialData: null,
+  });
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -111,6 +115,7 @@ export function DirectMapWorkbench() {
   const issues = validation.success === false ? validation.issues : [];
   const busy = operation !== 'idle' || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
+  const mapSwitchBlocked = savedMapSwitchBlocked(draft);
   const canGenerate = !readOnly && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && !busy;
 
@@ -138,12 +143,6 @@ export function DirectMapWorkbench() {
   useEffect(() => {
     if (previousGenerationPhase.current !== 'ready' && generation.phase === 'ready') {
       void mapGenerationHistory.refetch();
-      setChatMessages((current) => {
-        if (current.some((message) => message.text.includes('Here is the created map') && !message.text.includes('plan'))) {
-          return current;
-        }
-        return [...current, { id: nextMessageId(), role: 'assistant', text: 'Here is the created map' }];
-      });
     }
     previousGenerationPhase.current = generation.phase;
   }, [generation.phase, mapGenerationHistory]);
@@ -190,7 +189,6 @@ export function DirectMapWorkbench() {
     generation.reset();
     setOpeningMapId(null);
     setError(null);
-    setChatMessages([]);
     setViewMode('browse');
   };
 
@@ -205,9 +203,7 @@ export function DirectMapWorkbench() {
     generation.reset();
     setPlan(INITIAL_DIRECT_PLAN);
     setScene(createEmptyMapSceneV3(INITIAL_DIRECT_PLAN));
-    setDescription('');
     clearAttachedDocument();
-    setChatMessages([]);
     setError(null);
     setViewMode('detail');
     setPlanDetailsOpen(true);
@@ -222,20 +218,16 @@ export function DirectMapWorkbench() {
     return () => window.removeEventListener(CREATE_MAP_TOOLBAR_CREATE_EVENT, onToolbarCreate);
   }, [enterCreateDetail]);
 
-  const createPlan = async (prompt?: string) => {
+  const createPlan = async (prompt = '') => {
     if (readOnly) return;
-    const request = (prompt ?? description).trim();
+    const request = prompt.trim();
     if (!projectId || (!request && !documentId) || busy) return;
     if (request && containsUnsafeDescriptionContent(request)) {
       setError(DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE);
       return;
     }
-    setDescription(request);
     setOperation('planning');
     setError(null);
-    if (request) {
-      setChatMessages((current) => [...current, { id: nextMessageId(), role: 'user', text: request }]);
-    }
     try {
       const created = await service.createPlanV3(
         request,
@@ -255,11 +247,6 @@ export function DirectMapWorkbench() {
       setScene(nextScene);
       await draft.create(projectId, created.sourceToken, created.plan, nextScene);
       await savedMaps.refetch();
-      setChatMessages((current) => [
-        ...current,
-        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
-        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
-      ]);
       setViewMode('detail');
       setPlanDetailsOpen(true);
       setRightOpen(true);
@@ -292,8 +279,8 @@ export function DirectMapWorkbench() {
     }
   };
 
-  const openSavedMap = useCallback(async (map: SavedMapSummary) => {
-    if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
+  const openSavedMap = useCallback(async (map: SavedMapSummary, refresh = false) => {
+    if ((!refresh && map.id === draft.identity?.mapId) || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
     setOperation('opening');
     setOpeningMapId(map.id);
@@ -309,14 +296,6 @@ export function DirectMapWorkbench() {
       setScene(prepared.scene);
       draft.install(loaded);
       generation.installRestore(prepared);
-      setChatMessages([
-        { id: nextMessageId(), role: 'user', text: `Open map: ${loaded.plan.name}` },
-        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
-        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
-        ...(prepared.scene.mapImage
-          ? [{ id: nextMessageId(), role: 'assistant' as const, text: 'Here is the created map' }]
-          : []),
-      ]);
       setViewMode('detail');
       // Opening a saved map should restore the inspector so the loaded plan,
       // generation state, and collision grid are immediately available. The
@@ -335,6 +314,28 @@ export function DirectMapWorkbench() {
       }
     }
   }, [draft, generation, service]);
+
+  useEffect(() => {
+    if (!agentRefresh || (projectId && agentRefresh.projectId !== projectId)) return;
+    pendingRefresh.current = { projectId: agentRefresh.projectId, mapId: agentRefresh.mapId };
+    void savedMaps.refetch();
+    void mapGenerationHistory.refetch();
+    setRefreshVersion((version) => version + 1);
+  }, [agentRefresh, projectId, savedMaps.refetch, mapGenerationHistory.refetch]);
+
+  useEffect(() => {
+    const refresh = pendingRefresh.current;
+    // Wait for autosave before installing durable state, preserving local edits.
+    if (!refresh || busy || mapSwitchBlocked) return;
+    if (projectId && refresh.projectId !== projectId) {
+      pendingRefresh.current = null;
+      return;
+    }
+    const target = savedMaps.maps.find((map) => map.id === (refresh.mapId ?? draft.identity?.mapId));
+    if (!target || target.projectId !== refresh.projectId) return;
+    pendingRefresh.current = null;
+    void openSavedMap(target, true);
+  }, [refreshVersion, busy, mapSwitchBlocked, draft, projectId, savedMaps.maps, openSavedMap]);
 
   useEffect(() => {
     if (!requestedMapId) {
@@ -392,12 +393,6 @@ export function DirectMapWorkbench() {
 
   const actionError = error ?? draft.error ?? generation.error;
   const mapVersionLabel = draft.identity ? `Version${draft.identity.revisionNumber}` : null;
-  const generationHistory: MapGenerationHistoryEntry[] = mapGenerationHistory.revisions.map((revision) => ({
-    revisionId: revision.revisionId,
-    label: `V${revision.revisionNumber}`,
-    isCurrent: revision.revisionId === image?.sourceRevisionId,
-  }));
-
   const showRightPanel = viewMode === 'detail' && planDetailsOpen;
 
   return (
@@ -439,16 +434,16 @@ export function DirectMapWorkbench() {
             readOnly={readOnly}
           />
         ) : (
-          <MapChatPanel
-            mapTitle={plan.name}
-            messages={chatMessages}
+          <DirectMapSourceForm
+            key={draft.identity?.mapId ?? 'new'}
+            title={plan.name}
             onBack={() => {
               setViewMode('browse');
               setPlanDetailsOpen(false);
             }}
             onCreate={enterCreateDetail}
-            onAsk={(prompt) => void createPlan(prompt)}
-            canAsk={Boolean(projectId) && !readOnly}
+            onCreatePlan={(prompt) => void createPlan(prompt)}
+            canCreate={Boolean(projectId) && !readOnly}
             busy={busy}
             readOnly={readOnly}
             error={actionError}
@@ -459,16 +454,9 @@ export function DirectMapWorkbench() {
               if (!projectId || readOnly || busy) return;
               setDocumentPickerOpen(true);
             }}
-            generationHistory={generationHistory}
-            mapPlan={draft.identity ? {
-              title: plan.name,
-              versionLabel: `Version${draft.identity.revisionNumber}`,
-            } : null}
-            mapImage={image ? {
-              title: plan.name,
-              versionLabel: `Version${draft.identity?.revisionNumber ?? ''}`,
-              downloadUrl: image.signedUrl,
-            } : null}
+            revisionNumber={draft.identity?.revisionNumber}
+            downloadUrl={image?.signedUrl}
+            history={mapGenerationHistory.revisions}
             onViewMapPlan={() => {
               setPlanDetailsOpen(true);
               setRightOpen(true);

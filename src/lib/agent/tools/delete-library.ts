@@ -4,6 +4,7 @@
  * Requires the admin role (matches verifyLibraryDeletionPermission).
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { deleteLibraryServer } from '../data-access';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -21,7 +22,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
   const libraryResult = await resolveLibraryForTool(
     ctx.supabase,
-    ctx.projectId,
+    requireProjectContext(ctx),
     parsed.data.libraryName,
     ctx
   );

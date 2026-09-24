@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   summarizeVisiblePlotGraph,
@@ -24,7 +25,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   try {
     const snapshot = await loadStoryGraphSnapshot(ctx.supabase, {
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       userId: ctx.userId,
       accessCache: ctx.accessCache,
       libraryId: parsed.data.libraryId,

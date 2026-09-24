@@ -1,11 +1,12 @@
 import type { ConversationScope } from '@/lib/agent/types';
 import type { StreamActivity } from './streamActivity';
-import type { ChatItem } from './types';
+import type { AgentRuntimeScope, ChatItem } from './types';
 
 export interface AgentChatRuntime {
   key: string;
   userId?: string;
-  projectId: string;
+  workspace: AgentRuntimeScope['workspace'];
+  projectId?: string;
   conversationId?: string;
   items: ChatItem[];
   isLoading: boolean;
@@ -17,17 +18,17 @@ export interface AgentChatRuntime {
   activeScope?: ConversationScope;
 }
 
-type RuntimePatch = Partial<Omit<AgentChatRuntime, 'key' | 'userId' | 'projectId'>>;
+type RuntimePatch = Partial<Omit<AgentChatRuntime, 'key' | 'userId' | 'workspace' | 'projectId'>>;
 type RuntimeListener = (key: string) => void;
 
 const runtimes = new Map<string, AgentChatRuntime>();
-const selectedRuntimeByProject = new Map<string, string>();
+const selectedRuntimeByScope = new Map<string, string>();
 const listeners = new Set<RuntimeListener>();
 let draftCounter = 0;
 
 const ownerKey = (userId?: string) => userId ?? 'anonymous';
-const projectSelectionKey = (userId: string | undefined, projectId: string) =>
-  `${ownerKey(userId)}:${projectId}`;
+export const agentRuntimeScopeKey = (scope: AgentRuntimeScope) =>
+  `draft:${ownerKey(scope.userId)}:${scope.workspace}:${scope.projectId ?? 'account'}`;
 
 export const conversationRuntimeKey = (userId: string | undefined, conversationId: string) =>
   `conversation:${ownerKey(userId)}:${conversationId}`;
@@ -36,21 +37,23 @@ function emit(key: string) {
   for (const listener of listeners) listener(key);
 }
 
-export function createAgentChatRuntime(input: {
-  userId?: string;
-  projectId: string;
+export function createAgentChatRuntime(input: Omit<AgentRuntimeScope, 'workspace'> & {
+  workspace?: AgentRuntimeScope['workspace'];
   conversationId?: string;
   autoExecute?: boolean;
 }): AgentChatRuntime {
+  const workspace = input.workspace ?? 'studio';
+  const baseKey = agentRuntimeScopeKey({ ...input, workspace });
   const key = input.conversationId
     ? conversationRuntimeKey(input.userId, input.conversationId)
-    : `draft:${ownerKey(input.userId)}:${input.projectId}:${draftCounter++}`;
+    : runtimes.has(baseKey) ? `${baseKey}:${draftCounter++}` : baseKey;
   const existing = runtimes.get(key);
   if (existing) return existing;
 
   const runtime: AgentChatRuntime = {
     key,
     userId: input.userId,
+    workspace,
     projectId: input.projectId,
     conversationId: input.conversationId,
     items: [],
@@ -90,24 +93,26 @@ export function updateAgentChatRuntime(
   return next;
 }
 
-export function selectProjectAgentRuntime(
-  userId: string | undefined,
-  projectId: string,
-  key: string
-): AgentChatRuntime | undefined {
+export function selectScopedAgentRuntime(scope: AgentRuntimeScope, key: string): AgentChatRuntime | undefined {
   const runtime = runtimes.get(key);
-  if (!runtime || runtime.userId !== userId) return undefined;
-  selectedRuntimeByProject.set(projectSelectionKey(userId, projectId), key);
+  if (!runtime || runtime.userId !== scope.userId || runtime.workspace !== scope.workspace ||
+      runtime.projectId !== scope.projectId) return undefined;
+  selectedRuntimeByScope.set(agentRuntimeScopeKey(scope), key);
   emit(key);
   return runtime;
 }
 
-export function getProjectAgentRuntime(
-  userId: string | undefined,
-  projectId: string
-): AgentChatRuntime | undefined {
-  const key = selectedRuntimeByProject.get(projectSelectionKey(userId, projectId));
+export function getScopedAgentRuntime(scope: AgentRuntimeScope): AgentChatRuntime | undefined {
+  const key = selectedRuntimeByScope.get(agentRuntimeScopeKey(scope));
   return key ? runtimes.get(key) : undefined;
+}
+
+export function selectProjectAgentRuntime(userId: string | undefined, projectId: string, key: string) {
+  return selectScopedAgentRuntime({ userId, workspace: 'studio', projectId }, key);
+}
+
+export function getProjectAgentRuntime(userId: string | undefined, projectId: string) {
+  return getScopedAgentRuntime({ userId, workspace: 'studio', projectId });
 }
 
 export function bindAgentChatRuntimeToConversation(
@@ -126,6 +131,7 @@ export function bindAgentChatRuntimeToConversation(
         ...current,
         ...existing,
         key: nextKey,
+        workspace: current.workspace,
         projectId: current.projectId,
         conversationId,
         items: current.items.length > 0 ? current.items : existing.items,
@@ -140,8 +146,8 @@ export function bindAgentChatRuntimeToConversation(
 
   runtimes.delete(key);
   runtimes.set(nextKey, next);
-  for (const [projectId, selectedKey] of selectedRuntimeByProject) {
-    if (selectedKey === key) selectedRuntimeByProject.set(projectId, nextKey);
+  for (const [scopeKey, selectedKey] of selectedRuntimeByScope) {
+    if (selectedKey === key) selectedRuntimeByScope.set(scopeKey, nextKey);
   }
   emit(key);
   emit(nextKey);
@@ -155,7 +161,7 @@ export function subscribeAgentChatRuntime(listener: RuntimeListener): () => void
 
 export function resetAgentChatRuntimeStoreForTests(): void {
   runtimes.clear();
-  selectedRuntimeByProject.clear();
+  selectedRuntimeByScope.clear();
   listeners.clear();
   draftCounter = 0;
 }

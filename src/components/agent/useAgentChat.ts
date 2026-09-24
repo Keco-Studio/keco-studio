@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
@@ -13,6 +14,7 @@ import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImport
 import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 import {
   clearLastConversation,
+  getLastConversationMap,
   setLastConversation,
   getAutoExecutePreference,
   setAutoExecutePreference,
@@ -28,15 +30,16 @@ import {
 import { parseGameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
-import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
+import { parseAgentNavigationDestination, type AgentInvalidation, type AgentRuntimeScope, type ChatItem, type SendContext, type SendOptions } from './types';
 import type { ConversationScope } from '@/lib/agent/types';
 import {
   bindAgentChatRuntimeToConversation,
   createAgentChatRuntime,
   getAgentChatRuntime,
   getConversationAgentRuntime,
-  getProjectAgentRuntime,
-  selectProjectAgentRuntime,
+  getScopedAgentRuntime,
+  selectScopedAgentRuntime,
+  agentRuntimeScopeKey,
   subscribeAgentChatRuntime,
   updateAgentChatRuntime,
   type AgentChatRuntime,
@@ -83,6 +86,12 @@ export async function invalidateAgentCaches(
   invalidations: AgentInvalidation[]
 ): Promise<void> {
   for (const invalidation of invalidations) {
+    if (invalidation.type === 'create-map') {
+      if (typeof invalidation.projectId !== 'string' || (invalidation.mapId !== undefined && typeof invalidation.mapId !== 'string')) continue;
+      await queryClient.invalidateQueries({ queryKey: ['create-map'] });
+      publishCreateMapAgentRefresh(queryClient, invalidation);
+      continue;
+    }
     if (invalidation.type === 'library') {
       await invalidateLibraryData(queryClient, {
         projectId: invalidation.projectId,
@@ -127,21 +136,28 @@ export async function invalidateAgentCaches(
  * Manages the agent conversation: SSE streaming, message state, confirmation
  * round-trips, and cache invalidation after writes.
  */
-export function useAgentChat(ctx: SendContext) {
+export function useAgentChat(ctx: SendContext, open: boolean) {
   const supabase = useSupabase();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const runtimeScope = useMemo<AgentRuntimeScope>(() => ({
+    userId: ctx.userId,
+    workspace: ctx.workspace,
+    projectId: ctx.projectId || undefined,
+  }), [ctx.userId, ctx.workspace, ctx.projectId]);
+  const scopeKey = agentRuntimeScopeKey(runtimeScope);
 
   const initialRuntimeRef = useRef<AgentChatRuntime | null>(null);
   if (!initialRuntimeRef.current) {
     initialRuntimeRef.current = createAgentChatRuntime({
       userId: ctx.userId,
-      projectId: ctx.projectId,
+      workspace: ctx.workspace,
+      projectId: ctx.projectId || undefined,
     });
   }
   const [runtime, setRuntime] = useState<AgentChatRuntime>(initialRuntimeRef.current);
   const activeRuntimeKeyRef = useRef(runtime.key);
-  const projectIdRef = useRef<string | undefined>(undefined);
+  const scopeKeyRef = useRef<string | undefined>(undefined);
   const restoreEpochRef = useRef(0);
   /** Auto mode: queue generate_from_document approval without showing a confirm card. */
   const pendingAutoGenerateConfirmRef = useRef<PendingAutoGenerateConfirm | null>(null);
@@ -169,10 +185,10 @@ export function useAgentChat(ctx: SendContext) {
   const activateRuntime = useCallback(
     (next: AgentChatRuntime) => {
       activeRuntimeKeyRef.current = next.key;
-      if (ctx.projectId) selectProjectAgentRuntime(ctx.userId, ctx.projectId, next.key);
+      selectScopedAgentRuntime(runtimeScope, next.key);
       syncRuntime(next);
     },
-    [ctx.userId, ctx.projectId, syncRuntime]
+    [runtimeScope, syncRuntime]
   );
 
   useEffect(
@@ -259,7 +275,7 @@ export function useAgentChat(ctx: SendContext) {
     async (
       response: Response,
       initialRuntimeKey: string,
-      origin: { userId?: string; projectId: string },
+      origin: AgentRuntimeScope,
       onBound: (key: string) => void,
       options?: { initialAssistantId?: string | null }
     ) => {
@@ -275,13 +291,12 @@ export function useAgentChat(ctx: SendContext) {
           activeRuntimeKeyRef.current = runtimeKey;
           syncRuntime(bound);
         }
-        const selectedForOrigin = getProjectAgentRuntime(origin.userId, origin.projectId);
+        const selectedForOrigin = getScopedAgentRuntime(origin);
         if (
           origin.userId &&
-          origin.projectId &&
           selectedForOrigin?.key === runtimeKey
         ) {
-          setLastConversation(origin.userId, origin.projectId, convHeader);
+          setLastConversation(origin.userId, agentRuntimeScopeKey(origin), convHeader);
         }
       }
 
@@ -456,6 +471,22 @@ export function useAgentChat(ctx: SendContext) {
             void invalidateCaches(parseAgentInvalidations(event));
             break;
           }
+          case 'navigation_requested': {
+            const destination = parseAgentNavigationDestination(event.destination);
+            if (!destination) break;
+            router.push(`/${destination.projectId}`);
+            const projectScope: AgentRuntimeScope = {
+              userId: origin.userId,
+              workspace: 'studio',
+              projectId: destination.projectId,
+            };
+            const draft = createAgentChatRuntime({
+              ...projectScope,
+              autoExecute: origin.userId ? getAutoExecutePreference(origin.userId) : false,
+            });
+            selectScopedAgentRuntime(projectScope, draft.key);
+            break;
+          }
           case 'game_design_evidence': {
             const evidence = parseGameDesignRuleEvidence(event.evidence);
             if (!evidence || !assistantId) break;
@@ -530,7 +561,7 @@ export function useAgentChat(ctx: SendContext) {
         });
       }
     },
-    [appendItem, updateItem, invalidateCaches, beginStreamActivity, syncRuntime]
+    [appendItem, updateItem, invalidateCaches, beginStreamActivity, router, syncRuntime]
   );
 
   const send = useCallback(
@@ -539,6 +570,9 @@ export function useAgentChat(ctx: SendContext) {
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
       if (
         !selectedRuntime ||
+        selectedRuntime.userId !== runtimeScope.userId ||
+        selectedRuntime.workspace !== runtimeScope.workspace ||
+        selectedRuntime.projectId !== runtimeScope.projectId ||
         selectedRuntime.isLoading ||
         selectedRuntime.isStreaming ||
         !message.trim()
@@ -627,7 +661,7 @@ export function useAgentChat(ctx: SendContext) {
         await consumeStream(
           response,
           requestRuntimeKey,
-          { userId: ctx.userId, projectId: ctx.projectId },
+          runtimeScope,
           (boundKey) => {
             requestRuntimeKey = boundKey;
           },
@@ -666,14 +700,17 @@ export function useAgentChat(ctx: SendContext) {
         });
       }
     },
-    [appendItem, getToken, ctx, consumeStream, beginStreamActivity]
+    [appendItem, getToken, ctx, runtimeScope, consumeStream, beginStreamActivity]
   );
 
   const setAutoExecute = useCallback(
     async (value: boolean) => {
       if (!ctx.userId) return;
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
-      if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
+      if (!selectedRuntime || selectedRuntime.userId !== runtimeScope.userId ||
+          selectedRuntime.workspace !== runtimeScope.workspace ||
+          selectedRuntime.projectId !== runtimeScope.projectId ||
+          selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
       const runtimeKey = selectedRuntime.key;
       const prev = selectedRuntime.autoExecute;
       applyAutoExecute(runtimeKey, value);
@@ -724,7 +761,7 @@ export function useAgentChat(ctx: SendContext) {
         });
       }
     },
-    [ctx.userId, applyAutoExecute, getToken, appendItem]
+    [ctx.userId, runtimeScope, applyAutoExecute, getToken, appendItem]
   );
 
   const confirm = useCallback(
@@ -737,7 +774,10 @@ export function useAgentChat(ctx: SendContext) {
     ) => {
       if (!ctx.userId) return;
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
-      if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
+      if (!selectedRuntime || selectedRuntime.userId !== runtimeScope.userId ||
+          selectedRuntime.workspace !== runtimeScope.workspace ||
+          selectedRuntime.projectId !== runtimeScope.projectId ||
+          selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
       let requestRuntimeKey = selectedRuntime.key;
       const pendingConfirmation = selectedRuntime.items.find(
         (it) => it.confirmation?.actionId === actionId
@@ -846,7 +886,7 @@ export function useAgentChat(ctx: SendContext) {
         await consumeStream(
           response,
           requestRuntimeKey,
-          { userId: ctx.userId, projectId: ctx.projectId },
+          runtimeScope,
           (boundKey) => {
             requestRuntimeKey = boundKey;
           }
@@ -878,7 +918,7 @@ export function useAgentChat(ctx: SendContext) {
         }
       }
     },
-    [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
+    [getToken, ctx, runtimeScope, consumeStream, appendItem, beginStreamActivity, queryClient]
   );
 
   confirmRef.current = confirm;
@@ -935,30 +975,32 @@ export function useAgentChat(ctx: SendContext) {
   const resetToEmpty = useCallback(() => {
     const next = createAgentChatRuntime({
       userId: ctx.userId,
-      projectId: ctx.projectId,
+      workspace: ctx.workspace,
+      projectId: ctx.projectId || undefined,
       autoExecute: ctx.userId ? getAutoExecutePreference(ctx.userId) : false,
     });
     activateRuntime(next);
     return next;
-  }, [activateRuntime, ctx.projectId, ctx.userId]);
+  }, [activateRuntime, ctx.projectId, ctx.userId, ctx.workspace]);
 
   const startNewConversation = useCallback(() => {
     restoreEpochRef.current += 1;
     if (!ctx.userId) return;
     resetToEmpty();
-    if (ctx.userId && ctx.projectId) {
-      clearLastConversation(ctx.userId, ctx.projectId);
-    }
-  }, [resetToEmpty, ctx.userId, ctx.projectId]);
+    clearLastConversation(ctx.userId, scopeKey);
+  }, [resetToEmpty, ctx.userId, scopeKey]);
 
   const loadConversation = useCallback(
     async (id: string, options?: { persist?: boolean }) => {
       restoreEpochRef.current += 1;
-      if (!ctx.userId) return false;
+      if (!open || !ctx.userId) return false;
       const existing = getConversationAgentRuntime(ctx.userId, id);
+      if (existing && (existing.workspace !== runtimeScope.workspace ||
+          existing.projectId !== runtimeScope.projectId)) return false;
       const target = existing ?? createAgentChatRuntime({
         userId: ctx.userId,
-        projectId: ctx.projectId,
+        workspace: ctx.workspace,
+        projectId: ctx.projectId || undefined,
         conversationId: id,
       });
       if (existing?.isLoading) {
@@ -967,8 +1009,8 @@ export function useAgentChat(ctx: SendContext) {
       }
       if (existing?.isStreaming) {
         activateRuntime(existing);
-        if (options?.persist !== false && ctx.userId && ctx.projectId) {
-          setLastConversation(ctx.userId, ctx.projectId, id);
+        if (options?.persist !== false) {
+          setLastConversation(ctx.userId, scopeKey, id);
         }
         return true;
       }
@@ -981,9 +1023,7 @@ export function useAgentChat(ctx: SendContext) {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
         if (res.status === 404) {
-          if (ctx.userId && ctx.projectId) {
-            clearLastConversation(ctx.userId, ctx.projectId);
-          }
+          clearLastConversation(ctx.userId, scopeKey);
           if (activeRuntimeKeyRef.current === target.key) resetToEmpty();
           return false;
         }
@@ -997,8 +1037,8 @@ export function useAgentChat(ctx: SendContext) {
           autoExecute: resolvedMeta.autoExecute,
           activeScope: resolvedMeta.scope,
         }));
-        if (options?.persist !== false && ctx.userId && ctx.projectId) {
-          setLastConversation(ctx.userId, ctx.projectId, id);
+        if (options?.persist !== false) {
+          setLastConversation(ctx.userId, scopeKey, id);
         }
         return true;
       } catch {
@@ -1007,60 +1047,39 @@ export function useAgentChat(ctx: SendContext) {
         updateAgentChatRuntime(target.key, { isLoading: false });
       }
     },
-    [getToken, ctx.userId, ctx.projectId, resetToEmpty, fetchConversationMeta, activateRuntime]
+    [getToken, ctx.userId, ctx.projectId, ctx.workspace, scopeKey, runtimeScope, open, resetToEmpty, fetchConversationMeta, activateRuntime]
   );
 
-  const restoreProjectConversation = useCallback(async () => {
+  const restoreScopedConversation = useCallback(async () => {
     const restoreEpoch = ++restoreEpochRef.current;
-    if (!ctx.projectId) {
-      resetToEmpty();
-      return;
-    }
-    if (!ctx.userId) {
-      const anonymousRuntime = getProjectAgentRuntime(undefined, ctx.projectId);
-      if (anonymousRuntime) {
-        activateRuntime(anonymousRuntime);
-      } else {
-        resetToEmpty();
-      }
-      return;
-    }
-    const selectedRuntime = getProjectAgentRuntime(ctx.userId, ctx.projectId);
+    const selectedRuntime = getScopedAgentRuntime(runtimeScope);
     if (selectedRuntime) {
       activateRuntime(selectedRuntime);
-      return;
+    } else {
+      resetToEmpty();
     }
+    // Collapsed mounts only select local runtime state. Auth/history requests
+    // begin after the panel is opened.
+    if (!open || !ctx.userId) return;
+    if (selectedRuntime?.conversationId || selectedRuntime?.isStreaming ||
+        selectedRuntime?.items.length) return;
     // A pending design-upload hand-off will drive a fresh conversation; skip the
     // normal restore so it cannot clobber the auto-sent message.
-    if (peekDesignHandoff(ctx.projectId)) {
-      resetToEmpty();
-      return;
-    }
-    const { getLastConversationMap } = await import('./agentChatStorage');
-    if (restoreEpoch !== restoreEpochRef.current) return;
+    if (ctx.projectId && peekDesignHandoff(ctx.projectId)) return;
     const map = getLastConversationMap(ctx.userId);
-    const savedId = map[ctx.projectId];
-    if (savedId) {
-      const ok = await loadConversation(savedId, { persist: false });
-      if (!ok) return;
-    } else {
-      if (restoreEpoch !== restoreEpochRef.current) return;
-      resetToEmpty();
-    }
-  }, [ctx.userId, ctx.projectId, loadConversation, resetToEmpty, activateRuntime]);
+    const savedId = map[scopeKey];
+    if (!savedId) return;
+    await Promise.resolve();
+    if (restoreEpoch !== restoreEpochRef.current) return;
+    await loadConversation(savedId, { persist: false });
+  }, [runtimeScope, scopeKey, open, ctx.userId, ctx.projectId, loadConversation, resetToEmpty, activateRuntime]);
 
   useEffect(() => {
-    if (projectIdRef.current === ctx.projectId) return;
-    projectIdRef.current = ctx.projectId;
-    void restoreProjectConversation();
-  }, [ctx.projectId, restoreProjectConversation]);
-
-  useEffect(() => {
-    if (!ctx.userId || !ctx.projectId) return;
-    void restoreProjectConversation();
-    // Only run when user becomes available on initial mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.userId]);
+    if (scopeKeyRef.current === scopeKey && !open) return;
+    scopeKeyRef.current = scopeKey;
+    void restoreScopedConversation();
+    return () => { restoreEpochRef.current += 1; };
+  }, [scopeKey, open, restoreScopedConversation]);
 
   useEffect(() => {
     if (!ctx.userId) return;
@@ -1079,7 +1098,9 @@ export function useAgentChat(ctx: SendContext) {
     [appendItem]
   );
 
-  const runtimeMatchesUser = runtime.userId === ctx.userId;
+  const runtimeMatchesUser = runtime.userId === ctx.userId &&
+    runtime.workspace === ctx.workspace &&
+    runtime.projectId === (ctx.projectId || undefined);
 
   return {
     items: runtimeMatchesUser ? runtime.items : [],

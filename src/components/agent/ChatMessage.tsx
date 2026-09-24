@@ -8,6 +8,7 @@ import analyzeIcon from '@/assets/images/analyze.svg';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
 import { ConfirmationCard } from './ConfirmationCard';
+import { MapToolResultCard, MapGenerationConfirmationCard } from './MapToolResultCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
@@ -105,10 +106,23 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
       return <AssistantBubble item={item} streaming={streaming} />;
     case 'error':
       return <div className={styles.errorBubble}>{item.error}</div>;
-    case 'tool':
-      return null;
+    case 'tool': {
+      const data = item.toolCall?.data as { jobType?: unknown; jobId?: unknown; status?: unknown } | undefined;
+      if (item.toolCall?.status === 'success' && (data?.jobType === 'gdd' || data?.jobType === 'game-design-system') &&
+          typeof data.jobId === 'string' && typeof data.status === 'string') {
+        return <div className={`${styles.bubble} ${styles.assistant}`} data-testid="generation-job-status">
+          <div>{data.jobType === 'gdd' ? 'GDD generation' : 'Game Design System generation'}: {data.status.slice(0, 80)}</div>
+          <div>Job: {data.jobId.slice(0, 64)}</div>
+        </div>;
+      }
+      return item.toolCall?.displayHint === 'map' && item.toolCall.status === 'success'
+        ? <MapToolResultCard data={item.toolCall.data} /> : null;
+    }
     case 'confirmation': {
       if (!item.confirmation) return null;
+      if (item.confirmation.tool === 'generate_map_image' || item.confirmation.tool === 'retry_map_generation') {
+        return <MapGenerationConfirmationCard confirmation={item.confirmation} disabled={streaming} onDecision={onDecision} />;
+      }
       if (item.confirmation.confirmationMode === 'post_preview') {
         const preview = item.confirmation.preview as { type?: string } | undefined;
         if (preview?.type === 'setup_library') {

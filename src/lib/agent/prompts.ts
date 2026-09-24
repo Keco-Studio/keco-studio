@@ -6,14 +6,14 @@ import type { UserRole } from './types';
 
 export interface SystemPromptContext {
   projectName?: string;
-  projectId: string;
+  projectId?: string;
   currentFolderId?: string;
   currentFolderName?: string;
   currentDocumentId?: string;
   currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
-  userRole: UserRole;
+  userRole?: UserRole;
   gameDesignSystem?: {
     title?: string;
     version: number;
@@ -189,11 +189,11 @@ DOCUMENT ATTACHMENT ROUTING:
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}
-- Project ID: ${ctx.projectId}
+- Project ID: ${ctx.projectId ?? '(none)'}
 - Current folder: ${ctx.currentFolderName ? `${ctx.currentFolderName} (${ctx.currentFolderId})` : ctx.currentFolderId ?? '(none)'}
 - Current document: ${ctx.currentDocumentName ? `${ctx.currentDocumentName} (id: ${ctx.currentDocumentId})` : ctx.currentDocumentId ? `(id: ${ctx.currentDocumentId})` : '(none)'}
 - Active library: ${ctx.currentLibraryName ? `${ctx.currentLibraryName}${ctx.currentLibraryId ? ` (id: ${ctx.currentLibraryId})` : ''}` : '(none — ask user which library)'}
-- User role: ${ctx.userRole}`;
+- User role: ${ctx.userRole ?? '(none)'}`;
 
   const sections = [prompt];
   if (ctx.artStyleContext) {

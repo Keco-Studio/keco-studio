@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AGENT_LAUNCHER_DRAG_THRESHOLD_PX,
   AGENT_LAUNCHER_SIZE,
@@ -22,6 +22,9 @@ type DragSession = {
 export function useDraggableLauncherPosition() {
   const [position, setPosition] = useState<LauncherPosition | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const clearClickSuppression = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => clearClickSuppression.current?.(), []);
 
   useEffect(() => {
     const stored = readStoredLauncherPosition();
@@ -45,6 +48,7 @@ export function useDraggableLauncherPosition() {
   }, []);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    clearClickSuppression.current?.();
     if (event.button !== 0) return;
 
     const rect = event.currentTarget.getBoundingClientRect();
@@ -92,14 +96,21 @@ export function useDraggableLauncherPosition() {
           return prev;
         });
         setIsDragging(false);
-        // Prevent the synthetic click that would open the panel after a drag.
-        upEvent.preventDefault();
+        // Suppress only this gesture's synthetic click. Touch drags may emit no
+        // click, so a new pointer gesture must clear the pending suppression.
+        const clear = () => {
+          window.removeEventListener('click', suppressClick, true);
+          window.removeEventListener('pointerdown', clear, true);
+          clearClickSuppression.current = null;
+        };
         const suppressClick = (clickEvent: MouseEvent) => {
           clickEvent.preventDefault();
           clickEvent.stopPropagation();
-          window.removeEventListener('click', suppressClick, true);
+          clear();
         };
+        clearClickSuppression.current = clear;
         window.addEventListener('click', suppressClick, true);
+        window.addEventListener('pointerdown', clear, true);
       }
     };
 

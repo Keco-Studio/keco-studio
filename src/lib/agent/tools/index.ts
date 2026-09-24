@@ -5,7 +5,7 @@
  * Skills live in ../skills/ and are merged into allTools at the bottom.
  */
 
-import type { AgentTool, OpenAITool, ToolContext } from '../types';
+import type { AgentTool, AgentWorkspace, OpenAITool, ToolContext } from '../types';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { getLibraryProperties } from '../data-access';
 import { injectLibrarySchemaIntoToolParameters } from '../dynamic-tool-schema';
@@ -35,8 +35,41 @@ import { insertResourceReference } from './insert-resource-reference';
 import { readStoryGraph } from './read-story-graph';
 import { proposeStoryGraphEdit } from './propose-story-graph-edit';
 import { allSkills } from '../workflows';
+import { getAllowedToolNames } from './workspace-policy';
+import { listProjectsTool } from './list-projects';
+import { createProjectTool } from './create-project';
+import { selectProjectTool } from './select-project';
+import { listMapsTool } from './list-maps';
+import { readMapTool } from './read-map';
+import { createMapDraftTool } from './create-map-draft';
+import { generateMapImageTool } from './generate-map-image';
+import { getMapGenerationStatusTool } from './get-map-generation-status';
+import { retryMapGenerationTool } from './retry-map-generation';
+import { listGameDesignSystemsTool } from './list-game-design-systems';
+import { readGameDesignSystemTool } from './read-game-design-system';
+import { generateGameDesignSystemTool } from './generate-game-design-system';
+import { copyGameDesignSystemTool } from './copy-game-design-system';
+import { applyGameDesignSystemTool } from './apply-game-design-system';
+import { generateGddTool } from './generate-gdd';
+import { getGenerationStatusTool } from './get-generation-status';
 
 const tools: AgentTool[] = [
+  listGameDesignSystemsTool,
+  readGameDesignSystemTool,
+  generateGameDesignSystemTool,
+  copyGameDesignSystemTool,
+  applyGameDesignSystemTool,
+  generateGddTool,
+  getGenerationStatusTool,
+  listMapsTool,
+  readMapTool,
+  createMapDraftTool,
+  generateMapImageTool,
+  getMapGenerationStatusTool,
+  retryMapGenerationTool,
+  listProjectsTool,
+  createProjectTool,
+  selectProjectTool,
   listProjectStructure,
   listDocumentsTool,
   queryAssets,
@@ -67,12 +100,13 @@ const tools: AgentTool[] = [
 export const allTools: AgentTool[] = [...tools, ...allSkills];
 
 export function getToolsForLlm(
-  ctx?: Pick<ToolContext, 'currentLibraryId' | 'currentLibraryName'>,
+  ctx?: Pick<ToolContext, 'currentLibraryId' | 'currentLibraryName'> & { workspace?: AgentWorkspace },
   libraryProperties?: PropertyConfig[]
 ): OpenAITool[] {
   const injectSchema = Boolean(ctx?.currentLibraryId && libraryProperties && libraryProperties.length > 0);
+  const allowedNames = getAllowedToolNames(ctx?.workspace ?? 'studio');
 
-  return allTools.map((t) => {
+  return allTools.filter((t) => allowedNames.has(t.name)).map((t) => {
     const parameters =
       injectSchema && libraryProperties
         ? injectLibrarySchemaIntoToolParameters(
@@ -92,11 +126,18 @@ export function getToolsForLlm(
 
 /** Load active-library field defs and return LLM tools with dynamic write schemas. */
 export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[]> {
-  if (!ctx.currentLibraryId) {
+  const allowedNames = getAllowedToolNames(ctx.workspace);
+  const needsLibraryProperties = ['create_asset', 'update_asset', 'update_row']
+    .some((name) => allowedNames.has(name) && resolveTool(name));
+  if (!ctx.currentLibraryId || !needsLibraryProperties) {
     return getToolsForLlm(ctx);
   }
 
   try {
+    if (!ctx.projectId) return getToolsForLlm(ctx);
+    const { data: boundLibrary, error } = await ctx.supabase.from('libraries')
+      .select('id').eq('id', ctx.currentLibraryId).eq('project_id', ctx.projectId).maybeSingle();
+    if (error || !boundLibrary) return getToolsForLlm(ctx);
     const libraryProperties = await getLibraryProperties(
       ctx.supabase,
       ctx.currentLibraryId,
@@ -110,4 +151,23 @@ export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[
 
 export function resolveTool(name: string): AgentTool | undefined {
   return allTools.find((t) => t.name === name);
+}
+
+export function resolveAllowedTool(name: string, workspace: AgentWorkspace): AgentTool | undefined {
+  return getAllowedToolNames(workspace).has(name) ? resolveTool(name) : undefined;
+}
+
+export function createTurnToolSchema(ctx: ToolContext): {
+  get(): Promise<OpenAITool[]>;
+  invalidate(): void;
+} {
+  let cached: Promise<OpenAITool[]> | undefined;
+  return {
+    get() {
+      return cached ??= getToolsForLlmAsync(ctx);
+    },
+    invalidate() {
+      cached = undefined;
+    },
+  };
 }

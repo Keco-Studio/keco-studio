@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deriveAgentWorkspaceContext } from '@/lib/agent/client-workspace';
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
@@ -17,7 +18,8 @@ describe('Keco Admin page wiring', () => {
     expect(layout).toContain("pathname === '/keco-admin'");
     expect(layout).toMatch(/showLeftNav[\s\S]+isKecoAdminPage/);
     expect(layout).toMatch(/showStudioSidebar[\s\S]+!isKecoAdminPage/);
-    expect(layout).toMatch(/hideChatPanel[\s\S]+isKecoAdminPage/);
+    expect(layout).toContain('<AssistantHost />');
+    expect(deriveAgentWorkspaceContext('/keco-admin', {} as never, null)).toBeNull();
     expect(layout).toContain('<TopBar');
   });
 

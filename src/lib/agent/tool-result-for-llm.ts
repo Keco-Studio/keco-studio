@@ -334,7 +334,8 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
     parsed = JSON.parse(content) as ToolResult;
   } catch {
     if (content.length <= MAX_TOOL_CONTENT_CHARS) return content;
-    return `${content.slice(0, MAX_TOOL_CONTENT_CHARS)}...[truncated for LLM context]`;
+    const suffix = '...[truncated for LLM context]';
+    return `${content.slice(0, MAX_TOOL_CONTENT_CHARS - suffix.length)}${suffix}`;
   }
 
   const hadInternalData = Object.prototype.hasOwnProperty.call(parsed, 'internalData');
@@ -354,21 +355,21 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
   if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
 
   if (toolName === 'read_document') {
-    // The structured compactor always returns valid JSON within the budget.
-    return JSON.stringify(compactReadDocumentPayload(compact));
+    serialized = JSON.stringify(compactReadDocumentPayload(compact));
   }
 
   if (toolName === 'propose_document_edit') {
-    return JSON.stringify(compactProposeDocumentEditPayload(compact));
+    serialized = JSON.stringify(compactProposeDocumentEditPayload(compact));
   }
 
   if (toolName === 'read_story_graph') {
-    return JSON.stringify(compactReadStoryGraphPayload(compact));
+    serialized = JSON.stringify(compactReadStoryGraphPayload(compact));
   }
 
   if (toolName === 'propose_story_graph_edit') {
-    return JSON.stringify(compactStoryGraphEditPreview(compact));
+    serialized = JSON.stringify(compactStoryGraphEditPreview(compact));
   }
+  if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
 
   if (toolName === 'query_assets' && compact.data && typeof compact.data === 'object') {
     const data = compact.data as QueryAssetsData;
@@ -389,7 +390,22 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
     if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
   }
 
-  return `${serialized.slice(0, MAX_TOOL_CONTENT_CHARS)}...[truncated for LLM context]`;
+  // Keep an explicitly partial preview inside valid JSON. JSON encoding can
+  // expand quotes/backslashes, so budget the encoded envelope, not its input.
+  const envelope = {
+    success: compact.success === true,
+    data: {
+      _llmNote: 'Partial tool result: truncated for LLM context. Request a narrower result before relying on omitted content.',
+      preview: serialized.slice(0, MAX_TOOL_CONTENT_CHARS),
+    },
+  };
+  let bounded = JSON.stringify(envelope);
+  while (bounded.length > MAX_TOOL_CONTENT_CHARS) {
+    envelope.data.preview = envelope.data.preview.slice(0, Math.max(0,
+      envelope.data.preview.length - (bounded.length - MAX_TOOL_CONTENT_CHARS)));
+    bounded = JSON.stringify(envelope);
+  }
+  return bounded;
 }
 
 /**

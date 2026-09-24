@@ -2,6 +2,7 @@
  * semantic_search — agent tool for deeper semantic retrieval over project knowledge.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { embedQuery } from '../embedding-client';
 import { semanticSearchChunks } from '../embedding-retrieval';
@@ -31,7 +32,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     const results = await semanticSearchChunks({
       supabase: ctx.supabase,
       queryEmbedding,
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       userId: ctx.userId,
       conversationId: ctx.conversationId,
       scope: parsed.data.scope,

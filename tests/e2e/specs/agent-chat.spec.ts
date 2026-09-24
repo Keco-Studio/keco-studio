@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { Document, Packer, Paragraph } from 'docx';
 import { AgentPage } from '../pages/agent.page';
 import { LoginPage } from '../pages/login.page';
+import { captureAssistantShell, toolEvents } from '../helpers/global-assistant';
 import {
   createProjectFixture,
   createTemporaryUser,
@@ -45,7 +46,8 @@ test.describe('Agent chat', () => {
     await loginPage.goto();
     await loginPage.login(owner);
     await loginPage.expectLoginSuccess();
-    await page.goto(`/${projectId}`);
+    // Avoid opening a panel during the project root's canonical redirect.
+    await page.goto(`/${projectId}/recent`);
     const agent = new AgentPage(page);
     await agent.open();
     return agent;
@@ -54,7 +56,7 @@ test.describe('Agent chat', () => {
   test.beforeAll(async () => {
     admin = getE2EAdminClient();
     owner = await createTemporaryUser(admin, 'agent-chat-owner');
-    projectId = await createProjectFixture(admin, owner.id);
+    projectId = await createProjectFixture(admin, owner.id, { addOwnerMembership: true });
     const { data, error } = await admin
       .from('documents')
       .insert([
@@ -236,7 +238,9 @@ test.describe('Agent chat', () => {
     await expect(secondDocument).toBeVisible({ timeout: 20000 });
     await secondDocument.click();
     await expect(page).toHaveURL(`/${projectId}/doc/${secondDocumentId}`);
-    await expect(agent.panel).toBeVisible();
+    await expect(agent.panel).toHaveCount(0);
+    expect(bodies).toHaveLength(1);
+    await agent.open();
     await agent.send('Second document turn');
     await expect(
       page.getByTestId('agent-message-assistant').filter({ hasText: 'Reply 2' })
@@ -554,7 +558,9 @@ test.describe('Agent chat', () => {
         body: JSON.stringify({ meta: { autoExecute: false, scope: { level: 'project' } } }),
       });
     });
-    await page.route(`**/api/agent-chat/conversations?projectId=${projectId}`, async (route) => {
+    await page.route('**/api/agent-chat/conversations?**', async (route) => {
+      expect(new URL(route.request().url()).searchParams.get('workspace')).toBe('studio');
+      expect(new URL(route.request().url()).searchParams.get('projectId')).toBe(projectId);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -582,4 +588,98 @@ test.describe('Agent chat', () => {
     await expect(page.getByTestId('agent-message-user')).toContainText(prompt);
     await expect(page.getByTestId('agent-message-assistant')).toContainText(answer);
   });
+
+  test('global Projects list/create/select navigates to a fresh Studio draft and preserves account history', async ({ page }) => {
+    const accountConversation = crypto.randomUUID();
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route('**/api/agent-chat', async (route) => {
+      const body = route.request().postDataJSON();
+      requests.push(body);
+      if (body.workspace === 'projects') {
+        expect(body.projectId).toBeFalsy();
+        await fulfillAgentStream(route, accountConversation, [
+          ...toolEvents('list_projects', { projects: [{ id: projectId, name: 'Selected project' }] }),
+          ...toolEvents('create_project', { id: projectId, name: 'Selected project' }),
+          { type: 'text_delta', content: 'Account project selection retained.' },
+          ...toolEvents('select_project', { projectId }),
+          { type: 'navigation_requested', destination: { kind: 'project', projectId } },
+        ]);
+      } else {
+        expect(body).toMatchObject({ workspace: 'studio', projectId });
+        expect(body.conversationId).toBeFalsy();
+        await fulfillAgentStream(route, crypto.randomUUID(), [
+          ...toolEvents('get_project_structure', { libraries: [], documents: [] }),
+          { type: 'text_delta', content: 'Studio tools remain available.' },
+        ]);
+      }
+    });
+    await page.route('**/api/agent-chat/conversations?**', async (route) => {
+      expect(new URL(route.request().url()).searchParams.get('workspace')).toBe('projects');
+      await route.fulfill({ json: { conversations: [{ id: accountConversation, projectId: null, workspace: 'projects', title: 'Account selection', updatedAt: new Date().toISOString() }] } });
+    });
+    await page.route(`**/api/agent-chat/conversations/${accountConversation}/messages?**`, (route) => route.fulfill({ json: { messages: [{ id: 'answer', role: 'assistant', content: { content: 'Account project selection retained.' } }] } }));
+    await page.route(`**/api/agent-chat/conversations/${accountConversation}/meta`, (route) => route.fulfill({ json: { meta: { workspace: 'projects', scope: { level: 'global' } } } }));
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await expect(page).toHaveURL('/projects');
+    const agent = new AgentPage(page);
+    await agent.open();
+    // The accepted owner membership is real: existing projects must not select
+    // the first Studio workspace before an explicit navigation destination.
+    await expect(page).toHaveURL('/projects');
+    await agent.enableAutoMode();
+    await agent.send('List, create and select my project');
+    // The existing project root canonicalizes to its Recent page.
+    await expect(page).toHaveURL(new RegExp(`/${projectId}/recent$`), { timeout: 30_000 });
+    await expect(agent.panel).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    await agent.open();
+    await expect(page.getByTestId('agent-message-assistant')).toHaveCount(0);
+    await agent.send('Show project structure');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText('Studio tools remain available.');
+    await page.goto('/projects');
+    await agent.open(); await agent.historyButton.click();
+    await page.getByTestId(`agent-conversation-${accountConversation}`).click();
+    await expect(page.getByTestId('agent-message-assistant')).toContainText('Account project selection retained.');
+    expect(requests).toHaveLength(2);
+  });
+
+  test('Script preserves import/query/Story Graph SSE tool results in its project workspace', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({ workspace: 'script', projectId });
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        ...toolEvents('import_script', { imported: 3 }),
+        ...toolEvents('query_script_lines', { lines: [] }),
+        ...toolEvents('read_story_graph', { nodes: [] }),
+        { type: 'text_delta', content: 'Imported 3 lines; query and Story Graph ready.' },
+      ]);
+    });
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await page.goto(`/script-system/${projectId}`);
+    const agent = new AgentPage(page); await agent.open();
+    await agent.send('Import a script, query lines and read its Story Graph');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText('Imported 3 lines; query and Story Graph ready.');
+  });
+
+  for (const mobile of [false, true]) {
+    test(`global Projects shared shell ${mobile ? '@mobile' : 'desktop'}`, async ({ page }, testInfo) => {
+      const login = new LoginPage(page);
+      await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+      await expect(page).toHaveURL('/projects');
+      await captureAssistantShell(page, testInfo, 'projects');
+    });
+  }
+
+  for (const route of ['/simulation-system', '/account', '/billing', '/mcp', '/keco-admin', '/keco-101']) {
+    test(`excluded workspace ${route} has no assistant launcher`, async ({ page }) => {
+      const login = new LoginPage(page);
+      await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+      await page.goto(route);
+      if (route === '/keco-101') await expect(page.getByRole('tablist')).toBeVisible();
+      else await expect(page.getByTestId('user-menu')).toBeVisible();
+      await expect(page.getByTestId('agent-launcher')).toHaveCount(0);
+      await expect(page.getByTestId('agent-panel')).toHaveCount(0);
+    });
+  }
 });

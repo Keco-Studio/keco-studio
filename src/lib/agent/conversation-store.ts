@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   ChatContentPart,
   ChatMessage,
+  AgentWorkspace,
   ConversationMeta,
   ConversationScope,
   DocumentTableExportContext,
@@ -48,7 +49,7 @@ export function parseStoredContent(stored: unknown): ChatMessage['content'] {
 export interface ConversationRecord {
   id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
   title: string | null;
   meta: ConversationMeta;
   created_at: string;
@@ -57,14 +58,14 @@ export interface ConversationRecord {
 
 /**
  * Resolve an existing conversation (validating ownership) or create a new one
- * bound to the user + project.
+ * bound to the user and optional project.
  */
 export async function getOrCreateConversation(
   supabase: SupabaseClient,
   params: {
     conversationId?: string;
     userId: string;
-    projectId: string;
+    projectId?: string | null;
     initialAutoExecute?: boolean;
     /** Scope snapshot for a newly created conversation (ignored for existing ones). */
     scope?: ConversationScope;
@@ -72,6 +73,7 @@ export async function getOrCreateConversation(
     documentExport?: DocumentTableExportContext;
   }
 ): Promise<ConversationRecord> {
+  const requestedProjectId = params.projectId ?? null;
   if (params.conversationId) {
     const { data, error } = await supabase
       .from('agent_conversations')
@@ -84,16 +86,8 @@ export async function getOrCreateConversation(
     if (data.user_id !== params.userId) {
       throw new Error('Conversation does not belong to the current user.');
     }
-    // Project lock: an existing conversation is bound to its creation project.
-    // Loading it from another project (e.g. via History) is legitimate, so we
-    // silently keep the bound project rather than erroring — the caller derives
-    // its ToolContext from the conversation, not the request body.
-    if (params.projectId && data.project_id !== params.projectId) {
-      console.warn('agent.scope.project_mismatch', {
-        conversationId: params.conversationId,
-        boundProject: data.project_id,
-        requestProject: params.projectId,
-      });
+    if (data.project_id !== requestedProjectId) {
+      throw new Error('Conversation project binding does not match the requested context.');
     }
     return normalizeConversation(data);
   }
@@ -106,7 +100,7 @@ export async function getOrCreateConversation(
 
   const { data, error } = await supabase
     .from('agent_conversations')
-    .insert({ user_id: params.userId, project_id: params.projectId, meta: initialMeta })
+    .insert({ user_id: params.userId, project_id: requestedProjectId, meta: initialMeta })
     .select('*')
     .single();
   if (error || !data) {
@@ -219,7 +213,7 @@ export interface SaveMessageResult {
 }
 
 export interface SaveMessageIndexingContext {
-  projectId: string;
+  projectId: string | null;
   userId: string;
   usageBinding?: AiUsageBinding;
 }
@@ -323,8 +317,9 @@ export async function updateConversationMeta(
 
 export interface ConversationListItem {
   id: string;
-  projectId: string;
-  projectName: string;
+  projectId: string | null;
+  projectName?: string;
+  workspace: AgentWorkspace;
   meta: ConversationMeta;
   /** Convenience mirror of meta.scope for the History list badge. */
   scope?: ConversationScope;
@@ -334,20 +329,36 @@ export interface ConversationListItem {
   updatedAt: string;
 }
 
+export interface ConversationFilter {
+  userId: string;
+  workspace: AgentWorkspace;
+  projectId: string | null;
+  limit?: number;
+}
+
 export async function listConversations(
   supabase: SupabaseClient,
-  projectId: string,
-  userId: string
+  filter: ConversationFilter
 ): Promise<ConversationListItem[]> {
-  const { data, error } = await supabase
+  const limit = Math.min(50, Math.max(1, Number.isFinite(filter.limit) ? Math.floor(filter.limit!) : 20));
+  let query = supabase
     .from('agent_conversations')
     .select('id, meta, title, created_at, updated_at, project_id, projects(name)')
-    .eq('project_id', projectId)
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
+    .eq('user_id', filter.userId);
+  query = filter.projectId === null
+    ? query.is('project_id', null)
+    : query.eq('project_id', filter.projectId);
+  query = filter.workspace === 'studio'
+    ? query.or('meta->scope->>workspace.eq.studio,meta->scope->>workspace.is.null')
+    : query.eq('meta->scope->>workspace', filter.workspace);
+  const { data, error } = await query
+    .order('updated_at', { ascending: false })
+    .limit(limit);
   if (error || !data) return [];
 
-  return data.map((row) => mapConversationListRow(row));
+  return data.map((row) => mapConversationListRow(row))
+    .filter((row) => row.workspace === filter.workspace)
+    .slice(0, limit);
 }
 
 export async function listAllConversations(
@@ -367,14 +378,15 @@ export async function listAllConversations(
 function mapConversationListRow(row: Record<string, unknown>): ConversationListItem {
   const projects = row.projects as { name?: string } | { name?: string }[] | null | undefined;
   const projectName = Array.isArray(projects)
-    ? (projects[0]?.name ?? 'Unknown project')
-    : (projects?.name ?? 'Unknown project');
+    ? projects[0]?.name
+    : projects?.name;
 
   const meta = resolveConversationMeta((row.meta ?? {}) as ConversationMeta);
   return {
     id: row.id as string,
-    projectId: row.project_id as string,
-    projectName,
+    projectId: (row.project_id as string | null) ?? null,
+    ...(projectName ? { projectName } : {}),
+    workspace: meta.scope?.workspace ?? 'studio',
     meta,
     scope: meta.scope,
     title: (row.title as string | null) ?? null,
@@ -435,7 +447,7 @@ function normalizeConversation(row: Record<string, unknown>): ConversationRecord
   return {
     id: row.id as string,
     user_id: row.user_id as string,
-    project_id: row.project_id as string,
+    project_id: (row.project_id as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     meta: resolveConversationMeta(rawMeta),
     created_at: row.created_at as string,

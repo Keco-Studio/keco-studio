@@ -2,6 +2,7 @@
  * delete_asset — remove an asset from a library (pre_execute confirmation).
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { deleteAsset as deleteAssetService } from '@/lib/services/libraryAssetsService';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -26,7 +27,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };

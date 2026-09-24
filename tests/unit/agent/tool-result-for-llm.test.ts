@@ -154,6 +154,16 @@ describe('compactToolContentForLlm', () => {
     expect(compactText).not.toContain('assetUpdates');
   });
 
+  it.each(['read_story_graph', 'propose_story_graph_edit'])('bounds oversized %s metadata', (toolName) => {
+    const huge = 'plot metadata '.repeat(2_000);
+    const data = toolName === 'read_story_graph'
+      ? { plotNodes: [{ id: 'plot', title: huge, firstLabel: 'A', lastLabel: 'B', nodeCount: 2 }], plotEdges: [], nodes: [] }
+      : { type: 'story_graph_edit', createdNodes: [{ label: 'A', contentSummary: huge }], before: {}, after: {} };
+    const result = compactToolContentForLlm(JSON.stringify({ success: true, data }), toolName);
+    expect(result.length).toBeLessThanOrEqual(16_000);
+    expect(JSON.parse(result).data._llmNote).toMatch(/partial|narrow/i);
+  });
+
   it('keeps a complete in-budget read_document result unchanged', () => {
     const raw = JSON.stringify({
       success: true,

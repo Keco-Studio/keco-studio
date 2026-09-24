@@ -24,6 +24,7 @@ import styles from './ChatPanel.module.css';
 
 interface Props {
   userId?: string;
+  draftScopeKey?: string;
   projectId?: string;
   isStreaming: boolean;
   autoExecute: boolean;
@@ -46,6 +47,7 @@ const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 
 export function ChatInput({
   userId,
+  draftScopeKey,
   projectId,
   isStreaming,
   autoExecute,
@@ -81,14 +83,14 @@ export function ChatInput({
       setValue('');
       return;
     }
-    const saved = getDraft(userId);
+    const saved = getDraft(userId, draftScopeKey);
     setValue(saved);
     const el = textareaRef.current;
     if (el && saved) {
       el.style.height = 'auto';
       el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
     }
-  }, [userId]);
+  }, [userId, draftScopeKey]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -102,13 +104,13 @@ export function ChatInput({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         if (next.trim()) {
-          setDraft(userId, next);
+          setDraft(userId, next, draftScopeKey);
         } else {
-          clearDraft(userId);
+          clearDraft(userId, draftScopeKey);
         }
       }, DEBOUNCE_MS);
     },
-    [userId]
+    [userId, draftScopeKey]
   );
 
   const acceptImages = useCallback((incoming: File[]) => {
@@ -197,7 +199,7 @@ export function ChatInput({
         setValue('');
         clearImages();
         onClearSelectionContext?.();
-        if (userId) clearDraft(userId);
+        if (userId) clearDraft(userId, draftScopeKey);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
       } catch {
@@ -239,7 +241,7 @@ export function ChatInput({
         setValue('');
         clearFile();
         onClearSelectionContext?.();
-        if (userId) clearDraft(userId);
+        if (userId) clearDraft(userId, draftScopeKey);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
       } catch (e) {
@@ -256,7 +258,7 @@ export function ChatInput({
     });
     setValue('');
     onClearSelectionContext?.();
-    if (userId) clearDraft(userId);
+    if (userId) clearDraft(userId, draftScopeKey);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   }, [
@@ -267,6 +269,7 @@ export function ChatInput({
     images,
     onSend,
     userId,
+    draftScopeKey,
     clearFile,
     clearImages,
     supabase,

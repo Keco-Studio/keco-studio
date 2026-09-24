@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -119,7 +120,7 @@ async function executeImport(
     expectedSnapshot: internal.expectedSnapshot,
   };
   if (
-    internal.projectId !== ctx.projectId
+    internal.projectId !== requireProjectContext(ctx)
     || JSON.stringify(canonicalParams(parsedParams.data))
       !== JSON.stringify(internal.canonicalParams)
     || !(await validSignature(unsigned, internal.approvalSignature, ctx))
@@ -129,7 +130,7 @@ async function executeImport(
 
   try {
     const snapshot = await loadStoryGraphSnapshot(ctx.supabase, {
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       userId: ctx.userId,
       accessCache: ctx.accessCache,
       libraryId: internal.libraryId,
@@ -202,7 +203,7 @@ function assertCreatedNodesReachable(
 
 async function loadSnapshot(params: ParsedParams, ctx: ToolContext) {
   return loadStoryGraphSnapshot(ctx.supabase, {
-    projectId: ctx.projectId,
+    projectId: requireProjectContext(ctx),
     userId: ctx.userId,
     accessCache: ctx.accessCache,
     libraryId: params.libraryId,
@@ -343,7 +344,7 @@ function signaturePayload(
     'story-graph-edit-v1',
     ctx.userId,
     ctx.conversationId ?? null,
-    ctx.projectId,
+    requireProjectContext(ctx),
     value.libraryId,
     value.projectId,
     value.canonicalParams,

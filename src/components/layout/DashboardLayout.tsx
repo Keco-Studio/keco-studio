@@ -6,7 +6,7 @@ import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import AuthForm from '@/components/authform/AuthForm';
-import { ChatPanel } from '@/components/agent/ChatPanel';
+import { AssistantHost } from '@/components/agent/AssistantHost';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
 import { ScriptSidebar } from '@/components/script-system/ScriptSidebar';
 import { RecentVisitTracker } from '@/components/layout/RecentVisitTracker';
@@ -45,12 +45,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     !onKeco101 &&
     !isKecoAdminPage;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideChatPanel =
-    hideSidebarForSimulation ||
-    hideSidebarForGameDesignSystems ||
-    !createMapChrome.showChatPanel ||
-    onKeco101 ||
-    isKecoAdminPage;
   const isMcpAccountPage = pathname === '/mcp' || pathname === '/account' || pathname === '/billing';
 
   useEffect(() => {
@@ -119,7 +113,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className={styles.content}>
             {children}
           </div>
-          {!hideChatPanel ? <ChatPanel /> : null}
+          <AssistantHost />
         </div>
       </div>
       <AgentImportBridge />

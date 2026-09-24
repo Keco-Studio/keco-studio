@@ -62,8 +62,8 @@ jest.mock('@/components/layout/Sidebar', () => ({
   Sidebar: () => React.createElement('aside', { 'data-studio-sidebar': true }),
 }));
 
-jest.mock('@/components/agent/ChatPanel', () => ({
-  ChatPanel: () => React.createElement('aside', { 'data-chat-panel': true }),
+jest.mock('@/components/agent/AssistantHost', () => ({
+  AssistantHost: () => React.createElement('aside', { 'data-assistant-host': true }),
 }));
 
 jest.mock('@/components/agent/AgentImportBridge', () => ({
@@ -177,7 +177,7 @@ it('packs saved-map cards at the full available sidebar width', () => {
   expect(css).toMatch(/\.savedMapButtonActive\s*\{[^}]*background:\s*#f3f6f8/s);
 });
 
-it('renders Create Map dashboard chrome without Studio Sidebar or ChatPanel', () => {
+it('renders Create Map dashboard chrome with the global assistant host', () => {
   const markup = renderWorkbenchMarkup(
     React.createElement(DashboardLayout, null, React.createElement(CreateMapWorkbench))
   );
@@ -185,7 +185,7 @@ it('renders Create Map dashboard chrome without Studio Sidebar or ChatPanel', ()
   expect(markup).toContain('data-left-nav="true"');
   expect(markup).toContain('data-top-bar="true"');
   expect(markup).not.toContain('data-studio-sidebar="true"');
-  expect(markup).not.toContain('data-chat-panel="true"');
+  expect(markup).toContain('data-assistant-host="true"');
 });
 
 it('does not let global navigation effects redirect or resolve stale project state on Create Map', () => {

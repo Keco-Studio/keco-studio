@@ -11,7 +11,7 @@ import type { AiUsageBinding } from '@/lib/ai-usage/types';
 const loadPendingAction = jest.fn();
 const consumePendingAction = jest.fn();
 const savePendingAction = jest.fn();
-const resolveTool = jest.fn();
+const resolveAllowedTool = jest.fn();
 const getToolsForLlmAsync = jest.fn();
 const getConversation = jest.fn();
 const loadConversationHistory = jest.fn();
@@ -34,8 +34,14 @@ jest.mock('@/lib/agent/conversation-store', () => ({
 }));
 jest.mock('@/lib/agent/tools', () => ({
   allTools: [],
-  getToolsForLlmAsync,
-  resolveTool,
+  createTurnToolSchema: () => {
+    let cached: Promise<unknown> | undefined;
+    return {
+      get: () => cached ??= getToolsForLlmAsync(),
+      invalidate: () => { cached = undefined; },
+    };
+  },
+  resolveAllowedTool,
 }));
 jest.mock('@/lib/agent/llm-client', () => ({ streamLlm }));
 jest.mock('@/lib/agent/tool-execution-stream', () => ({ executeAgentTool }));
@@ -73,6 +79,7 @@ function toolContext(userRole: ToolContext['userRole']): ToolContext {
     conversationId: '44444444-4444-4444-8444-444444444444',
     userRole,
     supabase: {} as SupabaseClient,
+    workspace: 'studio',
   };
 }
 
@@ -132,7 +139,7 @@ describe('resumeAgentTurn confirmation integrity', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getConversation.mockResolvedValue({ meta: {} });
-    resolveTool.mockReturnValue(resolvedTool);
+    resolveAllowedTool.mockReturnValue(resolvedTool);
     consumePendingAction.mockResolvedValue(true);
     loadPendingAction.mockResolvedValue({
       conversationId: '44444444-4444-4444-8444-444444444444',
@@ -149,6 +156,22 @@ describe('resumeAgentTurn confirmation integrity', () => {
         toolResult: { success: true, data: { type: 'document_edit' } },
       },
     });
+  });
+
+  it('rejects a pending Tool outside the stored workspace before executing it', async () => {
+    resolveAllowedTool.mockReturnValue(undefined);
+    const input = resumeInput();
+    input.toolContext.workspace = 'projects';
+
+    const event = await nextToolResult(input);
+
+    expect(resolveAllowedTool).toHaveBeenCalledWith(resolvedTool.name, 'projects');
+    expect(event).toEqual(expect.objectContaining({
+      success: false,
+      error: 'TOOL_NOT_AVAILABLE_IN_WORKSPACE',
+    }));
+    expect(executeImport).not.toHaveBeenCalled();
+    expect(executeAgentTool).not.toHaveBeenCalled();
   });
 
   it('persists and streams validated rule evidence after a confirmed resume', async () => {
@@ -368,7 +391,7 @@ describe('post-preview confirmation data boundary', () => {
       confirmationPolicy: 'always',
       execute: jest.fn().mockResolvedValue(previewResult),
     };
-    resolveTool.mockReturnValue(deleteTool);
+    resolveAllowedTool.mockReturnValue(deleteTool);
     getToolsForLlmAsync.mockResolvedValue([]);
     loadConversationHistory.mockResolvedValue([]);
     saveMessage.mockResolvedValue({ id: 'message-1' });
@@ -425,7 +448,7 @@ describe('post-preview confirmation data boundary', () => {
       ...resolvedTool,
       execute: jest.fn().mockResolvedValue(previewResult),
     };
-    resolveTool.mockReturnValue(previewTool);
+    resolveAllowedTool.mockReturnValue(previewTool);
     getToolsForLlmAsync.mockResolvedValue([]);
     loadConversationHistory.mockResolvedValue([]);
     saveMessage.mockResolvedValue({ id: 'message-1' });
@@ -581,7 +604,7 @@ describe('pre-execute confirmation target binding', () => {
     } as AgentTool & {
       prepareConfirmation: typeof prepareConfirmation;
     };
-    resolveTool.mockReturnValue(renameTool);
+    resolveAllowedTool.mockReturnValue(renameTool);
     getToolsForLlmAsync.mockResolvedValue([]);
     loadConversationHistory.mockResolvedValue([]);
     saveMessage.mockResolvedValue({ id: 'message-1' });

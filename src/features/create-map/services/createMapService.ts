@@ -376,13 +376,30 @@ export function createMapService(supabase: SupabaseClient) {
     listProjects: (userId?: string) => listProjects(supabase, userId),
     listDocuments: (projectId: string) => listDocuments(supabase, projectId),
 
-    async listSavedMaps(): Promise<SavedMapSummary[]> {
-      const { data, error } = await supabase
+    async listSavedMaps(options?: { projectId?: string; cursor?: string; limit?: number }): Promise<SavedMapSummary[]> {
+      let query = supabase
         .from('map_projects')
         .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name)')
         .eq('current_revision.schema_version', 3)
-        .order('updated_at', { ascending: false })
-        .limit(50);
+        .order('updated_at', { ascending: false });
+      if (options?.projectId) query = query.eq('project_id', options.projectId);
+      if (options) query = query.order('id', { ascending: false });
+      if (options?.cursor) {
+        // Resolve the cursor through the same project/RLS boundary before using it.
+        let cursorQuery = supabase.from('map_projects').select('id,updated_at').eq('id', options.cursor);
+        if (options.projectId) cursorQuery = cursorQuery.eq('project_id', options.projectId);
+        const { data: cursor, error: cursorError } = await cursorQuery.single();
+        if (cursorError || !cursor) throw new CreateMapServiceError('map_cursor_invalid', 'Map cursor not found in this project.');
+        const updatedAt = String(cursor.updated_at);
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(updatedAt)
+          || Number.isNaN(new Date(updatedAt).getTime()) || !/^[a-f0-9-]{36}$/i.test(String(cursor.id))) {
+          throw new CreateMapServiceError('map_cursor_invalid', 'Invalid map cursor.');
+        }
+        // Keep database microseconds so equal-timestamp pages cannot skip rows.
+        query = query.or(`updated_at.lt.${updatedAt},and(updated_at.eq.${updatedAt},id.lt.${cursor.id})`);
+      }
+      // A paginated server caller may request one lookahead row, never an unbounded load.
+      const { data, error } = await query.limit(Math.min(51, Math.max(1, options?.limit ?? 50)));
       if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
       return (data ?? []).flatMap((row) => {
         const schemaVersion = relationSchemaVersion(row.current_revision);

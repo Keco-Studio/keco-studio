@@ -6,6 +6,7 @@
  * fields in one step.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   createLibraryServer,
@@ -43,7 +44,7 @@ async function prepareConfirmation(
   try {
     const source = await resolveDocumentLibrarySourceDisplay(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       ctx.documentExport
     );
     const args = {
@@ -84,7 +85,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (ctx.documentExport) {
       const source = await resolveDocumentLibrarySourceDisplay(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         ctx.documentExport
       );
       folderId = source.folderId;
@@ -93,7 +94,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     } else if (folderName) {
       const { folder, available } = await findFolderByName(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         folderName,
         ctx
       );
@@ -107,14 +108,14 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       resolvedFolderName = folder.name;
     }
 
-    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId, ctx);
+    const existing = await listProjectLibraries(ctx.supabase, requireProjectContext(ctx), ctx);
     if (existing.some((lib) => norm(lib.name) === norm(name))) {
       return { success: false, error: `Library "${name.trim()}" already exists in this project.` };
     }
 
     const libraryId = await createLibraryServer(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       name,
       folderId,
       description,
@@ -135,7 +136,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         id: libraryId,
         ...(ctx.documentExport
           ? {
-              projectId: ctx.projectId,
+              projectId: requireProjectContext(ctx),
               sourceDocumentId: ctx.documentExport.sourceDocumentId,
             }
           : {}),

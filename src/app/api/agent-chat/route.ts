@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
-import { getOrCreateConversation } from '@/lib/agent/conversation-store';
+import { getConversation, getOrCreateConversation } from '@/lib/agent/conversation-store';
 import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { resolveScopeFromNavigation, contextFieldsFromScope } from '@/lib/agent/scope';
 import { sseResponse } from '@/lib/agent/sse';
@@ -13,6 +13,7 @@ import { getDocumentExportSource } from '@/lib/server/documentExportSourceServic
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { buildDesignMessage } from '@/lib/design-message';
 import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import { isAgentWorkspace, workspaceAllowsAccountScope } from '@/lib/agent/workspace';
 import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
@@ -54,13 +55,18 @@ export const POST = withAuth(async function POST(
   }
 
   const isNewConversation = !body.conversationId;
-  const bodyProjectId = String(body.projectId ?? '').trim();
-  const liveWorkspace: AgentWorkspace = body.workspace === 'script' ? 'script' : 'studio';
+  if (isNewConversation && body.projectId !== undefined && typeof body.projectId !== 'string') {
+    return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
+  }
+  const bodyProjectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (isNewConversation && body.workspace !== undefined && !isAgentWorkspace(body.workspace)) {
+    return NextResponse.json({ error: 'Invalid workspace' }, { status: 400 });
+  }
+  const liveWorkspace: AgentWorkspace = isAgentWorkspace(body.workspace) ? body.workspace : 'studio';
 
-  // A new conversation must be opened inside a project — that project (and the
-  // current folder/table selection) is snapshotted as the conversation's frozen
-  // scope. An existing conversation derives its project from its own binding.
-  if (isNewConversation && (!bodyProjectId || !isUuid(bodyProjectId))) {
+  // A new conversation snapshots the workspace and optional project from live
+  // navigation. Existing conversations use their persisted binding below.
+  if (isNewConversation && (bodyProjectId ? !isUuid(bodyProjectId) : !workspaceAllowsAccountScope(liveWorkspace))) {
     return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
   }
 
@@ -72,6 +78,13 @@ export const POST = withAuth(async function POST(
     : undefined;
 
   try {
+    const storedConversation = body.conversationId
+      ? await getConversation(supabase, body.conversationId)
+      : null;
+    if (body.conversationId && (!storedConversation || storedConversation.user_id !== user.id)) {
+      return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
+    }
+    const requestedProjectId = bodyProjectId || null;
     const initialAutoExecute =
       typeof body.autoExecute === 'boolean' ? body.autoExecute : false;
 
@@ -129,23 +142,44 @@ export const POST = withAuth(async function POST(
       documentExport = { sourceDocumentId, exportType: 'table', snapshotToken };
     }
 
-    // For a new conversation, snapshot the scope from live navigation.
+    // Resource hints are untrusted navigation data. Only bind resources that
+    // belong to the same project as this conversation.
+    let folderHint: { id: string; name: string } | undefined;
+    let libraryHint: { id: string; name: string } | undefined;
+    if (isNewConversation && requestedProjectId && body.currentFolderId) {
+      if (typeof body.currentFolderId !== 'string' || !isUuid(body.currentFolderId)) {
+        return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('folders').select('id, name')
+        .eq('id', body.currentFolderId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      folderHint = data;
+    }
+    if (isNewConversation && requestedProjectId && body.currentLibraryId) {
+      if (typeof body.currentLibraryId !== 'string' || !isUuid(body.currentLibraryId)) {
+        return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('libraries').select('id, name')
+        .eq('id', body.currentLibraryId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      libraryHint = data;
+    }
+
+    // For a new conversation, snapshot the scope from verified navigation.
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
-          projectId: bodyProjectId,
+          projectId: requestedProjectId ?? undefined,
           workspace: liveWorkspace,
-          currentFolderId: body.currentFolderId,
-          currentFolderName: body.currentFolderName,
-          currentLibraryId: body.currentLibraryId,
-          currentLibraryName: body.currentLibraryName,
+          currentFolderId: folderHint?.id,
+          currentFolderName: folderHint?.name,
+          currentLibraryId: libraryHint?.id,
+          currentLibraryName: libraryHint?.name,
         })
       : undefined;
 
-    const conversation = await getOrCreateConversation(supabase, {
-      conversationId: body.conversationId,
+    const conversation = storedConversation ?? await getOrCreateConversation(supabase, {
       userId: user.id,
-      // Existing conversations ignore this; only used to create a new one.
-      projectId: bodyProjectId,
+      projectId: requestedProjectId,
       initialAutoExecute,
       scope: scopeSnapshot,
       ...(documentExport ? { documentExport } : {}),
@@ -156,16 +190,17 @@ export const POST = withAuth(async function POST(
     const boundMeta = resolveConversationMeta(conversation.meta);
     const boundScope = isNewConversation ? scopeSnapshot : boundMeta.scope;
 
-    // v1: the global scope has no cross-project capability yet (see spec §7).
-    if (boundScope?.level === 'global') {
+    const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
+    if (!contextFields.projectId && !workspaceAllowsAccountScope(contextFields.workspace)) {
       return NextResponse.json(
-        { error: 'This conversation is not bound to a specific project. Open a project and start a new conversation.' },
+        { error: 'Select a project before using Studio.' },
         { status: 400 }
       );
     }
 
-    const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
-    const userRole = await resolveUserRole(supabase, contextFields.projectId, user.id);
+    const userRole = contextFields.projectId
+      ? await resolveUserRole(supabase, contextFields.projectId, user.id)
+      : undefined;
     if (boundMeta.documentExport && userRole !== 'admin') {
       throw new AgentAccessError('Only admin users can export project content');
     }
@@ -182,11 +217,13 @@ export const POST = withAuth(async function POST(
         return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
       }
     }
-    const currentDocumentContext = await resolveCurrentDocumentContext(
-      supabase,
-      contextFields.projectId,
-      typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
-    );
+    const currentDocumentContext = contextFields.projectId
+      ? await resolveCurrentDocumentContext(
+          supabase,
+          contextFields.projectId,
+          typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
+        )
+      : {};
 
     const toolContext: ToolContext = {
       userId: user.id,
@@ -196,7 +233,6 @@ export const POST = withAuth(async function POST(
       documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
-      workspace: contextFields.workspace ?? liveWorkspace,
     };
 
     const message = documentSnapshot
@@ -223,7 +259,7 @@ export const POST = withAuth(async function POST(
       usageBinding: {
         context: {
           actorUserId: user.id,
-          projectId: conversation.project_id,
+          ...(conversation.project_id ? { projectId: conversation.project_id } : {}),
           feature: 'agent_chat',
           operation: 'react_iteration',
           correlationId: `agent_turn:${turnId}`,

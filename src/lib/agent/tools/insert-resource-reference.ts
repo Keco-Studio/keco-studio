@@ -4,6 +4,7 @@
  * Never invent markdown links like `[label](/projectId/...)`.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import {
@@ -151,7 +152,7 @@ async function resolveTableRowTarget(
   if (!libraryId) {
     const { library, available } = await findLibraryByName(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       libraryName!,
       undefined,
       ctx
@@ -168,7 +169,7 @@ async function resolveTableRowTarget(
     libraryName = library.name;
   }
 
-  const rows = await listTableReferenceRows(ctx.supabase, ctx.projectId, libraryId);
+  const rows = await listTableReferenceRows(ctx.supabase, requireProjectContext(ctx), libraryId);
   if (rows.fields.length === 0) {
     return {
       error: {
@@ -278,7 +279,7 @@ async function resolveDocumentBlockTarget(
 ): Promise<{ target?: ResourceReferenceTarget; error?: ToolResult }> {
   const sourceResolution = await resolveDocumentForTool(
     ctx.supabase,
-    ctx.projectId,
+    requireProjectContext(ctx),
     {
       ...(params.sourceDocumentId ? { documentId: params.sourceDocumentId } : {}),
       ...(params.sourceDocumentName ? { documentName: params.sourceDocumentName } : {}),
@@ -306,7 +307,7 @@ async function resolveDocumentBlockTarget(
 
   const blocks = await listDocumentReferenceBlocks(
     ctx.supabase,
-    ctx.projectId,
+    requireProjectContext(ctx),
     sourceResolution.document.id
   );
   if (blocks.length === 0) {
@@ -375,7 +376,7 @@ async function buildSealedReference(
 ): Promise<ConfirmationPreparation> {
   const host = await resolveDocumentForTool(
     ctx.supabase,
-    ctx.projectId,
+    requireProjectContext(ctx),
     selectorFromParams(params),
     ctx
   );
@@ -400,7 +401,7 @@ async function buildSealedReference(
   }
   const target = resolved.target!;
   const key = resourceReferenceKey(target);
-  const resolvedMap = await resolveResourceReferences(ctx.supabase, ctx.projectId, [target]);
+  const resolvedMap = await resolveResourceReferences(ctx.supabase, requireProjectContext(ctx), [target]);
   const resolvedRef = resolvedMap.get(key);
   if (resolvedRef?.status !== 'available') {
     return {
@@ -475,7 +476,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const { documentStateGateway } = await import('@/lib/documents/documentStateGateway');
     const state = await documentStateGateway.read(ctx.supabase, sealed.data.documentId);
-    if (state.projectId !== ctx.projectId || state.documentId !== sealed.data.documentId) {
+    if (state.projectId !== requireProjectContext(ctx) || state.documentId !== sealed.data.documentId) {
       return { success: false, error: 'Document not found in this project.' };
     }
 
@@ -486,7 +487,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     const { replaceDocumentAsAgent } = await import('@/lib/server/documentAgentEditService');
     const replaced = await replaceDocumentAsAgent({
       actorUserId: ctx.userId,
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       documentId: sealed.data.documentId,
       expected: state.token,
       expectedUpdateIds: state.updateTail.map((update) => update.id),
@@ -500,7 +501,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       .then(({ reindexProjectDocumentAsActor }) =>
         reindexProjectDocumentAsActor({
           actorUserId: ctx.userId,
-          projectId: ctx.projectId,
+          projectId: requireProjectContext(ctx),
           documentId: replaced.documentId,
           usageBinding: ctx.usageBinding,
         })
@@ -522,7 +523,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       },
       invalidations: [{
         type: 'documents',
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         documentId: replaced.documentId,
       }],
     };
