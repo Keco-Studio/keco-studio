@@ -26,7 +26,7 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
   createMapDraftAdapterV3: () => ({}),
   useMapDraft: () => ({
-    identity: null, status: 'idle', error: null, isDirty: false, isValid: true,
+    identity: draftIdentity, status: 'idle', error: null, isDirty: false, isValid: true,
     create: jest.fn(), reload: jest.fn(), saveAsNewRevision: jest.fn(), install: jest.fn(),
     publishForGeneration: jest.fn(), reset: jest.fn(), saveNow: jest.fn(),
   }),
@@ -88,6 +88,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
 const navigationContext = read('src/lib/contexts/NavigationContext.tsx');
+let draftIdentity: { mapId: string; revisionId: string; revisionNumber: number; saveVersion: number } | null = null;
 
 function renderWorkbenchMarkup(element: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -136,6 +137,19 @@ it('renders the Create Map workbench semantic regions', () => {
   expect(markup).toContain('aria-label="Map canvas"');
   expect(markup).toContain('Map Generator');
   expect(markup).toContain('Saved maps');
+});
+
+it('shows the persisted map revision instead of a save-status message', () => {
+  draftIdentity = { mapId: 'map-3', revisionId: 'revision-3', revisionNumber: 3, saveVersion: 0 };
+
+  try {
+    const markup = renderWorkbenchMarkup(React.createElement(CreateMapWorkbench));
+
+    expect(markup).toContain('Version3');
+    expect(markup).not.toContain('All changes saved');
+  } finally {
+    draftIdentity = null;
+  }
 });
 
 it('stacks the workbench regions into one column below 900px', () => {

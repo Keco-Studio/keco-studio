@@ -391,17 +391,7 @@ export function DirectMapWorkbench() {
   });
 
   const actionError = error ?? draft.error ?? generation.error;
-  const saveStatus = draft.identity
-    ? draft.status === 'saving' || draft.status === 'creating'
-      ? { label: 'Saving...', status: 'saving' }
-      : draft.status === 'conflict'
-        ? { label: 'Save conflict', status: 'error' }
-        : actionError
-          ? { label: 'Action failed', status: 'error' }
-          : draft.isDirty
-            ? { label: 'Unsaved changes', status: 'dirty' }
-            : { label: 'All changes saved', status: 'saved' }
-    : null;
+  const mapVersionLabel = draft.identity ? `Version${draft.identity.revisionNumber}` : null;
   const generationHistory: MapGenerationHistoryEntry[] = mapGenerationHistory.revisions.map((revision) => ({
     revisionId: revision.revisionId,
     label: `V${revision.revisionNumber}`,
@@ -502,10 +492,9 @@ export function DirectMapWorkbench() {
       ) : null}
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
-        {saveStatus ? (
-          <div className={styles.saveIndicator} data-status={saveStatus.status}>
-            <span aria-hidden />
-            {saveStatus.label}
+        {mapVersionLabel ? (
+          <div className={styles.mapVersionIndicator}>
+            {mapVersionLabel}
           </div>
         ) : null}
         <DirectMapCanvas

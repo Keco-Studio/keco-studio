@@ -1,8 +1,12 @@
 'use client';
 
 import { ThunderboltOutlined } from '@ant-design/icons';
+import { Modal } from 'antd';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountCreditSummary } from '@/lib/types/accountCredits';
+import modalStyles from '@/components/collaboration/InviteCollaboratorModal.module.css';
 import styles from './AccountCreditsSection.module.css';
 
 class AccountCreditsRequestError extends Error {
@@ -71,6 +75,8 @@ function exhaustedMessage(overage: number): string {
 }
 
 export function AccountCreditsSection() {
+  const router = useRouter();
+  const [hasDismissedRechargePrompt, setHasDismissedRechargePrompt] = useState(false);
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: ['account-credits'],
     queryFn: fetchAccountCredits,
@@ -82,6 +88,7 @@ export function AccountCreditsSection() {
 
   const firstLoadFailed = Boolean(error && !data);
   const refreshFailed = Boolean(error && data);
+  const isRechargePromptOpen = Boolean(data?.overage > 0 && !hasDismissedRechargePrompt);
 
   return (
     <section className={styles.section} aria-labelledby="account-credits-heading">
@@ -166,6 +173,24 @@ export function AccountCreditsSection() {
           ) : null}
         </>
       )}
+      <Modal
+        title="Credit allocation exhausted"
+        open={isRechargePromptOpen}
+        centered
+        destroyOnHidden
+        width="38.5rem"
+        className={modalStyles.modal}
+        cancelText="Not now"
+        okText="Recharge Credits"
+        onCancel={() => setHasDismissedRechargePrompt(true)}
+        onOk={() => router.push('/billing')}
+      >
+        <div className={modalStyles.content}>
+          <p className={modalStyles.infoText}>
+            Your account has exceeded its Credit allocation. Recharge to continue using Keco.
+          </p>
+        </div>
+      </Modal>
     </section>
   );
 }

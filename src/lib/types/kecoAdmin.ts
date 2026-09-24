@@ -19,17 +19,23 @@ export type KecoAdminCreditUsage = {
   trackedFrom: string;
 };
 
+export type KecoAdminStorageUsage = {
+  usedBytes: number;
+};
+
 export type KecoAdminUser = KecoAdminUserCreditUsage & {
   id: string;
   email: string | null;
   createdAt: string;
   lastSignInAt: string | null;
   status: KecoAdminUserStatus;
+  storageUsedBytes: number;
 };
 
 export type KecoAdminOverview = {
   totalUsers: number;
   creditUsage: KecoAdminCreditUsage;
+  storageUsage: KecoAdminStorageUsage;
   refreshedAt: string;
   users: KecoAdminUser[];
 };

@@ -21,6 +21,7 @@ const mockedOverview = {
     incompleteCount: 1,
     trackedFrom: '2026-09-15T00:00:00.000Z',
   },
+  storageUsage: { usedBytes: 549_755_813_888 },
   refreshedAt: '2026-09-11T10:00:00.000Z',
   users: [
     {
@@ -35,6 +36,7 @@ const mockedOverview = {
       creditOverage: 0,
       deepseekTokens: 21,
       creditUsageIncompleteCount: 1,
+      storageUsedBytes: 348_600_000_000,
     },
   ],
 } satisfies KecoAdminOverview;
