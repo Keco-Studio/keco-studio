@@ -722,12 +722,17 @@ async function createSavedMap(page: Page): Promise<void> {
 
 async function generateReadyMap(page: Page): Promise<void> {
   const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
-  await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
+  const generateButton = rightPanel.getByRole('button', { name: 'Generate map', exact: true });
+  await expect(generateButton).toBeEnabled();
+  await generateButton.click();
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
   await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
   await expect(page.getByText('Generating map', { exact: true })).toBeVisible();
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+  // Materializing the image and collision state updates the draft asynchronously.
+  // Wait until the next generation can be started from the durable saved state.
+  await expect(generateButton).toBeEnabled({ timeout: 10_000 });
 }
 
 async function expectWithin(locator: Locator, container: Locator): Promise<void> {
