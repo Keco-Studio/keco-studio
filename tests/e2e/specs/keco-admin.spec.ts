@@ -98,8 +98,8 @@ test.describe('Keco Admin workspace', () => {
     await expect(
       page
         .getByRole('region', { name: 'Resource overview' })
-        .getByText('Not connected', { exact: true }),
-    ).toHaveCount(1);
+        .getByTestId('keco-admin-storage-used'),
+    ).toHaveText('512 GB');
     await expect(
       page.getByRole('table', { name: 'User resource details' }),
     ).toBeVisible();

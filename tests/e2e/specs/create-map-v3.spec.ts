@@ -717,7 +717,7 @@ async function askForMapPlan(page: Page, prompt: string): Promise<void> {
 async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-  await expect(page.getByText(/^Version\d+$/)).toBeVisible();
+  await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
@@ -778,7 +778,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     const description = 'A quiet top-down village market with open paths.';
     await askForMapPlan(page, description);
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
     expect(backend.lastPlanRequest).not.toHaveProperty('documentId');
   });
