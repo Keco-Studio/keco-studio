@@ -717,7 +717,7 @@ async function askForMapPlan(page: Page, prompt: string): Promise<void> {
 async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
@@ -778,7 +778,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     const description = 'A quiet top-down village market with open paths.';
     await askForMapPlan(page, description);
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
     expect(backend.lastPlanRequest).not.toHaveProperty('documentId');
   });
@@ -833,11 +833,11 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
     await askForMapPlan(page, 'A quiet top-down village market with open paths.');
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
     await page.getByLabel('PixelLab description').fill(exactDescription);
-    await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect.poll(() => backend.maps.get(MAP_ID)?.revisions.get(backend.maps.get(MAP_ID)?.currentRevisionId ?? '')?.plan.description)
+      .toBe(exactDescription);
     await generateReadyMap(page);
 
     await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
@@ -906,7 +906,10 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: 'Walkable', exact: true }).click();
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => {
+      const map = backend.maps.get(MAP_ID);
+      return map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid?.cells[32 * 64 + 32];
+    }).toBe(0);
 
     const map = backend.maps.get(MAP_ID);
     const savedGrid = map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid;
@@ -924,7 +927,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
     const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
     await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
@@ -942,7 +945,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     await page.reload();
     await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -1112,7 +1115,10 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: 'View map plan' }).click();
     await page.getByRole('button', { name: 'Close source panel' }).click();
     await expect(page.getByText('4 blocked', { exact: true })).toBeVisible();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => {
+      const map = backend.maps.get(MAP_ID);
+      return map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid?.cells.filter((cell) => cell === 1).length;
+    }).toBe(4);
 
     await page.reload();
     await page.getByRole('button', { name: 'Open source panel' }).click();
