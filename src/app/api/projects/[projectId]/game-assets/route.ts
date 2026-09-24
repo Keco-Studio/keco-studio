@@ -231,7 +231,7 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
             : null;
         // This RPC validates the reservation binding, registers the asset, and
         // finalizes physical bytes in one database transaction.
-        const { data, error } = await supabase.rpc('complete_project_game_asset_storage_upload', {
+        const { data, error } = await supabase.rpc('complete_project_game_asset_storage_upload_v2', {
           p_reservation_id: input.reservationId,
           p_project_id: projectId,
           p_name: file.fileName,

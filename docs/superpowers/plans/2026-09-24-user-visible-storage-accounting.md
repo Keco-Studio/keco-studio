@@ -4,7 +4,7 @@
 
 **Goal:** Exclude unreferenced historical Storage objects from Account Storage display and user quota while preserving current Table, Document, Assets, map, and character media.
 
-**Architecture:** Add a forward-only migration with a single current-visible-file selector and new lock-safe v5 read RPCs. Quota calculations use the same selector plus active reservations; the physical registry remains unchanged for reconciliation. The existing Billing and OAuth Playwright coverage is included and verified in the same branch at the user's request.
+**Architecture:** Add a forward-only migration with a single current-visible-file selector and new lock-safe v6 read RPCs. Quota calculations use the same selector plus active reservations; the physical registry remains unchanged for reconciliation. The existing Billing and OAuth Playwright coverage is included and verified in the same branch at the user's request.
 
 **Tech Stack:** PostgreSQL/Supabase migrations, TypeScript, Jest, Playwright, GitHub Actions.
 
@@ -28,11 +28,11 @@
 - Modify: `tests/unit/database/account-project-storage.behavior.test.ts`
 
 **Interfaces:**
-- Produces: `private.storage_project_visible_physical_files_v5(uuid)` as the canonical eligible-file selector.
-- Produces: lock-safe public `account_storage_summary_v5()`, `account_storage_project_entities_v5(...)`, and `account_storage_entity_details_v5(...)` RPCs.
+- Produces: `private.storage_project_visible_physical_files_v6(uuid)` as the canonical eligible-file selector.
+- Produces: lock-safe public `account_storage_summary_v6()`, `account_storage_project_entities_v6(...)`, and `account_storage_entity_details_v6(...)` RPCs.
 - Preserves: raw `project_storage_files` rows and physical `storage.objects` inventory.
 
-- [ ] **Step 1: Merge the latest remote main into the feature branch**
+- [x] **Step 1: Merge the latest remote main into the feature branch**
 
 Run:
 
@@ -42,7 +42,7 @@ git merge --no-edit origin/main
 
 Expected: the branch contains PRs #458-#465 without changing the untracked Playwright files.
 
-- [ ] **Step 2: Add the shared eligibility selector**
+- [x] **Step 2: Add the shared eligibility selector**
 
 Create a forward-only migration whose selector keeps current Table and Document bindings and admits Assets files only when a matching current native row exists:
 
@@ -56,9 +56,9 @@ where physical.entity_kind in ('table', 'document')
 
 Path-only fallback rows with no current owner are omitted. Keep canonical file identity so one object contributes at most once.
 
-- [ ] **Step 3: Add lock-safe v5 read functions**
+- [x] **Step 3: Add lock-safe v6 read functions**
 
-Create new private hierarchy/directory functions and public v5 RPCs instead of replacing the live v4 functions. Use the visible-file selector for entity totals and details. Compute account fields as:
+Create new private hierarchy/directory functions and public v6 RPCs instead of replacing the live v4 functions. Use the visible-file selector for entity totals and details. Compute account fields as:
 
 ```sql
 physicalUsedBytes = sum(visible physical files in owned projects)
@@ -69,7 +69,7 @@ overageBytes = greatest(usedBytes + reservedBytes - quotaBytes, 0)
 
 An enabled empty Assets workspace remains a visible `0 B` entry.
 
-- [ ] **Step 4: Align quota checks with visible bytes**
+- [x] **Step 4: Align quota checks with visible bytes**
 
 Add new `storage_reserve_project_storage_upload_v2`,
 `storage_finalize_project_storage_upload_v2`,
@@ -78,19 +78,20 @@ Add new `storage_reserve_project_storage_upload_v2`,
 `finalize_project_storage_upload_v2`, and
 `complete_project_game_asset_storage_upload_v2` entry points. Do not replace the
 live unversioned functions. The v2 allowance predicate uses current-visible
-physical bytes, logical bytes, and pending reservations:
+physical bytes and pending reservations, preserving the existing physical-only
+upload enforcement policy:
 
 ```sql
-expected_bytes > quota_bytes - visible_physical_bytes - logical_used_bytes - reserved_bytes
+expected_bytes > quota_bytes - visible_physical_bytes - reserved_bytes
 ```
 
 Do not alter raw physical inventory. Preserve advisory locking and idempotency contracts from the existing functions.
 
-- [ ] **Step 5: Add post-implementation regression coverage**
+- [x] **Step 5: Add post-implementation regression coverage**
 
 Extend database tests to cover an active fallback file with no current owner. Assert it remains in `project_storage_files`, reports `0 B` under Assets, is absent from Assets details, and does not reduce remaining quota. Assert current Table, Document, native asset, map, and character objects still count once.
 
-- [ ] **Step 6: Run storage database tests**
+- [x] **Step 6: Run storage database tests**
 
 Run:
 
@@ -102,7 +103,7 @@ Expected: all migration contract tests pass; behavior tests pass when the local 
 
 ---
 
-### Task 2: Switch the application to lock-safe v5 RPCs
+### Task 2: Switch the application to lock-safe v6 RPCs
 
 **Files:**
 - Modify: `src/lib/server/accountStorage.ts`
@@ -119,26 +120,26 @@ Expected: all migration contract tests pass; behavior tests pass when the local 
 - Modify: `supabase/functions/mcp/image-tools.test.ts`
 
 **Interfaces:**
-- Consumes: the versioned v5 read and quota RPCs from Task 1.
+- Consumes: the versioned v6 read RPCs and v2 quota RPCs from Task 1.
 - Produces: unchanged TypeScript return types and API response contracts.
 
-- [ ] **Step 1: Update Account Storage read RPC names**
+- [x] **Step 1: Update Account Storage read RPC names**
 
 Change only the RPC names; preserve request arguments and strict response parsing:
 
 ```ts
-client.rpc('account_storage_summary_v5')
-client.rpc('account_storage_project_entities_v5', args)
-client.rpc('account_storage_entity_details_v5', args)
+client.rpc('account_storage_summary_v6')
+client.rpc('account_storage_project_entities_v6', args)
+client.rpc('account_storage_entity_details_v6', args)
 ```
 
-- [ ] **Step 2: Update upload quota RPC names**
+- [x] **Step 2: Update upload quota RPC names**
 
 Update browser, project-game-assets, service-function, and MCP callers together
 to use the `_v2` names from Task 1. Keep TypeScript API signatures, error
 mapping, and reservation cleanup unchanged.
 
-- [ ] **Step 3: Update focused unit expectations and run them**
+- [x] **Step 3: Update focused unit expectations and run them**
 
 Run:
 
@@ -162,11 +163,11 @@ Expected: all selected tests pass with the new RPC names and unchanged response 
 **Interfaces:**
 - Produces: browser coverage for Billing checkout/result pages and OAuth consent approval, denial, revalidation, and invalid requests.
 
-- [ ] **Step 1: Review the existing untracked specs for merge compatibility**
+- [x] **Step 1: Review the existing untracked specs for merge compatibility**
 
 Compare selectors and endpoint fixtures against current `origin/main`. Keep callbacks same-origin and prevent any real Stripe or external OAuth navigation.
 
-- [ ] **Step 2: Run focused static checks and discovery**
+- [x] **Step 2: Run focused static checks and discovery**
 
 Run:
 
@@ -175,9 +176,9 @@ npx eslint tests/e2e/specs/billing.spec.ts tests/e2e/specs/oauth-consent.spec.ts
 npx playwright test --list | rg 'billing\.spec|oauth-consent\.spec'
 ```
 
-Expected: both files are lint-clean and all nine tests are discovered.
+Expected: both files are lint-clean and all eight tests are discovered.
 
-- [ ] **Step 3: Run both browser specs**
+- [x] **Step 3: Run both browser specs**
 
 Run:
 
@@ -197,7 +198,7 @@ Expected: all tests pass against the configured local Playwright/Supabase enviro
 **Interfaces:**
 - Produces: a reviewed PR merged only after required checks succeed.
 
-- [ ] **Step 1: Run repository gates**
+- [x] **Step 1: Run repository gates**
 
 Run the exact Chinese-character gate, migration checks, focused tests, lint, and typecheck:
 
@@ -210,7 +211,7 @@ npm run typecheck:api
 
 Expected: the grep returns no matches and exits 1 as its normal no-match status; all npm checks exit 0.
 
-- [ ] **Step 2: Review the final diff**
+- [x] **Step 2: Review the final diff**
 
 Check migration lock safety, authorization, quota arithmetic, deduplication, test isolation, and absence of unrelated tracked changes. Fix all Critical and Important findings before continuing.
 

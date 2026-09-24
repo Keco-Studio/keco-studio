@@ -389,7 +389,7 @@ async function reserveMcpStorage(
   bucketName: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET,
   path: string,
 ): Promise<string> {
-  const { data, error } = await context.supabase.rpc("reserve_project_storage_upload", {
+  const { data, error } = await context.supabase.rpc("reserve_project_storage_upload_v2", {
     p_project_id: context.projectId,
     p_bucket_id: bucketName,
     p_object_path: path,
@@ -448,7 +448,7 @@ async function finalizeMcpStorage(
   image: VerifiedImage,
   sourceEntityId: string | null,
 ): Promise<void> {
-  const { error } = await context.supabase.rpc("finalize_project_storage_upload", {
+  const { error } = await context.supabase.rpc("finalize_project_storage_upload_v2", {
     p_reservation_id: reservationId,
     p_actual_bytes: image.fileSize,
     p_source_entity_id: sourceEntityId,
@@ -793,7 +793,7 @@ async function completeProjectGameAsset(
     context,
     "database",
     async () =>
-      await context.supabase.rpc("complete_project_game_asset_storage_upload", {
+      await context.supabase.rpc("complete_project_game_asset_storage_upload_v2", {
         p_reservation_id: reservationId,
         p_project_id: context.projectId,
         p_name: image.fileName,

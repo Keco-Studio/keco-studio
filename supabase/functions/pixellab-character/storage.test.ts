@@ -71,7 +71,7 @@ function fixtureClient(options: { failUpload?: boolean; failFinalize?: boolean }
     storage: { from: () => bucket },
     async rpc(name: string, args: unknown) {
       calls.push({ name, args });
-      if (name === "service_reserve_project_storage_upload") {
+      if (name === "service_reserve_project_storage_upload_v2") {
         return {
           data: {
             reservationId: RESERVATION_ID,
@@ -83,7 +83,7 @@ function fixtureClient(options: { failUpload?: boolean; failFinalize?: boolean }
           error: null,
         };
       }
-      if (name === "service_finalize_project_storage_upload") {
+      if (name === "service_finalize_project_storage_upload_v2") {
         return options.failFinalize
           ? { data: null, error: { details: "STORAGE_TEMPORARILY_UNAVAILABLE" } }
           : {
