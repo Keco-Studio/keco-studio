@@ -48,7 +48,7 @@ export function parseStoredContent(stored: unknown): ChatMessage['content'] {
 export interface ConversationRecord {
   id: string;
   user_id: string;
-  project_id: string;
+  project_id: string | null;
   title: string | null;
   meta: ConversationMeta;
   created_at: string;
@@ -57,14 +57,14 @@ export interface ConversationRecord {
 
 /**
  * Resolve an existing conversation (validating ownership) or create a new one
- * bound to the user + project.
+ * bound to the user and optional project.
  */
 export async function getOrCreateConversation(
   supabase: SupabaseClient,
   params: {
     conversationId?: string;
     userId: string;
-    projectId: string;
+    projectId?: string | null;
     initialAutoExecute?: boolean;
     /** Scope snapshot for a newly created conversation (ignored for existing ones). */
     scope?: ConversationScope;
@@ -72,6 +72,7 @@ export async function getOrCreateConversation(
     documentExport?: DocumentTableExportContext;
   }
 ): Promise<ConversationRecord> {
+  const requestedProjectId = params.projectId ?? null;
   if (params.conversationId) {
     const { data, error } = await supabase
       .from('agent_conversations')
@@ -84,16 +85,8 @@ export async function getOrCreateConversation(
     if (data.user_id !== params.userId) {
       throw new Error('Conversation does not belong to the current user.');
     }
-    // Project lock: an existing conversation is bound to its creation project.
-    // Loading it from another project (e.g. via History) is legitimate, so we
-    // silently keep the bound project rather than erroring — the caller derives
-    // its ToolContext from the conversation, not the request body.
-    if (params.projectId && data.project_id !== params.projectId) {
-      console.warn('agent.scope.project_mismatch', {
-        conversationId: params.conversationId,
-        boundProject: data.project_id,
-        requestProject: params.projectId,
-      });
+    if (data.project_id !== requestedProjectId) {
+      throw new Error('Conversation project binding does not match the requested context.');
     }
     return normalizeConversation(data);
   }
@@ -106,7 +99,7 @@ export async function getOrCreateConversation(
 
   const { data, error } = await supabase
     .from('agent_conversations')
-    .insert({ user_id: params.userId, project_id: params.projectId, meta: initialMeta })
+    .insert({ user_id: params.userId, project_id: requestedProjectId, meta: initialMeta })
     .select('*')
     .single();
   if (error || !data) {
@@ -323,7 +316,7 @@ export async function updateConversationMeta(
 
 export interface ConversationListItem {
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
   meta: ConversationMeta;
   /** Convenience mirror of meta.scope for the History list badge. */
@@ -373,7 +366,7 @@ function mapConversationListRow(row: Record<string, unknown>): ConversationListI
   const meta = resolveConversationMeta((row.meta ?? {}) as ConversationMeta);
   return {
     id: row.id as string,
-    projectId: row.project_id as string,
+    projectId: (row.project_id as string | null) ?? null,
     projectName,
     meta,
     scope: meta.scope,
@@ -435,7 +428,7 @@ function normalizeConversation(row: Record<string, unknown>): ConversationRecord
   return {
     id: row.id as string,
     user_id: row.user_id as string,
-    project_id: row.project_id as string,
+    project_id: (row.project_id as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     meta: resolveConversationMeta(rawMeta),
     created_at: row.created_at as string,
