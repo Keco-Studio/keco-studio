@@ -8,9 +8,10 @@
 
 The comparison target is the supplied MVP 0.4.0 dev-ting test plan, sections
 3-8.
-The audit was performed at `5574aeee` on `main`. The plan names `dev-ting` at
-`c7abc70f`; this specification governs the current checkout and must be
-revalidated against the intended release commit before sign-off.
+The initial audit was performed at `5574aeee` on `main`. The plan names
+`dev-ting` at `c7abc70f`; this specification is integrated on top of
+`73a6b1a3` and must be revalidated against the intended release commit before
+sign-off.
 
 Existing automation includes 728 Jest suites, 49 Playwright spec files, 28 MCP
 Deno test files, and 18 PixelLab map/character Deno test files. The latter 18
@@ -126,11 +127,14 @@ Passing tests cannot bypass the current quota contract.
 
 ## Execution Gates
 
-The default local stack inspected on 2026-09-24 has migration versions
-`20260924130000` and `20260924140000` absent from this checkout. Its storage
-behavior suite produced 4 RLS failures out of 20 tests. On 2026-09-25, an
-isolated stack using this checkout's migrations passed
+The default local stack inspected on 2026-09-25 lacks migration versions
+`20260924110000`, `20260924120000`, and `20260924133000` from this checkout.
+Before integration with `73a6b1a3`, its storage behavior suite produced 4 RLS
+failures out of 20 tests. On 2026-09-25, an isolated stack using the initial
+checkout's migrations passed
 `SUPABASE_TEST_WORKDIR=/tmp/keco-studio-release-db-20260924 npm run test:unit:db`
+with 31 suites, 313 tests, 0 skipped, and exit code 0. After the isolated stack
+was rebuilt with all migrations from `73a6b1a3`, the same gate passed again
 with 31 suites, 313 tests, 0 skipped, and exit code 0. The default stack is
 not valid release evidence; keep its migration drift visible until it is
 resolved.
