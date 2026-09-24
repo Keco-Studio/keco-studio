@@ -93,8 +93,9 @@ function summarizeConversationTitle(raw: string): string {
 }
 
 function publicToolResult(result: ToolResult): ToolResult {
-  const { internalData: _internalData, ...publicResult } = result;
-  return publicResult;
+  const { internalData: _internalData, navigation: _navigation, ...publicResult } = result;
+  const event = navigationEvent(result);
+  return event ? { ...publicResult, navigation: event.destination } : publicResult;
 }
 
 function cacheInvalidatedEvent(
@@ -364,6 +365,9 @@ export function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext
 /** Permission gate run before any write tool executes. */
 function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | null {
   if (tool.category !== 'write') return null;
+  if (tool.permissionScope === 'account') {
+    return ctx.userId ? null : { success: false, error: 'Authentication required.' };
+  }
   if (!ctx.userRole) {
     return { success: false, error: 'Select a project before using this operation.' };
   }
@@ -374,6 +378,14 @@ function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | nu
     return { success: false, error: `This operation requires the admin role (current role: ${ctx.userRole}).` };
   }
   return null;
+}
+
+function navigationEvent(result: ToolResult): Extract<SSEEvent, { type: 'navigation_requested' }> | null {
+  const destination = result.navigation;
+  if (!result.success || destination?.kind !== 'project' ||
+      typeof destination.projectId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(destination.projectId)) return null;
+  return { type: 'navigation_requested', destination: { kind: 'project', projectId: destination.projectId } };
 }
 
 async function* executeToolWithProgress(
@@ -800,6 +812,8 @@ async function* continueLoop(
       if (finalResult.invalidations && finalResult.invalidations.length > 0) {
         yield cacheInvalidatedEvent(finalResult.invalidations);
       }
+      const finalNavigation = navigationEvent(finalResult);
+      if (finalNavigation) yield finalNavigation;
       messages.push(assistantMessage);
       const publicResult = publicToolResult(finalResult);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
@@ -834,6 +848,8 @@ async function* continueLoop(
     if (result.invalidations && result.invalidations.length > 0) {
       yield cacheInvalidatedEvent(result.invalidations);
     }
+    const navigation = navigationEvent(result);
+    if (navigation) yield navigation;
 
     messages.push(assistantMessage);
     const publicResult = publicToolResult(result);
@@ -1074,6 +1090,8 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     if (result.invalidations && result.invalidations.length > 0) {
       yield cacheInvalidatedEvent(result.invalidations);
     }
+    const navigation = navigationEvent(result);
+    if (navigation) yield navigation;
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.
     const assistantMessage: ChatMessage = {

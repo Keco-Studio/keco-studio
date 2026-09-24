@@ -14,6 +14,7 @@ import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 export type AgentWorkspace = 'projects' | 'studio' | 'script' | 'create-map' | 'game-design-systems';
+export type AgentNavigationDestination = { kind: 'project'; projectId: string };
 
 export interface DocumentTableExportContext {
   sourceDocumentId: string;
@@ -81,6 +82,7 @@ export interface ToolResult {
   displayHint?: DisplayHint;
   /** Structured caches the frontend should refresh after a successful write. */
   invalidations?: AgentInvalidation[];
+  navigation?: AgentNavigationDestination;
 }
 
 export type ConfirmationPreparation =
@@ -109,6 +111,8 @@ export interface AgentTool {
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
+  /** An authenticated account operation with no project role to evaluate. */
+  permissionScope?: 'account';
   /** Resolve and seal approval-critical arguments before a pre-execute pause. */
   prepareConfirmation?: (
     params: unknown,
@@ -243,6 +247,7 @@ export type SSEEvent =
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
   | { type: 'cache_invalidated'; invalidations: AgentInvalidation[]; paths?: string[] }
+  | { type: 'navigation_requested'; destination: AgentNavigationDestination }
   | { type: 'game_design_evidence'; evidence: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence }
   | { type: 'done' }
   | { type: 'error'; message: string };

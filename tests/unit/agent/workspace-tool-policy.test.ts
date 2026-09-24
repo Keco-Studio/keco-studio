@@ -19,7 +19,7 @@ describe('workspace Tool policy', () => {
   it('keeps Projects limited to project discovery and conversation settings', () => {
     expect([...getAllowedToolNames('projects')]).toEqual(projectTools);
     expect(getToolsForLlm({ workspace: 'projects' }).map((tool) => tool.function.name))
-      .toEqual(['set_conversation_option']);
+      .toEqual(projectTools);
   });
 
   it('gives Create Map and GDS their own literal bundles', () => {
@@ -28,13 +28,15 @@ describe('workspace Tool policy', () => {
     expect(getAllowedToolNames('create-map').has('create_project')).toBe(false);
     expect(getAllowedToolNames('game-design-systems').has('create_project')).toBe(false);
     expect(getToolsForLlm({ workspace: 'create-map' }).map((tool) => tool.function.name))
-      .toEqual(['set_conversation_option']);
+      .toEqual(discoveryAndSettings);
     expect(getToolsForLlm({ workspace: 'game-design-systems' }).map((tool) => tool.function.name))
-      .toEqual(['set_conversation_option']);
+      .toEqual(discoveryAndSettings);
   });
 
   it('retains the current registry in Studio and limits Script mutations', () => {
-    expect([...getAllowedToolNames('studio')].sort()).toEqual(allTools.map((tool) => tool.name).sort());
+    expect([...getAllowedToolNames('studio')].sort()).toEqual(
+      allTools.map((tool) => tool.name).filter((name) => !['list_projects', 'create_project', 'select_project'].includes(name)).sort()
+    );
     for (const name of ['list_projects', 'create_project', 'select_project']) {
       expect(getAllowedToolNames('studio').has(name)).toBe(false);
     }

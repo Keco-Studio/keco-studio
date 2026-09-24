@@ -29,7 +29,7 @@ import {
 import { parseGameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
-import type { AgentInvalidation, AgentRuntimeScope, ChatItem, SendContext, SendOptions } from './types';
+import { parseAgentNavigationDestination, type AgentInvalidation, type AgentRuntimeScope, type ChatItem, type SendContext, type SendOptions } from './types';
 import type { ConversationScope } from '@/lib/agent/types';
 import {
   bindAgentChatRuntimeToConversation,
@@ -464,6 +464,22 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
             void invalidateCaches(parseAgentInvalidations(event));
             break;
           }
+          case 'navigation_requested': {
+            const destination = parseAgentNavigationDestination(event.destination);
+            if (!destination) break;
+            router.push(`/${destination.projectId}`);
+            const projectScope: AgentRuntimeScope = {
+              userId: origin.userId,
+              workspace: 'studio',
+              projectId: destination.projectId,
+            };
+            const draft = createAgentChatRuntime({
+              ...projectScope,
+              autoExecute: origin.userId ? getAutoExecutePreference(origin.userId) : false,
+            });
+            selectScopedAgentRuntime(projectScope, draft.key);
+            break;
+          }
           case 'game_design_evidence': {
             const evidence = parseGameDesignRuleEvidence(event.evidence);
             if (!evidence || !assistantId) break;
@@ -538,7 +554,7 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
         });
       }
     },
-    [appendItem, updateItem, invalidateCaches, beginStreamActivity, syncRuntime]
+    [appendItem, updateItem, invalidateCaches, beginStreamActivity, router, syncRuntime]
   );
 
   const send = useCallback(

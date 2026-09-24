@@ -36,8 +36,14 @@ import { readStoryGraph } from './read-story-graph';
 import { proposeStoryGraphEdit } from './propose-story-graph-edit';
 import { allSkills } from '../workflows';
 import { getAllowedToolNames } from './workspace-policy';
+import { listProjectsTool } from './list-projects';
+import { createProjectTool } from './create-project';
+import { selectProjectTool } from './select-project';
 
 const tools: AgentTool[] = [
+  listProjectsTool,
+  createProjectTool,
+  selectProjectTool,
   listProjectStructure,
   listDocumentsTool,
   queryAssets,

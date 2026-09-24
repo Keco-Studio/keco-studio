@@ -4,9 +4,17 @@
  */
 
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
-import type { AgentWorkspace, DocumentTableExportContext } from '@/lib/agent/types';
+import type { AgentNavigationDestination, AgentWorkspace, DocumentTableExportContext } from '@/lib/agent/types';
 import type { GameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 export type { AgentInvalidation } from '@/lib/agent/types';
+
+export function parseAgentNavigationDestination(value: unknown): AgentNavigationDestination | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const destination = value as Record<string, unknown>;
+  if (destination.kind !== 'project' || typeof destination.projectId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(destination.projectId)) return null;
+  return { kind: 'project', projectId: destination.projectId };
+}
 
 export type ChatItemRole = 'user' | 'assistant' | 'tool' | 'error' | 'confirmation';
 
