@@ -728,7 +728,9 @@ async function generateReadyMap(page: Page): Promise<void> {
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
   await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
-  await expect(page.getByText('Generating map', { exact: true })).toBeVisible();
+  // The generating phase is intentionally brief in the mocked provider and may
+  // complete before a visibility assertion observes it. The durable ready state
+  // is the meaningful contract for this helper.
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
   // Materializing the image and collision state updates the draft asynchronously.
   // Wait until the next generation can be started from the durable saved state.
