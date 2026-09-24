@@ -129,7 +129,7 @@ describe('project game asset upload route', () => {
     expect(result).toMatchObject({ completedCount: 1, failedCount: 0 });
     expect(from).toHaveBeenCalledWith('project-assets');
     expect(bucket.remove).not.toHaveBeenCalled();
-    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload', expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload_v2', expect.objectContaining({
       p_reservation_id: RESERVATION_ID,
       p_project_id: PROJECT_ID,
       p_name: 'guide.pdf',
@@ -352,7 +352,7 @@ describe('project game asset upload route', () => {
     });
 
     expect(response.status).toBe(503);
-    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload', expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload_v2', expect.objectContaining({
       p_reservation_id: RESERVATION_ID,
       p_project_id: PROJECT_ID,
       p_storage_path: path,

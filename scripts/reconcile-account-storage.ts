@@ -3,7 +3,14 @@ import * as dotenv from 'dotenv';
 import path from 'node:path';
 
 const ACCOUNTED_BUCKETS = ['library-media-files', 'project-assets', 'map-assets', 'character-assets', 'tiptap-images'] as const;
+const DATABASE_PAGE_SIZE = 1000;
 const HELP = `Usage:\n  npm run storage:reconcile -- [--apply]\n\nReport mode is the default. --apply expires abandoned reservations, repairs cached totals, and refreshes stale entity bindings.\n\nRequired environment variables:\n  NEXT_PUBLIC_SUPABASE_URL\n  SUPABASE_SERVICE_ROLE_KEY`;
+
+type RowQueryResult = { data: unknown[] | null; error: unknown };
+type OrderedRowQuery = { range(from: number, to: number): PromiseLike<RowQueryResult> };
+type RowQuery = PromiseLike<RowQueryResult> & {
+  order?: (column: string, options?: { ascending?: boolean }) => OrderedRowQuery;
+};
 
 export type RegisteredStorageFile = { id: string; bucketId: string; objectPath: string; ownerId: string; sizeBytes: number; lifecycleStatus: 'active' | 'pending_cleanup' };
 export type RegisteredLogicalFile = { ownerId: string; sizeBytes: number };
@@ -40,7 +47,7 @@ export type ReconciliationClient = {
   rebuildStorageQuotaTotals?: () => Promise<number>;
   refreshStorageEntityBindings?: () => Promise<number>;
   storage?: { from(bucketId: string): { list(prefix?: string, options?: { limit?: number; offset?: number }): Promise<{ data: unknown[] | null; error: unknown }> } };
-  from?: (table: string) => { select(columns: string): Promise<{ data: unknown[] | null; error: unknown }> };
+  from?: (table: string) => { select(columns: string): RowQuery };
   rpc?: (name: string, parameters?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
@@ -49,13 +56,35 @@ function numberValue(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 function key(bucketId: string, objectPath: string): string { return `${bucketId}\u0000${objectPath}`; }
-async function rows(client: ReconciliationClient, table: string, columns: string): Promise<Record<string, unknown>[]> {
+async function rows(
+  client: ReconciliationClient,
+  table: string,
+  columns: string,
+  orderColumn: string,
+): Promise<Record<string, unknown>[]> {
   if (!client.from) throw new Error(`Storage reconciliation query is unavailable for ${table}`);
-  const result = await client.from(table).select(columns);
-  if (result.error || !Array.isArray(result.data)) {
-    throw new Error(`Storage reconciliation query failed for ${table}`);
+  const firstQuery = client.from(table).select(columns);
+  if (typeof firstQuery.order !== 'function') {
+    const result = await firstQuery;
+    if (result.error || !Array.isArray(result.data)) {
+      throw new Error(`Storage reconciliation query failed for ${table}`);
+    }
+    return result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
   }
-  return result.data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object');
+  const output: Record<string, unknown>[] = [];
+  for (let offset = 0;; offset += DATABASE_PAGE_SIZE) {
+    const query = offset === 0 ? firstQuery : client.from(table).select(columns);
+    if (typeof query.order !== 'function') throw new Error(`Storage reconciliation query failed for ${table}`);
+    const result = await query.order(orderColumn, { ascending: true })
+      .range(offset, offset + DATABASE_PAGE_SIZE - 1);
+    if (result.error || !Array.isArray(result.data)) {
+      throw new Error(`Storage reconciliation query failed for ${table}`);
+    }
+    output.push(...result.data.filter(
+      (row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object',
+    ));
+    if (result.data.length < DATABASE_PAGE_SIZE) return output;
+  }
 }
 async function physicalObjects(client: ReconciliationClient): Promise<Array<{ bucketId: string; objectPath: string; sizeBytes: number }>> {
   if (client.listPhysicalStorageObjects) return client.listPhysicalStorageObjects();
@@ -87,7 +116,7 @@ async function physicalObjects(client: ReconciliationClient): Promise<Array<{ bu
 }
 async function registeredFiles(client: ReconciliationClient): Promise<RegisteredStorageFile[]> {
   if (client.listRegisteredStorageFiles) return client.listRegisteredStorageFiles();
-  return (await rows(client, 'project_storage_files', 'id,bucket_id,object_path,owner_id,size_bytes,lifecycle_status')).flatMap(row => {
+  return (await rows(client, 'project_storage_files', 'id,bucket_id,object_path,owner_id,size_bytes,lifecycle_status', 'id')).flatMap(row => {
     const sizeBytes = numberValue(row.size_bytes);
     return typeof row.id === 'string' && typeof row.bucket_id === 'string' && typeof row.object_path === 'string' && typeof row.owner_id === 'string' && sizeBytes !== null && (row.lifecycle_status === 'active' || row.lifecycle_status === 'pending_cleanup')
       ? [{ id: row.id, bucketId: row.bucket_id, objectPath: row.object_path, ownerId: row.owner_id, sizeBytes, lifecycleStatus: row.lifecycle_status }]
@@ -96,7 +125,7 @@ async function registeredFiles(client: ReconciliationClient): Promise<Registered
 }
 async function registeredLogicalFiles(client: ReconciliationClient): Promise<RegisteredLogicalFile[]> {
   if (client.listRegisteredLogicalFiles) return client.listRegisteredLogicalFiles();
-  return (await rows(client, 'project_storage_logical_files', 'owner_id,size_bytes')).flatMap(row => {
+  return (await rows(client, 'project_storage_logical_files', 'id,owner_id,size_bytes', 'id')).flatMap(row => {
     const sizeBytes = numberValue(row.size_bytes);
     return typeof row.owner_id === 'string' && sizeBytes !== null
       ? [{ ownerId: row.owner_id, sizeBytes }]
@@ -105,7 +134,7 @@ async function registeredLogicalFiles(client: ReconciliationClient): Promise<Reg
 }
 async function reservations(client: ReconciliationClient): Promise<StorageReservation[]> {
   if (client.listStorageReservations) return client.listStorageReservations();
-  return (await rows(client, 'storage_upload_reservations', 'id,owner_id,expected_bytes,status,expires_at')).flatMap(row => {
+  return (await rows(client, 'storage_upload_reservations', 'id,owner_id,expected_bytes,status,expires_at', 'id')).flatMap(row => {
     const expectedBytes = numberValue(row.expected_bytes);
     return typeof row.id === 'string' && typeof row.owner_id === 'string' && typeof row.status === 'string' && typeof row.expires_at === 'string' && expectedBytes !== null
       ? [{ id: row.id, ownerId: row.owner_id, expectedBytes, status: row.status, expiresAt: row.expires_at }]
@@ -114,7 +143,7 @@ async function reservations(client: ReconciliationClient): Promise<StorageReserv
 }
 async function quotas(client: ReconciliationClient): Promise<StorageQuota[]> {
   if (client.listStorageQuotas) return client.listStorageQuotas();
-  return (await rows(client, 'account_storage_quotas', 'owner_id,used_bytes,logical_used_bytes,reserved_bytes')).flatMap(row => {
+  return (await rows(client, 'account_storage_quotas', 'owner_id,used_bytes,logical_used_bytes,reserved_bytes', 'owner_id')).flatMap(row => {
     const usedBytes = numberValue(row.used_bytes);
     const logicalUsedBytes = numberValue(row.logical_used_bytes);
     const reservedBytes = numberValue(row.reserved_bytes);

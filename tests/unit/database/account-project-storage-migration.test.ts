@@ -41,6 +41,10 @@ const adminLogicalStorageSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260924120000_grant_keco_admin_logical_storage_read.sql',
 ), 'utf8');
+const visibleStorageSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260924100000_user_visible_storage_accounting.sql',
+), 'utf8');
 
 describe('account project storage migration', () => {
   it('defines private quota, file, location, and reservation tables', () => {
@@ -474,6 +478,58 @@ describe('account project storage migration', () => {
     );
     expect(v4CompatibilitySql).toMatch(
       /grant execute on function public\.account_storage_summary_v4\(\)[\s\S]*to authenticated/i,
+    );
+  });
+
+  it('adds lock-safe user-visible storage reads without replacing deployed functions', () => {
+    expect(visibleStorageSql).toMatch(
+      /function private\.storage_project_visible_physical_files_v6\(p_project_id uuid\)/i,
+    );
+    expect(visibleStorageSql).toMatch(/physical\.entity_kind in \('table', 'document'\)/i);
+    for (const table of [
+      'project_game_assets',
+      'map_reference_images',
+      'map_assets',
+      'character_generation_attempts',
+    ]) {
+      expect(visibleStorageSql).toMatch(new RegExp(`from public\\.${table}`, 'i'));
+    }
+    expect(visibleStorageSql).toMatch(/asset\.storage_path = file\.object_path/i);
+    expect(visibleStorageSql).toMatch(/reference\.storage_path = file\.object_path/i);
+    expect(visibleStorageSql).toMatch(/map_asset\.storage_path = file\.object_path/i);
+    expect(visibleStorageSql).toMatch(/attempt\.storage_path = file\.object_path/i);
+    expect(visibleStorageSql).toMatch(/function private\.storage_project_hierarchy_entities_v6/i);
+    expect(visibleStorageSql).toMatch(/function private\.storage_project_directory_entries_v6/i);
+    expect(visibleStorageSql).toMatch(/function public\.account_storage_project_entities_v6/i);
+    expect(visibleStorageSql).toMatch(/function public\.account_storage_entity_details_v6/i);
+    expect(visibleStorageSql).toMatch(/function public\.account_storage_summary_v6/i);
+    expect(visibleStorageSql).toMatch(
+      /v_physical_used := private\.storage_owner_visible_physical_bytes_v6\(v_actor\)/i,
+    );
+    expect(visibleStorageSql).not.toMatch(/create or replace function/i);
+  });
+
+  it('uses visible bytes for versioned quota checks and restores the raw ledger', () => {
+    expect(visibleStorageSql).toMatch(
+      /function private\.storage_set_quota_check_bytes_v2\([\s\S]*p_user_visible boolean/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /if p_user_visible then[\s\S]*storage_owner_visible_physical_bytes_v6\(p_owner_id\)[\s\S]*else[\s\S]*storage_owner_raw_physical_bytes_v6\(p_owner_id\)/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /function public\.storage_reserve_project_storage_upload_v2\([\s\S]*pg_advisory_xact_lock_shared\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, true\)[\s\S]*storage_reserve_project_storage_upload\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, false\)/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /function public\.storage_finalize_project_storage_upload_v2\([\s\S]*pg_advisory_xact_lock_shared\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, true\)[\s\S]*storage_finalize_project_storage_upload\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, false\)/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /function public\.complete_project_game_asset_storage_upload_v2\([\s\S]*pg_advisory_xact_lock_shared\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, true\)[\s\S]*complete_project_game_asset_storage_upload\([\s\S]*storage_set_quota_check_bytes_v2\(v_owner_id, false\)/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /grant execute on function public\.reserve_project_storage_upload_v2[\s\S]*to authenticated/i,
+    );
+    expect(visibleStorageSql).toMatch(
+      /grant execute on function public\.service_reserve_project_storage_upload_v2[\s\S]*to service_role/i,
     );
   });
 });

@@ -57,7 +57,7 @@ describe('storage quota RPC wrappers', () => {
     const client = rpcClient(null, reserved);
 
     await expect(reserveProjectStorage(client as never, reserveInput)).resolves.toEqual(reserved);
-    expect(client.rpc).toHaveBeenCalledWith('reserve_project_storage_upload', {
+    expect(client.rpc).toHaveBeenCalledWith('reserve_project_storage_upload_v2', {
       p_project_id: UUID,
       p_bucket_id: 'project-assets',
       p_object_path: `${UUID}/${OTHER_UUID}/asset.png`,
@@ -88,7 +88,7 @@ describe('storage quota RPC wrappers', () => {
       sourceEntityId: UUID,
       objectCreatedAt: '2026-09-17T00:00:00.000Z',
     })).resolves.toEqual(finalized);
-    expect(finalClient.rpc).toHaveBeenCalledWith('finalize_project_storage_upload', {
+    expect(finalClient.rpc).toHaveBeenCalledWith('finalize_project_storage_upload_v2', {
       p_reservation_id: OTHER_UUID,
       p_actual_bytes: 16,
       p_source_entity_id: UUID,

@@ -622,6 +622,136 @@ describeDb('account project storage real Postgres behavior', () => {
     });
   });
 
+  it('excludes an unreferenced historical object until a current Assets record owns it', async () => {
+    const sizeBytes = 20;
+    const objectPath = pathFor(fx.owner, randomUUID());
+    const assetId = randomUUID();
+    let reservationId: string | null = null;
+
+    try {
+      const reservation = await fx.owner.client.rpc('reserve_project_storage_upload_v2', {
+        p_project_id: fx.projectId,
+        p_bucket_id: 'project-assets',
+        p_object_path: objectPath,
+        p_expected_bytes: sizeBytes,
+        p_display_name: 'historical.png',
+        p_mime_type: 'image/png',
+        p_source_kind: 'project_asset',
+        p_source_entity_id: null,
+      });
+      expect(reservation.error).toBeNull();
+      reservationId = reservation.data.reservationId as string;
+      expect(await upload(fx.owner, objectPath, sizeBytes)).toBeNull();
+
+      const finalized = await fx.owner.client.rpc('finalize_project_storage_upload_v2', {
+        p_reservation_id: reservationId,
+        p_actual_bytes: sizeBytes,
+        p_source_entity_id: null,
+        p_object_created_at: null,
+      });
+      expect(finalized.error).toBeNull();
+      reservationId = null;
+
+      const registry = await fx.svc.from('project_storage_files')
+        .select('id,size_bytes').eq('bucket_id', 'project-assets').eq('object_path', objectPath).single();
+      expect(registry.error).toBeNull();
+      expect(Number(registry.data?.size_bytes)).toBe(sizeBytes);
+
+      const hidden = await fx.owner.client.rpc('account_storage_project_entities_v6', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: null,
+      });
+      expect(hidden.error).toBeNull();
+      expect(hidden.data.items.find((item: { kind: string }) => item.kind === 'assets'))
+        .toMatchObject({ physicalBytes: 0, sizeBytes: 0 });
+
+      const hiddenDetail = await fx.owner.client.rpc('account_storage_entity_details_v6', {
+        p_project_id: fx.projectId,
+        p_entity_kind: 'assets',
+        p_entity_id: fx.projectId,
+      });
+      expect(hiddenDetail.error).toBeNull();
+      expect(hiddenDetail.data).toMatchObject({ physicalBytes: 0, sizeBytes: 0, items: [] });
+
+      const hiddenSummary = await fx.owner.client.rpc('account_storage_summary_v6');
+      expect(hiddenSummary.error).toBeNull();
+      expect(Number(hiddenSummary.data.physicalUsedBytes)).toBe(0);
+
+      const fullReservation = await fx.owner.client.rpc('reserve_project_storage_upload_v2', {
+        p_project_id: fx.projectId,
+        p_bucket_id: 'project-assets',
+        p_object_path: pathFor(fx.owner, randomUUID()),
+        p_expected_bytes: QUOTA_BYTES,
+        p_display_name: 'quota-proof.png',
+        p_mime_type: 'image/png',
+        p_source_kind: 'project_asset',
+        p_source_entity_id: null,
+      });
+      expect(fullReservation.error).toBeNull();
+      const released = await fx.owner.client.rpc('release_project_storage_upload', {
+        p_reservation_id: fullReservation.data.reservationId,
+      });
+      expect(released.error).toBeNull();
+
+      const registered = await fx.svc.from('project_game_assets').insert({
+        id: assetId,
+        project_id: fx.projectId,
+        created_by: fx.owner.id,
+        name: 'Current asset',
+        category: 'character',
+        status: 'ready',
+        mime_type: 'image/png',
+        storage_bucket: 'project-assets',
+        storage_path: objectPath,
+        file_size: sizeBytes,
+      });
+      expect(registered.error).toBeNull();
+
+      const visible = await fx.owner.client.rpc('account_storage_project_entities_v6', {
+        p_project_id: fx.projectId,
+        p_query: null,
+        p_sort: 'size_desc',
+        p_limit: 50,
+        p_offset: 0,
+        p_parent_folder_id: null,
+      });
+      expect(visible.error).toBeNull();
+      expect(visible.data.items.find((item: { kind: string }) => item.kind === 'assets'))
+        .toMatchObject({ physicalBytes: sizeBytes, sizeBytes });
+
+      const overQuota = await fx.owner.client.rpc('reserve_project_storage_upload_v2', {
+        p_project_id: fx.projectId,
+        p_bucket_id: 'project-assets',
+        p_object_path: pathFor(fx.owner, randomUUID()),
+        p_expected_bytes: QUOTA_BYTES - sizeBytes + 1,
+        p_display_name: 'over-quota.png',
+        p_mime_type: 'image/png',
+        p_source_kind: 'project_asset',
+        p_source_entity_id: null,
+      });
+      expect(overQuota.error?.details ?? overQuota.error?.code).toBe('STORAGE_QUOTA_EXCEEDED');
+
+      expect((await fx.svc.from('project_game_assets').delete().eq('id', assetId)).error).toBeNull();
+      const hiddenAgain = await fx.owner.client.rpc('account_storage_summary_v6');
+      expect(hiddenAgain.error).toBeNull();
+      expect(Number(hiddenAgain.data.physicalUsedBytes)).toBe(0);
+    } finally {
+      if (reservationId) {
+        await fx.owner.client.rpc('release_project_storage_upload', {
+          p_reservation_id: reservationId,
+        });
+      }
+      await fx.svc.from('project_game_assets').delete().eq('id', assetId);
+      await fx.svc.storage.from('project-assets').remove([objectPath]);
+      await fx.svc.from('project_storage_files')
+        .delete().eq('bucket_id', 'project-assets').eq('object_path', objectPath);
+    }
+  });
+
   it('browses nested folders with recursive sizes and keeps Assets at the project root', async () => {
     const parent = await fx.svc.from('folders').insert({
       project_id: fx.projectId,

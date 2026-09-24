@@ -109,7 +109,7 @@ describe('readOwnAccountStorage', () => {
     const client = clientFor(validSummary);
 
     await expect(readOwnAccountStorage(client as never)).resolves.toEqual(validSummary);
-    expect(client.rpc).toHaveBeenCalledWith('account_storage_summary_v4');
+    expect(client.rpc).toHaveBeenCalledWith('account_storage_summary_v6');
   });
 
   it('accepts an over-quota summary with zero remaining bytes', async () => {
@@ -260,7 +260,7 @@ describe('aggregate project storage entities', () => {
       limit: 500,
       offset: 2,
     })).resolves.toEqual(validEntityPage);
-    expect(client.rpc).toHaveBeenCalledWith('account_storage_project_entities_v4', {
+    expect(client.rpc).toHaveBeenCalledWith('account_storage_project_entities_v6', {
       p_project_id: UUID,
       p_query: 'Characters',
       p_sort: 'name_asc',
@@ -289,7 +289,7 @@ describe('aggregate project storage entities', () => {
       projectId: UUID,
       parentFolderId: UUID,
     })).resolves.toEqual(folderPage);
-    expect(client.rpc).toHaveBeenCalledWith('account_storage_project_entities_v4', expect.objectContaining({
+    expect(client.rpc).toHaveBeenCalledWith('account_storage_project_entities_v6', expect.objectContaining({
       p_parent_folder_id: UUID,
     }));
   });
@@ -324,7 +324,7 @@ describe('aggregate project storage entities', () => {
       kind: 'table',
       entityId: UUID,
     })).resolves.toEqual(validEntityDetail);
-    expect(client.rpc).toHaveBeenCalledWith('account_storage_entity_details', {
+    expect(client.rpc).toHaveBeenCalledWith('account_storage_entity_details_v6', {
       p_project_id: UUID,
       p_entity_kind: 'table',
       p_entity_id: UUID,

@@ -106,10 +106,10 @@ function imageContext(
         },
       },
       async rpc(name: string, ...arguments_: unknown[]) {
-        if (name === "reserve_project_storage_upload") {
+        if (name === "reserve_project_storage_upload_v2") {
           return { data: { reservationId: "44444444-4444-4444-8444-444444444444" }, error: null };
         }
-        if (name === "finalize_project_storage_upload" || name === "release_project_storage_upload") {
+        if (name === "finalize_project_storage_upload_v2" || name === "release_project_storage_upload") {
           return { data: {}, error: null };
         }
         if (name === "resolve_project_storage_upload_reservation") {
@@ -143,7 +143,7 @@ function imageContext(
         if (name === "mcp_complete_operation") {
           return { data: null, error: null };
         }
-        if (name === "complete_project_game_asset_storage_upload") {
+        if (name === "complete_project_game_asset_storage_upload_v2") {
           registrationCount += 1;
           storageCalls.push({ name, arguments: arguments_ });
           if (options.registrationErrorCode) {
@@ -859,7 +859,7 @@ Deno.test("complete_project_game_asset_uploads verifies and registers ordered it
     secondPath,
   ]);
   const registrations = calls.filter((call) =>
-    call.name === "complete_project_game_asset_storage_upload"
+    call.name === "complete_project_game_asset_storage_upload_v2"
   );
   assertEquals(registrations.length, 2);
   assertEquals(
@@ -890,7 +890,7 @@ Deno.test("project asset completion rejects a reservation that is not bound to t
   assertEquals(result.completedCount, 0);
   assertEquals(result.failedCount, 1);
   assertEquals(
-    calls.some((call) => call.name === "complete_project_game_asset_storage_upload"),
+    calls.some((call) => call.name === "complete_project_game_asset_storage_upload_v2"),
     false,
   );
 });
@@ -937,7 +937,7 @@ Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as nu
     );
 
     const registration = calls.find((call) =>
-      call.name === "complete_project_game_asset_storage_upload"
+      call.name === "complete_project_game_asset_storage_upload_v2"
     );
     if (!registration) {
       throw new Error(
@@ -1355,7 +1355,7 @@ Deno.test("printable ASCII names survive preparation and exact completion retry"
       [[fileName, fileName], [fileName, fileName]],
     );
     assertEquals(
-      calls.filter((call) => call.name === "complete_project_game_asset_storage_upload")
+      calls.filter((call) => call.name === "complete_project_game_asset_storage_upload_v2")
         .map((call) => (call.arguments[0] as Record<string, unknown>).p_name),
       [fileName, fileName],
     );
