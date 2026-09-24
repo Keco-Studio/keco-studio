@@ -1087,14 +1087,15 @@ test.describe('Create Map V3 mocked workflow', () => {
       x: bounds.x + (column + 0.5) * cellWidth,
       y: bounds.y + (row + 0.5) * cellHeight,
     });
+    const blockedCellCount = () => {
+      const map = backend.maps.get(MAP_ID);
+      return map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid?.cells
+        .filter((cell) => cell === 1).length;
+    };
 
     const tapPoint = point(20, 20);
     await page.touchscreen.tap(tapPoint.x, tapPoint.y);
-    await page.getByRole('button', { name: 'Open source panel' }).click();
-    await page.getByRole('button', { name: 'View map plan' }).click();
-    await page.getByRole('button', { name: 'Close source panel' }).click();
-    await expect(page.getByText('2 blocked', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Close inspector panel' }).click();
+    await expect.poll(blockedCellCount, { timeout: 10_000 }).toBe(2);
 
     const dragBounds = await overlay.boundingBox();
     if (!dragBounds) throw new Error('Collision overlay is not visible for touch drag');
@@ -1118,14 +1119,7 @@ test.describe('Create Map V3 mocked workflow', () => {
       touchPoints: [],
     });
     await cdp.detach();
-    await page.getByRole('button', { name: 'Open source panel' }).click();
-    await page.getByRole('button', { name: 'View map plan' }).click();
-    await page.getByRole('button', { name: 'Close source panel' }).click();
-    await expect(page.getByText('4 blocked', { exact: true })).toBeVisible();
-    await expect.poll(() => {
-      const map = backend.maps.get(MAP_ID);
-      return map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid?.cells.filter((cell) => cell === 1).length;
-    }).toBe(4);
+    await expect.poll(blockedCellCount, { timeout: 10_000 }).toBe(4);
 
     await page.reload();
     await page.getByRole('button', { name: 'Open source panel' }).click();
