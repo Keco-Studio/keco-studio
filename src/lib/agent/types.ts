@@ -72,6 +72,8 @@ export type AgentInvalidation =
 
 export interface ToolResult {
   success: boolean;
+  /** Rebuild the model Tool schema after a successful schema-changing operation. */
+  schemaChanged?: boolean;
   data?: unknown;
   /** Server-only data persisted in suspended state; never emit to UI, LLM, or tool-result events. */
   internalData?: unknown;

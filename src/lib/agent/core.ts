@@ -23,7 +23,7 @@ import { deriveAiUsageBinding, type AiUsageBinding } from '@/lib/ai-usage/types'
 import { buildSystemPrompt } from './prompts';
 import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
 import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
-import { getToolsForLlmAsync, resolveTool, allTools } from './tools';
+import { createTurnToolSchema, resolveAllowedTool } from './tools';
 import {
   loadConversationHistory,
   saveMessage,
@@ -421,6 +421,8 @@ async function* continueLoop(
   let iterations = startIterations;
   let usedTokenTotal = startTokenUsageTotal;
   let messages = initialMessages;
+  const toolSchema = createTurnToolSchema(ctx);
+  let llmTools = await toolSchema.get();
 
   while (iterations++ < MAX_ITERATIONS) {
     throwIfAborted(signal);
@@ -449,7 +451,6 @@ async function* continueLoop(
     const llmStartMs = Date.now();
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
-    const llmTools = await getToolsForLlmAsync(ctx);
     const iterationUsageBinding = usageBinding
       ? deriveAiUsageBinding(usageBinding, { metadata: { iteration: iterations } })
       : undefined;
@@ -540,8 +541,27 @@ async function* continueLoop(
       tool_calls: [normalizeToolCallForReplay(call)],
     };
 
-    const tool = resolveTool(call.function.name);
+    const tool = resolveAllowedTool(call.function.name, ctx.workspace);
     const parsed = parseArgs(call.function.arguments);
+
+    if (!tool) {
+      const errorResult: ToolResult = {
+        success: false,
+        error: 'TOOL_NOT_AVAILABLE_IN_WORKSPACE',
+      };
+      trace?.recordToolCall({
+        tool: call.function.name,
+        args: {},
+        success: false,
+        error: errorResult.error,
+      });
+      messages.push(assistantMessage);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      await persistMessage(ctx, conversationId, assistantMessage);
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      continue;
+    }
 
     // Malformed / truncated tool arguments -> feed the parse error back so the
     // model can re-emit a valid call instead of silently receiving {}.
@@ -565,25 +585,6 @@ async function* continueLoop(
     }
 
     const parsedArgs = parsed.args;
-
-    // Unknown tool -> feed an error back to the LLM.
-    if (!tool) {
-      const errorResult: ToolResult = {
-        success: false,
-        error: `Unknown tool "${call.function.name}". Available: ${allTools.map((t) => t.name).join(', ')}`,
-      };
-      trace?.recordToolCall({
-        tool: call.function.name,
-        args: parsedArgs,
-        success: false,
-        error: errorResult.error,
-      });
-      messages.push(assistantMessage);
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      await persistMessage(ctx, conversationId, assistantMessage);
-      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      continue;
-    }
 
     // Permission gate.
     const permError = checkToolPermission(tool, ctx);
@@ -804,6 +805,10 @@ async function* continueLoop(
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+      if (finalResult.success && finalResult.schemaChanged === true) {
+        toolSchema.invalidate();
+        llmTools = await toolSchema.get();
+      }
       continue;
     }
 
@@ -835,6 +840,10 @@ async function* continueLoop(
     messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
     await persistMessage(ctx, conversationId, assistantMessage);
     await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+    if (result.success && result.schemaChanged === true) {
+      toolSchema.invalidate();
+      llmTools = await toolSchema.get();
+    }
   }
 
   yield { type: 'error', message: 'Agent reached maximum iterations.' };
@@ -973,7 +982,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     // system prompt and the user message disagreeing within the same turn.
     refreshLastUserContext(messages, turnContext);
 
-    const tool = resolveTool(pending.toolName);
+    const tool = resolveAllowedTool(pending.toolName, turnContext.workspace);
     const permissionError =
       input.decision === 'approve' && tool
         ? checkToolPermission(tool, toolContext)
@@ -988,7 +997,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     if (input.decision === 'reject') {
       result = { success: false, error: 'User cancelled this action.' };
     } else if (!tool) {
-      result = { success: false, error: `Tool "${pending.toolName}" is no longer available.` };
+      result = { success: false, error: 'TOOL_NOT_AVAILABLE_IN_WORKSPACE' };
     } else if (permissionError) {
       yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
       result = permissionError;

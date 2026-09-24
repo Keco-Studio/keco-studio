@@ -85,6 +85,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     });
     return {
       success: true,
+      schemaChanged: true,
       displayHint: 'text',
       data: {
         fieldId,

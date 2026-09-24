@@ -5,7 +5,7 @@
  * Skills live in ../skills/ and are merged into allTools at the bottom.
  */
 
-import type { AgentTool, OpenAITool, ToolContext } from '../types';
+import type { AgentTool, AgentWorkspace, OpenAITool, ToolContext } from '../types';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { getLibraryProperties } from '../data-access';
 import { injectLibrarySchemaIntoToolParameters } from '../dynamic-tool-schema';
@@ -35,6 +35,7 @@ import { insertResourceReference } from './insert-resource-reference';
 import { readStoryGraph } from './read-story-graph';
 import { proposeStoryGraphEdit } from './propose-story-graph-edit';
 import { allSkills } from '../workflows';
+import { getAllowedToolNames } from './workspace-policy';
 
 const tools: AgentTool[] = [
   listProjectStructure,
@@ -67,12 +68,13 @@ const tools: AgentTool[] = [
 export const allTools: AgentTool[] = [...tools, ...allSkills];
 
 export function getToolsForLlm(
-  ctx?: Pick<ToolContext, 'currentLibraryId' | 'currentLibraryName'>,
+  ctx?: Pick<ToolContext, 'currentLibraryId' | 'currentLibraryName'> & { workspace?: AgentWorkspace },
   libraryProperties?: PropertyConfig[]
 ): OpenAITool[] {
   const injectSchema = Boolean(ctx?.currentLibraryId && libraryProperties && libraryProperties.length > 0);
+  const allowedNames = getAllowedToolNames(ctx?.workspace ?? 'studio');
 
-  return allTools.map((t) => {
+  return allTools.filter((t) => allowedNames.has(t.name)).map((t) => {
     const parameters =
       injectSchema && libraryProperties
         ? injectLibrarySchemaIntoToolParameters(
@@ -92,7 +94,10 @@ export function getToolsForLlm(
 
 /** Load active-library field defs and return LLM tools with dynamic write schemas. */
 export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[]> {
-  if (!ctx.currentLibraryId) {
+  const allowedNames = getAllowedToolNames(ctx.workspace);
+  const needsLibraryProperties = ['create_asset', 'update_asset', 'update_row']
+    .some((name) => allowedNames.has(name) && resolveTool(name));
+  if (!ctx.currentLibraryId || !needsLibraryProperties) {
     return getToolsForLlm(ctx);
   }
 
@@ -110,4 +115,23 @@ export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[
 
 export function resolveTool(name: string): AgentTool | undefined {
   return allTools.find((t) => t.name === name);
+}
+
+export function resolveAllowedTool(name: string, workspace: AgentWorkspace): AgentTool | undefined {
+  return getAllowedToolNames(workspace).has(name) ? resolveTool(name) : undefined;
+}
+
+export function createTurnToolSchema(ctx: ToolContext): {
+  get(): Promise<OpenAITool[]>;
+  invalidate(): void;
+} {
+  let cached: Promise<OpenAITool[]> | undefined;
+  return {
+    get() {
+      return cached ??= getToolsForLlmAsync(ctx);
+    },
+    invalidate() {
+      cached = undefined;
+    },
+  };
 }

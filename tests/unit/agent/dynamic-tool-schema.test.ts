@@ -1,6 +1,7 @@
 import { buildPropertyValuesJsonSchema, injectLibrarySchemaIntoToolParameters } from '../../../src/lib/agent/dynamic-tool-schema';
-import { getToolsForLlm } from '../../../src/lib/agent/tools';
+import { createTurnToolSchema, getToolsForLlm } from '../../../src/lib/agent/tools';
 import type { PropertyConfig } from '../../../src/lib/types/libraryAssets';
+import type { ToolContext } from '../../../src/lib/agent/types';
 
 const properties: PropertyConfig[] = [
   {
@@ -87,5 +88,19 @@ describe('getToolsForLlm dynamic schema injection', () => {
       (dynamicCreate.function.parameters as { properties: { propertyValues: { properties: unknown } } })
         .properties.propertyValues.properties
     ).toBeDefined();
+  });
+
+  it('filters workspace Tools before injecting a library schema', () => {
+    const projects = getToolsForLlm({ workspace: 'projects', currentLibraryId: 'lib-1' }, properties);
+    expect(projects.map((tool) => tool.function.name)).toEqual(['set_conversation_option']);
+    expect(projects.find((tool) => tool.function.name === 'create_asset')).toBeUndefined();
+  });
+
+  it('reuses a turn schema until explicitly invalidated', async () => {
+    const schema = createTurnToolSchema({ workspace: 'projects' } as ToolContext);
+    const first = await schema.get();
+    expect(await schema.get()).toBe(first);
+    schema.invalidate();
+    expect(await schema.get()).not.toBe(first);
   });
 });
