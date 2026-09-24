@@ -959,13 +959,13 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByRole('heading', { name: 'Slow Marsh' })).not.toBeVisible();
   });
 
-  test('captures nonblank, error-free desktop layouts', async ({ page }, testInfo) => {
+  test('captures nonblank, error-free desktop and mobile layouts', async ({ page }, testInfo) => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
-    const viewports = [{ width: 1440, height: 900 }, { width: 1024, height: 900 }];
+    const viewports = [{ width: 1440, height: 900 }, { width: 1024, height: 900 }, { width: 390, height: 844 }];
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       const workbench = page.getByTestId('create-map-workbench');
@@ -993,6 +993,38 @@ test.describe('Create Map V3 mocked workflow', () => {
         expect((inspectorBox?.x ?? 0) + (inspectorBox?.width ?? 0)).toBeLessThanOrEqual(
           (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) + 1,
         );
+      }
+      if (viewport.width === 390) {
+        const inspector = page.getByLabel('Map plan and generation');
+        const [workbenchBox, canvasBox] = await Promise.all([
+          workbench.boundingBox(),
+          canvas.boundingBox(),
+        ]);
+        expect(workbenchBox).not.toBeNull();
+        expect(canvasBox).not.toBeNull();
+        expect(canvasBox?.width).toBeGreaterThanOrEqual((workbenchBox?.width ?? 0) - 1);
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? Number.POSITIVE_INFINITY)
+          .toBeLessThan((workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1);
+        await page.getByRole('button', { name: 'Close inspector panel' }).click();
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
+        await page.getByRole('button', { name: 'Open source panel' }).click();
+        const sourcePanel = page.getByLabel('Map source and references');
+        await expect(sourcePanel).toBeVisible();
+        expect((await sourcePanel.boundingBox())?.width).toBeGreaterThanOrEqual(280);
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
+        await page.getByRole('button', { name: 'Close source panel' }).click();
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
+        await expect.poll(async () => {
+          const sourceBox = await sourcePanel.boundingBox();
+          return sourceBox ? sourceBox.x + sourceBox.width : Number.POSITIVE_INFINITY;
+        }).toBeLessThanOrEqual((workbenchBox?.x ?? 0) + 1);
+        expect(await workbench.evaluate((element) => element.scrollLeft)).toBe(0);
       }
       const path = testInfo.outputPath(`create-map-v3-${viewport.width}x${viewport.height}.png`);
       await page.screenshot({ path, fullPage: true });
