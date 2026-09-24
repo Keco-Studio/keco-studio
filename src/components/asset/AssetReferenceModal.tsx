@@ -70,17 +70,28 @@ function cellPositionFromElement(element: Element | null): CellPosition | null {
   return rowIndex >= 0 && columnIndex >= 0 ? { rowIndex, columnIndex } : null;
 }
 
-function autoScrollDelta(container: HTMLElement, clientY: number): number {
+export function autoScrollDelta(container: HTMLElement, clientX: number, clientY: number): { x: number; y: number } {
   const rect = container.getBoundingClientRect();
   const topProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, rect.top + AUTO_SCROLL_EDGE_PX - clientY));
   const bottomProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, clientY - (rect.bottom - AUTO_SCROLL_EDGE_PX)));
+  const leftProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, rect.left + AUTO_SCROLL_EDGE_PX - clientX));
+  const rightProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, clientX - (rect.right - AUTO_SCROLL_EDGE_PX)));
+
+  let y = 0;
   if (topProximity > 0) {
-    return -Math.ceil((topProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+    y = -Math.ceil((topProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  } else if (bottomProximity > 0) {
+    y = Math.ceil((bottomProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
   }
-  if (bottomProximity > 0) {
-    return Math.ceil((bottomProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+
+  let x = 0;
+  if (leftProximity > 0) {
+    x = -Math.ceil((leftProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  } else if (rightProximity > 0) {
+    x = Math.ceil((rightProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
   }
-  return 0;
+
+  return { x, y };
 }
 
 interface AssetReferenceModalProps {
@@ -355,11 +366,12 @@ export function AssetReferenceModal({
       const container = tableWrapRef.current;
       if (!pointer || !container || !dragSelectionRef.current) return;
 
-      const delta = autoScrollDelta(container, pointer.clientY);
-      if (delta === 0) return;
+      const delta = autoScrollDelta(container, pointer.clientX, pointer.clientY);
       const previousTop = container.scrollTop;
-      container.scrollTop += delta;
-      if (container.scrollTop === previousTop) return;
+      const previousLeft = container.scrollLeft;
+      container.scrollTop += delta.y;
+      container.scrollLeft += delta.x;
+      if (container.scrollTop === previousTop && container.scrollLeft === previousLeft) return;
 
       updateSelectionAtPointer(pointer);
       autoScrollFrameRef.current = window.requestAnimationFrame(scrollAtPointer);
@@ -375,7 +387,10 @@ export function AssetReferenceModal({
       const container = tableWrapRef.current;
       if (
         container
-        && autoScrollDelta(container, event.clientY) !== 0
+        && (() => {
+          const delta = autoScrollDelta(container, event.clientX, event.clientY);
+          return delta.x !== 0 || delta.y !== 0;
+        })()
         && autoScrollFrameRef.current === null
       ) {
         autoScrollFrameRef.current = window.requestAnimationFrame(scrollAtPointer);
