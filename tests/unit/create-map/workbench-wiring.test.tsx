@@ -116,7 +116,11 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).toContain('service.loadSavedMapV3(');
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
-    expect(direct).toContain('<MapChatPanel');
+    expect(direct).not.toContain('MapChatPanel');
+    expect(direct).not.toContain('chatMessages');
+    expect(direct).toContain('<DirectMapSourceForm');
+    expect(direct).toContain("window.addEventListener('create-map:refresh', onRefresh)");
+    expect(direct).toContain('void openSavedMap(target, true)');
     expect(direct).toContain('onAttachFile=');
     expect(direct).toContain('onAttachKecoDocument=');
     expect(direct).toContain('<SelectDocumentModal');
@@ -128,7 +132,8 @@ describe('Create Map V3 direct workbench', () => {
       'utf8'
     );
     expect(css).toContain('grid-template-columns: 300px minmax(0, 1fr)');
-    expect(css).toContain('.chatAttachMenu');
+    expect(css).toContain('.sourceForm');
+    expect(css).not.toContain('.chatComposer');
   });
 
   it('requires every draft consumer to provide an explicit versioned adapter', () => {

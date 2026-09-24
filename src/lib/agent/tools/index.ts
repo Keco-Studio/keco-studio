@@ -39,8 +39,20 @@ import { getAllowedToolNames } from './workspace-policy';
 import { listProjectsTool } from './list-projects';
 import { createProjectTool } from './create-project';
 import { selectProjectTool } from './select-project';
+import { listMapsTool } from './list-maps';
+import { readMapTool } from './read-map';
+import { createMapDraftTool } from './create-map-draft';
+import { generateMapImageTool } from './generate-map-image';
+import { getMapGenerationStatusTool } from './get-map-generation-status';
+import { retryMapGenerationTool } from './retry-map-generation';
 
 const tools: AgentTool[] = [
+  listMapsTool,
+  readMapTool,
+  createMapDraftTool,
+  generateMapImageTool,
+  getMapGenerationStatusTool,
+  retryMapGenerationTool,
   listProjectsTool,
   createProjectTool,
   selectProjectTool,

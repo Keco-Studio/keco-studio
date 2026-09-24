@@ -229,6 +229,36 @@ describe('Create Map browser service', () => {
     expect(limit).toHaveBeenCalledWith(50);
   });
 
+  it('filters paginated maps by project before limiting with deterministic updated_at/id ordering', async () => {
+    const cursorId = '10000000-0000-4000-8000-000000000001';
+    const updatedAt = '2026-09-24T12:34:56.123456+00:00';
+    const query = {
+      select: jest.fn(), eq: jest.fn(), order: jest.fn(), or: jest.fn(),
+      limit: jest.fn(async () => ({ data: [], error: null })),
+      single: jest.fn(async () => ({ data: { id: cursorId, updated_at: updatedAt }, error: null })),
+    };
+    for (const method of [query.select, query.eq, query.order, query.or]) method.mockReturnValue(query);
+    const from = jest.fn(() => query);
+    await createMapService({ from } as never).listSavedMaps({ projectId: 'project-1', cursor: cursorId, limit: 500 });
+    expect(query.eq).toHaveBeenCalledWith('project_id', 'project-1');
+    expect(query.eq).toHaveBeenCalledWith('id', cursorId);
+    expect(query.order.mock.calls).toEqual([['updated_at', { ascending: false }], ['id', { ascending: false }]]);
+    expect(query.or).toHaveBeenCalledWith(`updated_at.lt.${updatedAt},and(updated_at.eq.${updatedAt},id.lt.${cursorId})`);
+    expect(query.limit).toHaveBeenCalledWith(51);
+    expect(query.single).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a cursor unavailable in the selected project before listing', async () => {
+    const query = {
+      select: jest.fn(), eq: jest.fn(), order: jest.fn(),
+      limit: jest.fn(), single: jest.fn(async () => ({ data: null, error: null })),
+    };
+    for (const method of [query.select, query.eq, query.order]) method.mockReturnValue(query);
+    await expect(createMapService({ from: () => query } as never).listSavedMaps({ projectId: 'project-1', cursor: 'foreign-map' }))
+      .rejects.toMatchObject({ code: 'map_cursor_invalid' });
+    expect(query.limit).not.toHaveBeenCalled();
+  });
+
   it('lists ready V3 map-image revisions as generation history', async () => {
     const order = jest.fn(async () => ({
       data: [

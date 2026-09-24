@@ -83,6 +83,7 @@ export type PublicMapWorkspace = {
   scene: MapSceneV3;
   sourceDocumentId: string | null;
   generation: PublicMapGenerationAsset | null;
+  generationRevisionId?: string | null;
 };
 
 export type MapGenerationState = {
@@ -96,7 +97,7 @@ export type MapGenerationState = {
 
 export type CreateMapMcpBackend = {
   getProjectRole(projectId: string, userId: string): Promise<ProjectRole>;
-  listMaps(projectId?: string): Promise<SavedMapSummary[]>;
+  listMaps(projectId?: string, pagination?: { cursor?: string; limit: number }): Promise<SavedMapSummary[]>;
   readMap(mapId: string): Promise<PublicMapWorkspace>;
   claimDraft(input: CreateMapDraftInput): Promise<DraftClaim>;
   createDraft(input: CreateMapDraftInput, claim: Extract<DraftClaim, { status: 'claimed' }>): Promise<PublicMapWorkspace>;
@@ -271,6 +272,7 @@ function publicWorkspace(workspace: SavedMapWorkspaceV3): PublicMapWorkspace {
     plan: workspace.plan,
     scene: workspace.scene,
     sourceDocumentId: workspace.sourceDocumentId,
+    generationRevisionId: workspace.assetRevisionId,
     generation: workspace.imageAsset
       ? publicAsset(workspace.imageAsset, workspace.imageUrl)
       : null,
@@ -542,9 +544,8 @@ function defaultBackend(
     async getProjectRole(projectId, actorId) {
       return (await getUserProjectRole(supabase, projectId, actorId)).role;
     },
-    async listMaps(projectId) {
-      const items = await maps.listSavedMaps();
-      return projectId ? items.filter((item) => item.projectId === projectId) : items;
+    async listMaps(projectId, pagination) {
+      return maps.listSavedMaps({ projectId, ...pagination });
     },
     async readMap(mapId) {
       return publicWorkspace(await maps.loadSavedMapV3(mapId));
@@ -701,6 +702,7 @@ export function createMapMcpService(
     nextDraftRevisionId: string | null,
     purpose: MapGenerationConfirmationBinding['purpose'] = 'submit',
   ) => ({
+    projectId: state.projectId,
     mapId: state.mapId,
     revisionId: state.revisionId,
     nextDraftRevisionId,
@@ -709,6 +711,7 @@ export function createMapMcpService(
     generationId: state.asset.generationId,
     planFingerprint: state.asset.planFingerprint,
     saveVersion: state.saveVersion,
+    plan: state.plan,
     feeNotice: FEE_NOTICE,
     confirmationPurpose: purpose,
     confirmationExpiresAt: new Date(now() + 10 * 60 * 1000).toISOString(),
@@ -722,10 +725,14 @@ export function createMapMcpService(
   ) => verify(token, confirmationBinding(context.userId, state, purpose));
 
   return {
-    async listMaps(input: { projectId?: string }) {
+    async listMaps(input: { projectId?: string; cursor?: string; limit?: number }) {
       try {
-        const items = await backend.listMaps(input.projectId);
-        return { items, returnedCount: items.length };
+        if (input.projectId) await backend.getProjectRole(input.projectId, context.userId);
+        const limit = input.limit === undefined && !input.cursor ? undefined : Math.min(50, Math.max(1, input.limit ?? 20));
+        const items = await backend.listMaps(input.projectId, limit === undefined ? undefined : { cursor: input.cursor, limit: limit + 1 });
+        const scoped = input.projectId ? items.filter((item) => item.projectId === input.projectId) : items;
+        const page = limit === undefined ? scoped : scoped.slice(0, limit);
+        return { items: page, returnedCount: page.length, nextCursor: limit !== undefined && scoped.length > limit ? page.at(-1)?.id ?? null : null };
       } catch (error) {
         mapProviderError(error);
       }
@@ -734,7 +741,9 @@ export function createMapMcpService(
     async readMap(input: { projectId?: string; mapId: string }) {
       try {
         const workspace = await backend.readMap(input.mapId);
+        if (workspace.identity.mapId !== input.mapId) throw new CreateMapMcpError('MAP_NOT_FOUND');
         if (input.projectId) assertProject(workspace.projectId, input.projectId);
+        await backend.getProjectRole(workspace.projectId, context.userId);
         return { ...workspace, schemaVersion: 3 as const };
       } catch (error) {
         mapProviderError(error);
@@ -806,6 +815,7 @@ export function createMapMcpService(
         await requireWriter(input.projectId);
         const existing = await backend.findGeneration(input);
         if (existing) {
+          assertGenerationIdentity(existing, { ...providerInput(existing), ...input }, fingerprintPlan);
           if (
             existing.saveVersion !== input.saveVersion
             || existing.asset.planFingerprint !== fingerprintPlan(existing.plan)
@@ -874,6 +884,35 @@ export function createMapMcpService(
       }
     },
 
+    async prepareRetryGeneration(input: {
+      projectId: string;
+      mapId: string;
+      revisionId: string;
+      assetId: string;
+      acknowledgeDuplicateBilling: boolean;
+    }) {
+      try {
+        if (input.acknowledgeDuplicateBilling !== true) {
+          throw new CreateMapMcpError('MAP_CONFIRMATION_REQUIRED');
+        }
+        await requireWriter(input.projectId);
+        const state = await backend.readGeneration(input);
+        assertGenerationIdentity(state, { ...providerInput(state), ...input }, fingerprintPlan);
+        const unknown = state.asset.status === 'blocked'
+          && state.asset.lastErrorCode === 'pixellab_submit_outcome_unknown';
+        const retryable = (state.asset.status === 'failed' && Boolean(state.asset.providerJobId))
+          || (state.asset.status === 'blocked' && state.asset.lastErrorCode !== null
+            && CONFIRMED_RETRY_BLOCKS.has(state.asset.lastErrorCode));
+        if (!unknown && !retryable) throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
+        return {
+          ...prepareResponse(state, null, unknown ? 'replace-unknown' : 'retry'),
+          duplicateBillingWarning: 'Retrying may create another paid provider job and charge credits again, including when the previous submission outcome is unknown.',
+        };
+      } catch (error) {
+        mapProviderError(error);
+      }
+    },
+
     async startGeneration(input: {
       projectId: string;
       mapId: string;
@@ -883,6 +922,7 @@ export function createMapMcpService(
       planFingerprint: string;
       confirmationToken: string;
       confirmPaidGeneration: true;
+      requireFreshConfirmation?: boolean;
     }) {
       try {
         if (input.confirmPaidGeneration !== true || !input.confirmationToken) {
@@ -891,8 +931,13 @@ export function createMapMcpService(
         await requireWriter(input.projectId);
         const state = await backend.readGeneration(input);
         assertGenerationIdentity(state, input, fingerprintPlan);
+        // Agent approvals require fresh bindings even for an idempotent replay.
+        const purpose = state.asset.status === 'blocked' && state.asset.lastErrorCode === 'pixellab_submit_outcome_unknown'
+          ? 'replace-unknown'
+          : state.asset.status === 'failed' || state.asset.status === 'blocked' ? 'retry' : 'submit';
+        if (input.requireFreshConfirmation) verifyForPurpose(input.confirmationToken, state, purpose);
         if (state.asset.status === 'planned') {
-          verifyForPurpose(input.confirmationToken, state, 'submit');
+          if (!input.requireFreshConfirmation) verifyForPurpose(input.confirmationToken, state, 'submit');
           await backend.invokeProvider('submit', providerSubmissionInput(state));
           return generationResult((await backend.readGeneration(input)).asset);
         }
@@ -902,7 +947,7 @@ export function createMapMcpService(
             && state.asset.lastErrorCode !== null
             && CONFIRMED_RETRY_BLOCKS.has(state.asset.lastErrorCode))
         ) {
-          verifyForPurpose(input.confirmationToken, state, 'retry');
+          if (!input.requireFreshConfirmation) verifyForPurpose(input.confirmationToken, state, 'retry');
           await backend.invokeProvider('retry', providerSubmissionInput(state));
           return generationResult((await backend.readGeneration(input)).asset);
         }
@@ -910,7 +955,7 @@ export function createMapMcpService(
           state.asset.status === 'blocked'
           && state.asset.lastErrorCode === 'pixellab_submit_outcome_unknown'
         ) {
-          verifyForPurpose(input.confirmationToken, state, 'replace-unknown');
+          if (!input.requireFreshConfirmation) verifyForPurpose(input.confirmationToken, state, 'replace-unknown');
           await backend.invokeProvider('retry', {
             ...providerSubmissionInput(state),
             acknowledgeDuplicateBilling: true,
@@ -931,12 +976,13 @@ export function createMapMcpService(
       mapId: string;
       revisionId: string;
       assetId: string;
-      generationId: string;
-      planFingerprint: string;
+      generationId?: string;
+      planFingerprint?: string;
     }) {
       try {
+        await backend.getProjectRole(input.projectId, context.userId);
         const state = await backend.readGeneration(input);
-        assertGenerationIdentity(state, input, fingerprintPlan);
+        assertGenerationIdentity(state, { ...providerInput(state), ...input }, fingerprintPlan);
         return generationResult(state.asset);
       } catch (error) {
         mapProviderError(error);

@@ -710,8 +710,8 @@ async function selectProject(page: Page): Promise<void> {
 async function askForMapPlan(page: Page, prompt: string): Promise<void> {
   await selectProject(page);
   await page.getByRole('button', { name: 'Create map', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill(prompt);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Map description', exact: true }).fill(prompt);
+  await page.getByRole('button', { name: 'Create plan', exact: true }).click();
 }
 
 async function createSavedMap(page: Page): Promise<void> {
@@ -788,13 +788,13 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await selectProject(page);
     await page.getByRole('button', { name: 'Create map', exact: true }).click();
-    const send = page.getByRole('button', { name: 'Send', exact: true });
+    const createPlan = page.getByRole('button', { name: 'Create plan', exact: true });
 
-    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('Call the API to generate a map');
+    await page.getByRole('textbox', { name: 'Map description', exact: true }).fill('Call the API to generate a map');
 
     const validationAlert = page.getByText(/^Invalid\. Description contains disallowed content/);
     await expect(validationAlert).toBeVisible();
-    await expect(send).toBeDisabled();
+    await expect(createPlan).toBeDisabled();
     expect(backend.lastPlanRequest).toBeNull();
   });
 
@@ -815,8 +815,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await layoutRow.getByLabel('layout.png reference role').selectOption('layout');
     await layoutRow.getByLabel('layout.png usage').fill('Match the river crossing layout');
     await styleRow.getByLabel('Style').check();
-    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('A quiet top-down village market with open paths.');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Map description', exact: true }).fill('A quiet top-down village market with open paths.');
+    await page.getByRole('button', { name: 'Create plan', exact: true }).click();
 
     expect(backend.lastPlanRequest).toMatchObject({
       schemaVersion: 3,

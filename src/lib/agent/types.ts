@@ -31,7 +31,7 @@ export interface DocumentTableExportContext {
  */
 export type ConfirmationMode = 'pre_execute' | 'post_preview' | 'meta';
 
-export type DisplayHint = 'table' | 'text' | 'list' | 'script_preview' | 'skill_preview';
+export type DisplayHint = 'table' | 'text' | 'list' | 'script_preview' | 'skill_preview' | 'map';
 
 /** Loose JSON Schema type — we only forward this to the LLM verbatim. */
 export type JSONSchema = Record<string, unknown>;
@@ -69,7 +69,8 @@ export type AgentInvalidation =
       projectId?: string;
       sourceDocumentId?: string;
     }
-  | { type: 'documents'; projectId: string; documentId?: string };
+  | { type: 'documents'; projectId: string; documentId?: string }
+  | { type: 'create-map'; projectId: string; mapId?: string };
 
 export interface ToolResult {
   success: boolean;

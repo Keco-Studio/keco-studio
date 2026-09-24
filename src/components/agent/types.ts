@@ -6,7 +6,35 @@
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import type { AgentNavigationDestination, AgentWorkspace, DocumentTableExportContext } from '@/lib/agent/types';
 import type { GameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
+import { z } from 'zod';
 export type { AgentInvalidation } from '@/lib/agent/types';
+
+const mapGenerationSchema = z.object({
+  assetId: z.string().uuid(),
+  revisionId: z.string().uuid().optional(),
+  status: z.enum(['planned', 'queued', 'generating', 'ready', 'failed', 'blocked']),
+  attemptCount: z.number().int().nonnegative(),
+  imageUrl: z.string().max(8192).nullable(),
+  lastErrorCode: z.string().max(200).nullable(),
+});
+const mapToolDataSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('list'), projectId: z.string().uuid(),
+    maps: z.array(z.object({ mapId: z.string().uuid(), revisionId: z.string().uuid(), title: z.string().max(160) })).max(50),
+    nextCursor: z.string().uuid().nullable(),
+  }),
+  z.object({
+    kind: z.literal('map'), projectId: z.string().uuid(), mapId: z.string().uuid(), revisionId: z.string().uuid(),
+    revisionNumber: z.number().int().nonnegative().optional(), saveVersion: z.number().int().nonnegative().optional(),
+    plan: z.object({ title: z.string().max(160), summary: z.string().max(500), width: z.number().positive(), height: z.number().positive(), referenceCount: z.number().int().nonnegative() }).optional(),
+    generation: mapGenerationSchema.nullable().optional(),
+  }),
+]);
+
+export function parseMapToolData(value: unknown) {
+  const parsed = mapToolDataSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 export function parseAgentNavigationDestination(value: unknown): AgentNavigationDestination | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

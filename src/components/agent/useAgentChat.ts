@@ -85,6 +85,12 @@ export async function invalidateAgentCaches(
   invalidations: AgentInvalidation[]
 ): Promise<void> {
   for (const invalidation of invalidations) {
+    if (invalidation.type === 'create-map') {
+      if (typeof invalidation.projectId !== 'string' || (invalidation.mapId !== undefined && typeof invalidation.mapId !== 'string')) continue;
+      await queryClient.invalidateQueries({ queryKey: ['create-map'] });
+      window.dispatchEvent(new CustomEvent('create-map:refresh', { detail: invalidation }));
+      continue;
+    }
     if (invalidation.type === 'library') {
       await invalidateLibraryData(queryClient, {
         projectId: invalidation.projectId,

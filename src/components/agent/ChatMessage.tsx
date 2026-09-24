@@ -8,6 +8,7 @@ import analyzeIcon from '@/assets/images/analyze.svg';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
 import { ConfirmationCard } from './ConfirmationCard';
+import { MapToolResultCard, MapGenerationConfirmationCard } from './MapToolResultCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
@@ -106,9 +107,13 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
     case 'error':
       return <div className={styles.errorBubble}>{item.error}</div>;
     case 'tool':
-      return null;
+      return item.toolCall?.displayHint === 'map' && item.toolCall.status === 'success'
+        ? <MapToolResultCard data={item.toolCall.data} /> : null;
     case 'confirmation': {
       if (!item.confirmation) return null;
+      if (item.confirmation.tool === 'generate_map_image' || item.confirmation.tool === 'retry_map_generation') {
+        return <MapGenerationConfirmationCard confirmation={item.confirmation} disabled={streaming} onDecision={onDecision} />;
+      }
       if (item.confirmation.confirmationMode === 'post_preview') {
         const preview = item.confirmation.preview as { type?: string } | undefined;
         if (preview?.type === 'setup_library') {
