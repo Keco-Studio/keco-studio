@@ -24,11 +24,13 @@ function historyClient(rows: ReturnType<typeof historyRow>[]) {
   const query = {
     eq: jest.fn(),
     is: jest.fn(),
+    or: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
   };
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
+  query.or.mockReturnValue(query);
   query.order.mockReturnValue(query);
   query.limit.mockResolvedValue({ data: rows, error: null });
   const supabase = {
@@ -50,7 +52,8 @@ describe('bounded conversation history', () => {
 
     expect(query.eq).toHaveBeenCalledWith('user_id', USER);
     expect(query.is).toHaveBeenCalledWith('project_id', null);
-    expect(query.limit).toHaveBeenCalledWith(50);
+    expect(query.or).toHaveBeenCalledWith('meta->scope->>workspace.eq.studio,meta->scope->>workspace.is.null');
+    expect(query.limit).toHaveBeenCalledWith(20);
     expect(result.map((item) => item.id)).toEqual(['legacy']);
     expect(result[0]).toMatchObject({ workspace: 'studio', projectId: null });
   });
@@ -67,6 +70,8 @@ describe('bounded conversation history', () => {
     });
 
     expect(query.eq).toHaveBeenCalledWith('project_id', PROJECT);
+    expect(query.or).toHaveBeenCalledWith('meta->scope->>workspace.eq.studio,meta->scope->>workspace.is.null');
+    expect(query.limit).toHaveBeenCalledWith(1);
     expect(result.map((item) => item.id)).toEqual(['target-1']);
     expect(result[0].projectName).toBe('Project Alpha');
   });
@@ -79,6 +84,7 @@ describe('bounded conversation history', () => {
       userId: USER, workspace: 'projects', projectId: null, limit: 100,
     });
     expect(query.limit).toHaveBeenCalledWith(50);
+    expect(query.eq).toHaveBeenCalledWith('meta->scope->>workspace', 'projects');
     expect(result).toHaveLength(50);
   });
 

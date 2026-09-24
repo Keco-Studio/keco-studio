@@ -2,11 +2,12 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { fireEvent, render, screen, cleanup } from '@testing-library/react';
-import type { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MapToolResultCard, MapGenerationConfirmationCard } from '@/components/agent/MapToolResultCard';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { mapHistoryMessagesToChatItems } from '@/components/agent/historyMessageMapper';
 import { invalidateAgentCaches } from '@/components/agent/useAgentChat';
+import { createMapAgentRefreshKey } from '@/lib/create-map/agentRefresh';
 import { makeValidMapPlanV3 } from '../create-map/fixtures';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: jest.fn() }));
@@ -23,6 +24,9 @@ const data = {
 afterEach(cleanup);
 
 describe('shared agent Map cards', () => {
+  const withQueryClient = (node: React.ReactNode, queryClient = new QueryClient()) => (
+    <QueryClientProvider client={queryClient}>{node}</QueryClientProvider>
+  );
   it('renders title, version, status, history summary and a downloadable ready image', () => {
     const markup = renderToStaticMarkup(<MapToolResultCard data={data} />);
     expect(markup).toContain('Mountain village');
@@ -79,38 +83,32 @@ describe('shared agent Map cards', () => {
       actionId: 'action', tool: 'retry_map_generation', args: {}, confirmationMode: 'pre_execute' as const,
       preview: { type: 'map_generation', projectId: id(1), mapId: id(2), plan: makeValidMapPlanV3(), saveVersion: 3, feeNotice: 'This is paid.', confirmationPurpose: 'retry', confirmationExpiresAt: '2026-09-24T12:00:00Z', duplicateBillingWarning: 'May charge twice.' },
     };
-    render(<ChatMessage item={{ id: 'confirm', role: 'confirmation', confirmation }} streaming={false} onDecision={onDecision} />);
+    render(withQueryClient(<ChatMessage item={{ id: 'confirm', role: 'confirmation', confirmation }} streaming={false} onDecision={onDecision} />));
     expect(screen.getByText('This is paid.')).toBeTruthy();
     expect(screen.getByText('May charge twice.')).toBeTruthy();
     expect(screen.getByText('Exact map plan')).toBeTruthy();
     fireEvent.click(screen.getByText('Confirm paid generation'));
     expect(onDecision).toHaveBeenCalledWith('action', 'approve');
     cleanup();
-    render(<MapGenerationConfirmationCard confirmation={{ ...confirmation, preview: {} }} disabled={false} onDecision={onDecision} />);
+    render(withQueryClient(<MapGenerationConfirmationCard confirmation={{ ...confirmation, preview: {} }} disabled={false} onDecision={onDecision} />));
     expect(screen.queryByTestId('agent-confirm')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
   });
 
-  it('dispatches project-scoped workbench refresh after cache invalidation', async () => {
-    const invalidateQueries = jest.fn().mockResolvedValue(undefined);
-    const listener = jest.fn();
+  it('publishes project-scoped workbench refresh after cache invalidation', async () => {
+    const queryClient = new QueryClient();
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
     const router = { refresh: jest.fn() };
-    window.addEventListener('create-map:refresh', listener);
-    try {
-      await invalidateAgentCaches({ invalidateQueries } as unknown as QueryClient, router, [{ type: 'create-map', projectId: id(1), mapId: id(2) }]);
-      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['create-map'] });
-      expect(listener).toHaveBeenCalledTimes(1);
-      expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ type: 'create-map', projectId: id(1), mapId: id(2) });
-      expect(router.refresh).toHaveBeenCalledTimes(1);
-    } finally { window.removeEventListener('create-map:refresh', listener); }
+    await invalidateAgentCaches(queryClient, router, [{ type: 'create-map', projectId: id(1), mapId: id(2) }]);
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['create-map'] });
+    expect(queryClient.getQueryData(createMapAgentRefreshKey)).toEqual({ type: 'create-map', projectId: id(1), mapId: id(2), sequence: 1 });
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   it('refreshes the forked draft when preparation completes, even if the user cancels payment', () => {
-    const listener = jest.fn();
+    const queryClient = new QueryClient();
     const onDecision = jest.fn();
-    window.addEventListener('create-map:refresh', listener);
-    try {
-      render(<MapGenerationConfirmationCard
+    render(withQueryClient(<MapGenerationConfirmationCard
         confirmation={{
           actionId: 'prepared', tool: 'generate_map_image', args: {}, confirmationMode: 'pre_execute',
           preview: { type: 'map_generation', projectId: id(1), mapId: id(2), nextDraftRevisionId: id(5),
@@ -118,12 +116,10 @@ describe('shared agent Map cards', () => {
         }}
         disabled={false}
         onDecision={onDecision}
-      />);
-      expect(listener).toHaveBeenCalledTimes(1);
-      expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ projectId: id(1), mapId: id(2) });
-      expect(onDecision).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByText('Cancel'));
-      expect(onDecision).toHaveBeenCalledWith('prepared', 'reject');
-    } finally { window.removeEventListener('create-map:refresh', listener); }
+      />, queryClient));
+    expect(queryClient.getQueryData(createMapAgentRefreshKey)).toEqual({ projectId: id(1), mapId: id(2), sequence: 1 });
+    expect(onDecision).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(onDecision).toHaveBeenCalledWith('prepared', 'reject');
   });
 });

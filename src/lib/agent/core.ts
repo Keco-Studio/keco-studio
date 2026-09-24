@@ -179,12 +179,13 @@ export async function buildAgentSystemContext(
     }
   }
 
-  if (ctx.currentLibraryId && !currentLibraryName) {
+  if (ctx.projectId && ctx.currentLibraryId && !currentLibraryName) {
     try {
       const { data: lib } = await ctx.supabase
         .from('libraries')
         .select('name')
         .eq('id', ctx.currentLibraryId)
+        .eq('project_id', ctx.projectId)
         .single();
       currentLibraryName = lib?.name ?? currentLibraryName;
     } catch {
@@ -192,12 +193,13 @@ export async function buildAgentSystemContext(
     }
   }
 
-  if (ctx.currentFolderId && !currentFolderName) {
+  if (ctx.projectId && ctx.currentFolderId && !currentFolderName) {
     try {
       const { data: folder } = await ctx.supabase
         .from('folders')
         .select('name')
         .eq('id', ctx.currentFolderId)
+        .eq('project_id', ctx.projectId)
         .single();
       currentFolderName = folder?.name ?? currentFolderName;
     } catch {

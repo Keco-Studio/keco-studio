@@ -1,7 +1,9 @@
 /** @jest-environment jsdom */
 import React from 'react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DirectMapWorkbench } from '@/features/create-map/DirectMapWorkbench';
+import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { makeEmptyMapSceneV3, makeValidMapPlanV3 } from './fixtures';
 
 const projectId = '10000000-0000-4000-8000-000000000001';
@@ -15,6 +17,7 @@ const mockDraft = { identity: { mapId, revisionId: 'revision', revisionNumber: 1
 const mockGeneration = { phase: 'idle', asset: null, error: null, boundImage: null, canRetry: false, canResolveUnknown: false,
   generate: jest.fn(), retry: jest.fn(), resolveUnknownAndRestart: jest.fn(), reset: jest.fn(), prepareRestore: jest.fn(), installRestore: jest.fn() };
 const mockService = { listReferences: jest.fn().mockResolvedValue([]), loadSavedMapV3: jest.fn() };
+let queryClient: QueryClient;
 jest.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => mockSupabase }));
 jest.mock('@/lib/create-map/projectPreference', () => ({ readCreateMapProjectPreference: () => ({ projectId: '10000000-0000-4000-8000-000000000001' }), CREATE_MAP_SIDEBAR_STATE_EVENT: 'sidebar-state', CREATE_MAP_TOOLBAR_CREATE_EVENT: 'toolbar-create' }));
@@ -33,6 +36,7 @@ jest.mock('@/features/create-map/components/MapReferencePanel', () => ({ MapRefe
 
 beforeEach(() => {
   jest.clearAllMocks();
+  queryClient = new QueryClient();
   mockDraft.isDirty = false;
   const loaded = { projectId, plan: makeValidMapPlanV3(), scene: makeEmptyMapSceneV3(), sourceDocumentId: null, identity: mockDraft.identity };
   mockService.loadSavedMapV3.mockResolvedValue(loaded);
@@ -40,16 +44,20 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function refresh(detail: unknown = { projectId, mapId }) {
-  act(() => { window.dispatchEvent(new CustomEvent('create-map:refresh', { detail })); });
+function workbench() {
+  return <QueryClientProvider client={queryClient}><DirectMapWorkbench /></QueryClientProvider>;
+}
+
+function refresh(detail: { projectId: string; mapId?: string } = { projectId, mapId }) {
+  act(() => { publishCreateMapAgentRefresh(queryClient, detail); });
 }
 
 describe('workbench durable state refresh', () => {
   it('reloads the active map and installs generation restoration even when its map ID is unchanged', async () => {
-    const view = render(<DirectMapWorkbench />);
+    const view = render(workbench());
     refresh();
     await waitFor(() => expect(mockGeneration.installRestore).toHaveBeenCalledTimes(1));
-    expect(mockSaved.refetch).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockSaved.refetch).toHaveBeenCalledTimes(1));
     expect(mockHistory.refetch).toHaveBeenCalledTimes(1);
     expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(mapId);
     expect(mockDraft.install).toHaveBeenCalledTimes(1);
@@ -59,25 +67,31 @@ describe('workbench durable state refresh', () => {
 
   it('waits for local edits to save before installing the refreshed map', async () => {
     mockDraft.isDirty = true;
-    const view = render(<DirectMapWorkbench />);
+    const view = render(workbench());
     refresh();
-    expect(mockSaved.refetch).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockSaved.refetch).toHaveBeenCalledTimes(1));
     expect(mockService.loadSavedMapV3).not.toHaveBeenCalled();
     mockDraft.isDirty = false;
-    view.rerender(<DirectMapWorkbench />);
+    view.rerender(workbench());
     await waitFor(() => expect(mockDraft.install).toHaveBeenCalledTimes(1));
   });
 
-  it('ignores malformed and other-project refresh requests, and removes its listener on unmount', async () => {
-    const view = render(<DirectMapWorkbench />);
-    refresh(null);
-    refresh({ projectId: {}, mapId });
-    expect(mockSaved.refetch).not.toHaveBeenCalled();
+  it('ignores other-project refresh requests and stops observing after unmount', async () => {
+    const view = render(workbench());
     refresh({ projectId: 'foreign', mapId });
+    expect(mockSaved.refetch).not.toHaveBeenCalled();
     expect(mockService.loadSavedMapV3).not.toHaveBeenCalled();
     view.unmount();
     mockSaved.refetch.mockClear();
     refresh();
     expect(mockSaved.refetch).not.toHaveBeenCalled();
+  });
+
+  it('reacts to repeated refreshes with the same map identity', async () => {
+    render(workbench());
+    refresh();
+    await waitFor(() => expect(mockDraft.install).toHaveBeenCalledTimes(1));
+    refresh();
+    await waitFor(() => expect(mockDraft.install).toHaveBeenCalledTimes(2));
   });
 });

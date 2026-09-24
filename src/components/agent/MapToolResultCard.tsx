@@ -2,7 +2,9 @@
 
 import { z } from 'zod';
 import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { MapPlanV3Schema } from '@/features/create-map/model/directMapSchema';
+import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { parseMapToolData, type ConfirmationView } from './types';
 import styles from './ChatPanel.module.css';
 
@@ -62,14 +64,15 @@ export function MapGenerationConfirmationCard({ confirmation, disabled, onDecisi
   confirmation: ConfirmationView; disabled: boolean;
   onDecision: (actionId: string, decision: 'approve' | 'reject') => void;
 }) {
+  const queryClient = useQueryClient();
   const parsed = confirmationSchema.safeParse(confirmation.preview);
   const { projectId, mapId, nextDraftRevisionId } = parsed.success ? parsed.data : {};
   useEffect(() => {
     // Preparing publishes a revision and forks the editable draft, even if approval is cancelled.
     if (projectId && mapId && nextDraftRevisionId) {
-      window.dispatchEvent(new CustomEvent('create-map:refresh', { detail: { projectId, mapId } }));
+      publishCreateMapAgentRefresh(queryClient, { projectId, mapId });
     }
-  }, [projectId, mapId, nextDraftRevisionId]);
+  }, [projectId, mapId, nextDraftRevisionId, queryClient]);
   if (!parsed.success) return <div role="alert">Map confirmation is invalid. Request a new preview.</div>;
   const preview = parsed.data;
   return (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
@@ -88,7 +89,7 @@ export async function invalidateAgentCaches(
     if (invalidation.type === 'create-map') {
       if (typeof invalidation.projectId !== 'string' || (invalidation.mapId !== undefined && typeof invalidation.mapId !== 'string')) continue;
       await queryClient.invalidateQueries({ queryKey: ['create-map'] });
-      window.dispatchEvent(new CustomEvent('create-map:refresh', { detail: invalidation }));
+      publishCreateMapAgentRefresh(queryClient, invalidation);
       continue;
     }
     if (invalidation.type === 'library') {

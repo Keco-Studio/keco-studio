@@ -2,10 +2,12 @@
 
 import { CloseOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectDocumentModal } from '@/components/script-system/SelectDocumentModal';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { createMapAgentRefreshKey, type CreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
 import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
@@ -89,6 +91,12 @@ export function DirectMapWorkbench() {
   const previousGenerationPhase = useRef<string>('idle');
   const pendingRefresh = useRef<{ projectId: string; mapId?: string } | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const { data: agentRefresh } = useQuery<CreateMapAgentRefresh | null>({
+    queryKey: createMapAgentRefreshKey,
+    queryFn: async () => null,
+    enabled: false,
+    initialData: null,
+  });
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -308,19 +316,12 @@ export function DirectMapWorkbench() {
   }, [draft, generation, service]);
 
   useEffect(() => {
-    const onRefresh = (event: Event) => {
-      const detail: unknown = (event as CustomEvent).detail;
-      if (!detail || typeof detail !== 'object') return;
-      const value = detail as { projectId?: unknown; mapId?: unknown };
-      if (typeof value.projectId !== 'string' || (value.mapId !== undefined && typeof value.mapId !== 'string')) return;
-      pendingRefresh.current = { projectId: value.projectId, mapId: typeof value.mapId === 'string' ? value.mapId : undefined };
-      void savedMaps.refetch();
-      void mapGenerationHistory.refetch();
-      setRefreshVersion((version) => version + 1);
-    };
-    window.addEventListener('create-map:refresh', onRefresh);
-    return () => window.removeEventListener('create-map:refresh', onRefresh);
-  }, [savedMaps.refetch, mapGenerationHistory.refetch]);
+    if (!agentRefresh || (projectId && agentRefresh.projectId !== projectId)) return;
+    pendingRefresh.current = { projectId: agentRefresh.projectId, mapId: agentRefresh.mapId };
+    void savedMaps.refetch();
+    void mapGenerationHistory.refetch();
+    setRefreshVersion((version) => version + 1);
+  }, [agentRefresh, projectId, savedMaps.refetch, mapGenerationHistory.refetch]);
 
   useEffect(() => {
     const refresh = pendingRefresh.current;

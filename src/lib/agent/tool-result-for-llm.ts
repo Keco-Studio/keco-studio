@@ -355,21 +355,21 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
   if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
 
   if (toolName === 'read_document') {
-    // The structured compactor always returns valid JSON within the budget.
-    return JSON.stringify(compactReadDocumentPayload(compact));
+    serialized = JSON.stringify(compactReadDocumentPayload(compact));
   }
 
   if (toolName === 'propose_document_edit') {
-    return JSON.stringify(compactProposeDocumentEditPayload(compact));
+    serialized = JSON.stringify(compactProposeDocumentEditPayload(compact));
   }
 
   if (toolName === 'read_story_graph') {
-    return JSON.stringify(compactReadStoryGraphPayload(compact));
+    serialized = JSON.stringify(compactReadStoryGraphPayload(compact));
   }
 
   if (toolName === 'propose_story_graph_edit') {
-    return JSON.stringify(compactStoryGraphEditPreview(compact));
+    serialized = JSON.stringify(compactStoryGraphEditPreview(compact));
   }
+  if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
 
   if (toolName === 'query_assets' && compact.data && typeof compact.data === 'object') {
     const data = compact.data as QueryAssetsData;

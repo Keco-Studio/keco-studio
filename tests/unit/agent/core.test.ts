@@ -29,6 +29,12 @@ import { runAgentTurn } from '@/lib/agent/core';
 import * as toolRegistry from '@/lib/agent/tools';
 
 function input(workspace: AgentTurnInput['toolContext']['workspace'] = 'studio'): AgentTurnInput {
+  const query = {
+    eq: jest.fn(),
+    single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'library-1' }, error: null }),
+  };
+  query.eq.mockReturnValue(query);
   return {
     turnId: 'turn-1',
     conversationId: 'conversation-1',
@@ -36,9 +42,10 @@ function input(workspace: AgentTurnInput['toolContext']['workspace'] = 'studio')
     conversationMeta: { autoExecute: true },
     toolContext: {
       userId: 'user-1', conversationId: 'conversation-1', workspace,
+      projectId: workspace === 'studio' ? 'project-1' : undefined,
       currentLibraryId: workspace === 'studio' ? 'library-1' : undefined,
       currentLibraryName: workspace === 'studio' ? 'Library' : undefined,
-      supabase: {} as SupabaseClient,
+      supabase: { from: jest.fn(() => ({ select: jest.fn(() => query) })) } as unknown as SupabaseClient,
       userRole: 'admin',
     },
   };

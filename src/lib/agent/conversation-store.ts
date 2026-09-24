@@ -348,9 +348,12 @@ export async function listConversations(
   query = filter.projectId === null
     ? query.is('project_id', null)
     : query.eq('project_id', filter.projectId);
+  query = filter.workspace === 'studio'
+    ? query.or('meta->scope->>workspace.eq.studio,meta->scope->>workspace.is.null')
+    : query.eq('meta->scope->>workspace', filter.workspace);
   const { data, error } = await query
     .order('updated_at', { ascending: false })
-    .limit(50);
+    .limit(limit);
   if (error || !data) return [];
 
   return data.map((row) => mapConversationListRow(row))

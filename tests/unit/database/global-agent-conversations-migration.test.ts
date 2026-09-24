@@ -13,6 +13,7 @@ describe('global Agent conversation migration', () => {
     expect(sql).toMatch(/create index[^;]+agent_conversations[^;]+user_id[^;]+updated_at/i);
     expect(sql).toMatch(/create index[^;]+agent_conversations[^;]+project_id[^;]+updated_at/i);
     expect(sql).toMatch(/where project_id is not null/i);
+    expect(sql).toMatch(/agent_conversations\(user_id, project_id, \(\(meta->'scope'->>'workspace'\)\), updated_at desc\)/i);
   });
 
   it('keeps ownership and accepted membership on every project-bound write and read', () => {
@@ -34,6 +35,10 @@ describe('global Agent conversation migration', () => {
     }
     expect(sql).toMatch(/FOR UPDATE USING \([\s\S]+\) WITH CHECK \([\s\S]+pc\.accepted_at is not null/i);
     expect(sql).toMatch(/FOR DELETE USING \(user_id = \(SELECT auth\.uid\(\)\)\)/i);
+    expect(sql).toMatch(/new\.project_id is distinct from old\.project_id/i);
+    expect(sql).toMatch(/new\.meta->'scope' is distinct from old\.meta->'scope'/i);
+    expect(sql).toMatch(/new\.user_id is distinct from old\.user_id/i);
+    expect(sql).toMatch(/before update on public\.agent_conversations/i);
   });
 
   it('uses an actor-bound, transactionally serialized idempotency ledger', () => {

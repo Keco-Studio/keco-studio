@@ -12,6 +12,7 @@ describe('global Agent account retrieval migration', () => {
     expect(sql).toMatch(/project_id is not null\s+or \(source_type = 'chat_message' and user_id is not null and conversation_id is not null\)/i);
     expect(sql).toMatch(/project_id is null\s+and source_type = 'chat_message'\s+and user_id = auth\.uid\(\)/i);
     expect(sql).toMatch(/conversation\.id = conversation_id\s+and conversation\.user_id = auth\.uid\(\)\s+and conversation\.project_id is null/i);
+    expect(sql).toMatch(/public\.user_has_project_access\(project_id, auth\.uid\(\)\)/i);
   });
 
   it('gates account RPC calls by owner and same-conversation scope', () => {

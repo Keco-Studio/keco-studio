@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CreateMapWorkbench } from '@/features/create-map/CreateMapWorkbench';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
@@ -79,7 +80,9 @@ jest.mock('@/features/create-map/services/createMapService', () => ({
 
 describe('Create Map V3 direct workbench', () => {
   it('renders the Map Generator shell with browse and plan controls', () => {
-    const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}><CreateMapWorkbench /></QueryClientProvider>
+    );
 
     expect(markup).toContain('data-testid="create-map-workbench"');
     expect(markup).toContain('data-mode="direct"');
@@ -119,7 +122,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).not.toContain('MapChatPanel');
     expect(direct).not.toContain('chatMessages');
     expect(direct).toContain('<DirectMapSourceForm');
-    expect(direct).toContain("window.addEventListener('create-map:refresh', onRefresh)");
+    expect(direct).toContain('createMapAgentRefreshKey');
     expect(direct).toContain('void openSavedMap(target, true)');
     expect(direct).toContain('onAttachFile=');
     expect(direct).toContain('onAttachKecoDocument=');

@@ -134,6 +134,10 @@ export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[
   }
 
   try {
+    if (!ctx.projectId) return getToolsForLlm(ctx);
+    const { data: boundLibrary, error } = await ctx.supabase.from('libraries')
+      .select('id').eq('id', ctx.currentLibraryId).eq('project_id', ctx.projectId).maybeSingle();
+    if (error || !boundLibrary) return getToolsForLlm(ctx);
     const libraryProperties = await getLibraryProperties(
       ctx.supabase,
       ctx.currentLibraryId,

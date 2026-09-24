@@ -5,7 +5,7 @@ jest.mock('server-only', () => ({}));
 const USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
-const supabase = {};
+const supabase = { from: jest.fn() };
 const runAgentTurn = jest.fn();
 const resumeAgentTurn = jest.fn();
 const getOrCreateConversation = jest.fn();
@@ -109,6 +109,36 @@ describe('agent workspace route binding', () => {
     expect(resolveUserRole).toHaveBeenCalledWith(supabase, PROJECT_ID, USER_ID);
     expect(runAgentTurn.mock.calls[0][0].toolContext).toEqual(expect.objectContaining({
       projectId: PROJECT_ID, workspace: 'script', currentFolderId: undefined,
+    }));
+  });
+
+  it('rejects a library hint that does not belong to the bound project', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+    const query = { eq: jest.fn(), maybeSingle };
+    query.eq.mockReturnValue(query);
+    supabase.from.mockReturnValue({ select: () => query });
+    const response = await chatPost(request('/api/agent-chat', {
+      projectId: PROJECT_ID, workspace: 'script', message: 'Hello', currentLibraryId: OTHER_PROJECT_ID,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(query.eq).toHaveBeenCalledWith('project_id', PROJECT_ID);
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+  });
+
+  it('stores verified library identity and ignores the client-supplied name', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: { id: OTHER_PROJECT_ID, name: 'Verified' }, error: null });
+    const query = { eq: jest.fn(), maybeSingle };
+    query.eq.mockReturnValue(query);
+    supabase.from.mockReturnValue({ select: () => query });
+    const response = await chatPost(request('/api/agent-chat', {
+      projectId: PROJECT_ID, workspace: 'script', message: 'Hello',
+      currentLibraryId: OTHER_PROJECT_ID, currentLibraryName: 'Forged',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(getOrCreateConversation).toHaveBeenCalledWith(supabase, expect.objectContaining({
+      scope: expect.objectContaining({ libraryId: OTHER_PROJECT_ID, libraryName: 'Verified' }),
     }));
   });
 

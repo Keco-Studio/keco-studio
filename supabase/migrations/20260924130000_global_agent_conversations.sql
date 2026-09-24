@@ -3,6 +3,26 @@
 ALTER TABLE public.agent_conversations
   ALTER COLUMN project_id DROP NOT NULL;
 
+-- RLS checks row visibility, not whether an UPDATE changed a binding. Freeze
+-- all authority-bearing conversation fields after creation.
+CREATE OR REPLACE FUNCTION public.guard_agent_conversation_binding()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF NEW.user_id IS DISTINCT FROM OLD.user_id
+    OR NEW.project_id IS DISTINCT FROM OLD.project_id
+    OR NEW.meta->'scope' IS DISTINCT FROM OLD.meta->'scope'
+    OR NEW.meta->'documentExport' IS DISTINCT FROM OLD.meta->'documentExport' THEN
+    RAISE EXCEPTION 'Conversation binding is immutable' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_guard_agent_conversation_binding ON public.agent_conversations;
+CREATE TRIGGER trg_guard_agent_conversation_binding
+BEFORE UPDATE ON public.agent_conversations
+FOR EACH ROW EXECUTE FUNCTION public.guard_agent_conversation_binding();
+
 DROP POLICY IF EXISTS "Users can view own conversations" ON public.agent_conversations;
 CREATE POLICY "Users can view own conversations" ON public.agent_conversations
 FOR SELECT USING (
@@ -68,6 +88,8 @@ CREATE INDEX IF NOT EXISTS idx_agent_conv_user_updated
 CREATE INDEX IF NOT EXISTS idx_agent_conv_project_updated
   ON public.agent_conversations(project_id, updated_at DESC)
   WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_conv_scope_history
+  ON public.agent_conversations(user_id, project_id, ((meta->'scope'->>'workspace')), updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS private.agent_project_creation_requests (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,

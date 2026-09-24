@@ -48,7 +48,7 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toContain('showStudioSidebar');
     expect(source).toContain('showScriptSidebar');
     expect(source).toContain('ScriptSidebar');
-    expect(source).toContain('hideChatPanel');
+    expect(source).toContain('<AssistantHost />');
     expect(source).toContain('<TopBar');
     expect(source).not.toContain('hideTopBar');
     expect(source).toMatch(/showScriptSidebar\s*=\s*onScriptSystem/);

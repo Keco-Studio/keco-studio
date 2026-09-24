@@ -142,15 +142,38 @@ export const POST = withAuth(async function POST(
       documentExport = { sourceDocumentId, exportType: 'table', snapshotToken };
     }
 
-    // For a new conversation, snapshot the scope from live navigation.
+    // Resource hints are untrusted navigation data. Only bind resources that
+    // belong to the same project as this conversation.
+    let folderHint: { id: string; name: string } | undefined;
+    let libraryHint: { id: string; name: string } | undefined;
+    if (isNewConversation && requestedProjectId && body.currentFolderId) {
+      if (typeof body.currentFolderId !== 'string' || !isUuid(body.currentFolderId)) {
+        return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('folders').select('id, name')
+        .eq('id', body.currentFolderId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      folderHint = data;
+    }
+    if (isNewConversation && requestedProjectId && body.currentLibraryId) {
+      if (typeof body.currentLibraryId !== 'string' || !isUuid(body.currentLibraryId)) {
+        return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('libraries').select('id, name')
+        .eq('id', body.currentLibraryId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      libraryHint = data;
+    }
+
+    // For a new conversation, snapshot the scope from verified navigation.
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
           projectId: requestedProjectId ?? undefined,
           workspace: liveWorkspace,
-          currentFolderId: body.currentFolderId,
-          currentFolderName: body.currentFolderName,
-          currentLibraryId: body.currentLibraryId,
-          currentLibraryName: body.currentLibraryName,
+          currentFolderId: folderHint?.id,
+          currentFolderName: folderHint?.name,
+          currentLibraryId: libraryHint?.id,
+          currentLibraryName: libraryHint?.name,
         })
       : undefined;
 

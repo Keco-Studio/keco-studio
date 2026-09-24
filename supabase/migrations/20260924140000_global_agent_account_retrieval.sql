@@ -13,11 +13,7 @@ DROP POLICY IF EXISTS "Users read embedding chunks in their projects" ON public.
 CREATE POLICY "Users read embedding chunks in their projects" ON public.agent_embedding_chunks
 FOR SELECT USING (
   (
-    project_id IN (
-      SELECT id FROM public.projects WHERE owner_id = auth.uid()
-      UNION
-      SELECT project_id FROM public.project_collaborators WHERE user_id = auth.uid()
-    )
+    public.user_has_project_access(project_id, auth.uid())
     AND (source_type <> 'chat_message' OR user_id = auth.uid())
   )
   OR (
