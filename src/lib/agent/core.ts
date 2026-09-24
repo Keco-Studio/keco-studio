@@ -37,7 +37,7 @@ import {
   prepareMessagesForLlm,
 } from './tool-result-for-llm';
 import { augmentUserMessageForLlm, stripContextAugmentation } from './context-message';
-import { AGENT_RETRIEVAL_ENABLED } from './embedding-config';
+import { AGENT_RETRIEVAL_ENABLED, SCOPE_QUOTAS, type RetrievalScope } from './embedding-config';
 import { embedQuery } from './embedding-client';
 import {
   formatRetrievedContext,
@@ -276,13 +276,19 @@ export async function buildAgentSystemMessage(
   return (await buildAgentSystemContext(ctx, retrievedContextBlock)).message;
 }
 
+export function retrievalScopesForContext(ctx: ToolContext): RetrievalScope[] {
+  return ctx.projectId
+    ? Object.keys(SCOPE_QUOTAS) as RetrievalScope[]
+    : ['chat_same_conversation'];
+}
+
 async function loadRetrievedContextBlock(
   ctx: ToolContext,
   conversationId: string,
   userMessage: string,
   usageBinding?: AiUsageBinding,
 ): Promise<string | undefined> {
-  if (!AGENT_RETRIEVAL_ENABLED || !ctx.projectId) return undefined;
+  if (!AGENT_RETRIEVAL_ENABLED) return undefined;
   try {
     const queryText = stripContextAugmentation(userMessage);
     if (!queryText.trim()) return undefined;
@@ -295,9 +301,10 @@ async function loadRetrievedContextBlock(
     const chunks = await retrieveRelevantChunks({
       supabase: ctx.supabase,
       queryEmbedding,
-      projectId: ctx.projectId,
+      projectId: ctx.projectId || undefined,
       userId: ctx.userId,
       conversationId,
+      scopes: retrievalScopesForContext(ctx),
     });
     const block = formatRetrievedContext(chunks);
     if (block) {
@@ -319,10 +326,8 @@ async function loadRetrievedContextBlock(
 function indexingContext(
   ctx: ToolContext,
   usageBinding?: AiUsageBinding,
-): SaveMessageIndexingContext | undefined {
-  return ctx.projectId
-    ? { projectId: ctx.projectId, userId: ctx.userId, usageBinding }
-    : undefined;
+): SaveMessageIndexingContext {
+  return { projectId: ctx.projectId || null, userId: ctx.userId, usageBinding };
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

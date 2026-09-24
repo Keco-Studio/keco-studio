@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   applyScopeQuotas,
   computeFinalScore,
@@ -6,6 +7,7 @@ import {
   formatRetrievedContext,
   mergeRetrievalCandidates,
   resolveChatConflict,
+  retrieveRelevantChunks,
   truncateByMaxChars,
 } from '../../../src/lib/agent/embedding-retrieval';
 import type { RetrievalCandidate } from '../../../src/lib/agent/embedding-retrieval';
@@ -163,5 +165,37 @@ describe('mergeRetrievalCandidates', () => {
       { ...candidate({ id: '2', sourceType: 'library_cell', content: 'b', scope: 'library' }), finalScore: 0.9 },
     ]);
     expect(merged[0].id).toBe('2');
+  });
+});
+
+describe('retrieveRelevantChunks', () => {
+  it('keeps project quotas, ranking and max-character selection after parallel fetches', async () => {
+    const rpc = jest.fn(async (_name: string, args: { p_scope: string }) => ({
+      error: null,
+      data: args.p_scope === 'library'
+        ? [
+            { id: 'best', source_type: 'library_cell', content: 'B'.repeat(10), metadata: {}, similarity: 0.95, source_timestamp: '2026-06-17T00:00:00Z' },
+            { id: 'low', source_type: 'library_cell', content: 'L'.repeat(10), metadata: {}, similarity: 0.7, source_timestamp: '2026-06-17T00:00:00Z' },
+          ]
+        : [{ id: 'chat', source_type: 'chat_message', content: 'C'.repeat(10), metadata: {}, similarity: 0.9, source_timestamp: '2026-06-17T00:00:00Z' }],
+    }));
+
+    const result = await retrieveRelevantChunks({
+      supabase: { rpc } as unknown as SupabaseClient,
+      queryEmbedding: [0.1],
+      projectId: 'project-1',
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      scopes: ['library', 'chat_same_conversation'],
+      scopeQuotas: {
+        chat_same_conversation: 1, chat_same_project: 0, library: 1,
+        design_document: 0, project_document: 0,
+      },
+      maxChars: 20,
+    });
+
+    expect(result.map((item) => item.id)).toEqual(['best', 'chat']);
+    expect(result.map((item) => item.content.length)).toEqual([10, 10]);
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,7 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+const triggerConversationIndexing = jest.fn();
+jest.mock('@/lib/agent/embedding-index', () => ({ triggerConversationIndexing }));
 import {
   getOrCreateConversation,
   listAllConversations,
+  saveMessage,
 } from '../../../src/lib/agent/conversation-store';
 
 const userId = '11111111-1111-4111-8111-111111111111';
@@ -33,6 +36,23 @@ function storeClient(record: ReturnType<typeof row>) {
 }
 
 describe('conversation project binding', () => {
+  it('queues an account message for chat indexing with a null project ID', async () => {
+    const messageRow = { id: 'message-1', created_at: '2026-09-24T00:00:00Z' };
+    const supabase = {
+      from: (table: string) => table === 'agent_messages'
+        ? { insert: () => ({ select: () => ({ single: async () => ({ data: messageRow, error: null }) }) }) }
+        : { update: () => ({ eq: async () => ({ error: null }) }) },
+    } as unknown as SupabaseClient;
+
+    await saveMessage(supabase, 'conversation-1', { role: 'user', content: 'Account memory' }, {
+      projectId: null, userId,
+    });
+
+    expect(triggerConversationIndexing).toHaveBeenCalledWith(supabase, expect.objectContaining({
+      conversationId: 'conversation-1', projectId: null, userId,
+      role: 'user', messageText: 'Account memory',
+    }));
+  });
   it('inserts null for a new account conversation', async () => {
     const { supabase, insert } = storeClient(row(null));
     const conversation = await getOrCreateConversation(supabase, { userId });

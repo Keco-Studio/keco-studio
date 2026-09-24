@@ -213,7 +213,7 @@ export interface SaveMessageResult {
 }
 
 export interface SaveMessageIndexingContext {
-  projectId: string;
+  projectId: string | null;
   userId: string;
   usageBinding?: AiUsageBinding;
 }
