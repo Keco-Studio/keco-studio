@@ -49,6 +49,15 @@
   width: clamp(300px, var(--agent-panel-width-ratio), 390px);
 }
 
+/* Create Map's top bar overlays the full-height workbench. Keep the assistant
+   header below that existing bar; mobile already positions the panel below it. */
+@media (min-width: 681px) {
+  .panelSlotMap {
+    box-sizing: border-box;
+    padding-top: 4rem;
+  }
+}
+
 .panel {
   --top-nav-height: 4rem;
   --agent-blue: #1687ff;

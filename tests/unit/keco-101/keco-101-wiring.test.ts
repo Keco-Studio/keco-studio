@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isKeco101Path } from '@/lib/keco-101/isKeco101Path';
+import { deriveAgentWorkspaceContext } from '@/lib/agent/client-workspace';
 import {
   getProductNavigationDestination,
   getProductNavigationState,
@@ -63,7 +64,8 @@ describe('Keco 101 page shell', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
     expect(source).toContain('isKeco101Path');
     expect(source).toMatch(/showStudioSidebar\s*=[\s\S]*?!onKeco101/);
-    expect(source).toMatch(/hideChatPanel\s*=[\s\S]*?\|\|\s*onKeco101/);
+    expect(source).toContain('<AssistantHost />');
+    expect(deriveAgentWorkspaceContext('/keco-101', {} as never, null)).toBeNull();
     expect(source).toContain('showTopBar && !onKeco101');
   });
 

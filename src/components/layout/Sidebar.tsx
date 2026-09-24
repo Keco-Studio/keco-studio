@@ -124,7 +124,7 @@ type SidebarProps = {
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
-  const pathname = usePathname(); // Only for pathname === '/projects' (auto-navigate)
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const {
     currentProjectId,
@@ -462,20 +462,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentProjectId: currentIds.projectId,
     router,
   });
-
-  // Auto-navigate to first project's Recent page on login if user has projects
-  useEffect(() => {
-    // Only auto-navigate if:
-    // 1. User is on /projects page (pathname === '/projects')
-    // 2. Projects list is loaded and not empty
-    // 3. User is not a guest (userProfile exists)
-    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userId) {
-      const firstProject = projects[0];
-      if (firstProject?.id) {
-        router.push(`/${firstProject.id}/recent`);
-      }
-    }
-  }, [pathname, projects, loadingProjects, userId, router]);
 
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);

@@ -232,7 +232,7 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
   }, [appendNote]);
 
   return (
-    <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''}`}>
+    <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''} ${workspace === 'create-map' ? styles.panelSlotMap : ''}`}>
       {!open ? (
       <button
         className={`${styles.launcher} ${isLauncherDragging ? styles.launcherDragging : ''}`}

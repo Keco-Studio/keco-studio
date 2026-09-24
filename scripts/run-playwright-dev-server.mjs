@@ -23,6 +23,7 @@ const port = process.argv[2] ?? process.env.PLAYWRIGHT_PORT ?? '3000';
 const nextBin = join(rootDir, 'node_modules/next/dist/bin/next');
 const mockGameDesignSystem = JSON.stringify({
   document: {
+    gameBackground: 'A river kingdom recovering from a magical flood.',
     designIntent: 'Make every tactical choice legible and consequential.',
     playerFantasy: 'Lead a small squad through uncertain encounters.',
     coreLoop: 'Scout, commit resources, resolve the encounter, and adapt the squad.',

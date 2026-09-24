@@ -203,11 +203,16 @@ describe('GDS account tools', () => {
   });
 
   it('normalizes input, preserves hash/key idempotency, and only enqueues a GDS job', async () => {
+    jest.mocked(createGameDesignSystemGenerationJob).mockImplementationOnce(async () => {
+      calls.push(['enqueue']);
+      return { id: jobId, status: 'queued' } as never;
+    });
     const result = await generateGameDesignSystemTool.execute(generationArgs, ctx);
     expect(result).toEqual({ success: true, displayHint: 'text', data: { jobType: 'game-design-system', jobId, status: 'queued' } });
     expect(createGameDesignSystemGenerationJob).toHaveBeenCalledWith(service, userId,
       expect.objectContaining({ title: 'Rules', genres: ['RPG'], artStyle: expect.objectContaining({ presetId: 'pixel-art' }) }),
       { idempotencyKey: id(6), inputHash: expect.any(String) });
+    expect(calls.slice(calls.findIndex((call) => call[0] === 'enqueue') + 1)).toEqual([]);
     const prior = jest.mocked(createGameDesignSystemGenerationJob).mock.calls[0][2];
     jest.mocked(findGameDesignSystemGenerationJobByIdempotencyKey).mockResolvedValue({ id: jobId, status: 'queued', input: prior } as never);
     expect((await generateGameDesignSystemTool.execute(generationArgs, ctx)).data).toEqual(result.data);
@@ -270,7 +275,12 @@ describe('explicit project writes', () => {
       expect(result.args).toEqual({ ...gddArgs, designSystemId, versionId, warning: GDD_GENERATION_WARNING });
       expect(result.preview).toEqual(result.args);
       expect(GDD_GENERATION_WARNING).toContain('up to three paid map images');
+      jest.mocked(createGddGenerationJob).mockImplementationOnce(async () => {
+        calls.push(['enqueue']);
+        return { id: jobId, status: 'queued' } as never;
+      });
       expect(await generateGddTool.execute(result.args, ctx)).toEqual({ success: true, displayHint: 'text', data: { jobType: 'gdd', jobId, status: 'queued' } });
+      expect(calls.slice(calls.findIndex((call) => call[0] === 'enqueue') + 1)).toEqual([]);
       expect(createGddGenerationJob).toHaveBeenCalledTimes(1);
       expect(createGddGenerationJob).toHaveBeenCalledWith(service, expect.objectContaining({ ownerId: userId, projectId, designSystemId, versionId, idempotencyKey: id(6), inputHash: expect.any(String), input: expect.objectContaining({ mode: 'professional', resourceMode: 'async', versionId }) }));
     } else expect(createGddGenerationJob).not.toHaveBeenCalled();

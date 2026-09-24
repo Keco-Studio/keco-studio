@@ -1,6 +1,8 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { AgentPage } from '../pages/agent.page';
+import { agentStream, captureAssistantShell, mockEmptyAgentHistory, toolEvents } from '../helpers/global-assistant';
 import type { MapPlanV3, MapSceneV3 } from '../../../src/features/create-map/model/directMapSchema';
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
@@ -742,6 +744,63 @@ async function expectWithin(locator: Locator, container: Locator): Promise<void>
 test.describe('Create Map V3 mocked workflow', () => {
   test.describe.configure({ mode: 'serial', timeout: 45_000 });
 
+  test('global assistant draft previews the exact paid plan in Auto mode and returns queued after approval', async ({ page }) => {
+    const backend = new CreateMapV3MockBackend();
+    await loginAndOpen(page, backend);
+    await selectProject(page);
+    await mockEmptyAgentHistory(page);
+    const conversationId = uuid(700);
+    const actionId = uuid(701);
+    const plan = planFixture();
+    const data = { kind: 'map', projectId: PROJECT_ID, mapId: MAP_ID, revisionId: DRAFT_REVISION_ID,
+      revisionNumber: 1, saveVersion: 0, plan: { title: plan.name, summary: plan.summary, width: 512, height: 512, referenceCount: 0 } };
+    let approvals = 0;
+    let turns = 0;
+    await page.route('**/api/agent-chat', async (route) => {
+      const body = route.request().postDataJSON();
+      expect(body.workspace).toBe('create-map');
+      if (turns === 0) expect(body.projectId).toBe(PROJECT_ID);
+      else expect(body.conversationId).toBe(conversationId);
+      turns += 1;
+      await agentStream(route, conversationId, turns === 1 ? [
+        ...toolEvents('create_map_draft', data, 'map'),
+        { type: 'text_delta', content: 'Draft saved. Review the plan before generation.' },
+      ] : [{ type: 'confirmation_request', actionId, tool: 'generate_map_image', args: {}, confirmationMode: 'pre_execute',
+        preview: { type: 'map_generation', projectId: PROJECT_ID, mapId: MAP_ID, plan, saveVersion: 0,
+          feeNotice: 'Paid PixelLab request. Continuing may incur provider charges.', confirmationPurpose: 'submit',
+          confirmationExpiresAt: new Date(Date.now() + 600_000).toISOString() } }]);
+    });
+    await page.route('**/api/agent-chat/confirm', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({ actionId, decision: 'approve' });
+      approvals += 1;
+      await agentStream(route, conversationId, toolEvents('generate_map_image', { ...data,
+        generation: { assetId: uuid(702), status: 'queued', attemptCount: 1, imageUrl: null, lastErrorCode: null } }, 'map'));
+    });
+    const agent = new AgentPage(page); await agent.open(); await agent.enableAutoMode();
+    await expect(page.getByTestId('agent-input')).toHaveCount(1);
+    await expect(page.getByRole('textbox', { name: 'Describe your map' })).toHaveCount(0);
+    await agent.send('Create a mossy crossing draft');
+    await expect(page.getByTestId('agent-map-result')).toContainText(plan.name);
+    await agent.send('Generate the saved map image');
+    const confirmation = page.getByTestId('agent-confirmation');
+    await expect(confirmation).toContainText('may incur provider charges');
+    await expect(confirmation.locator('pre')).toHaveText(JSON.stringify(plan, null, 2));
+    expect(approvals).toBe(0);
+    await confirmation.getByRole('button', { name: 'Confirm paid generation' }).click();
+    await expect(page.getByTestId('agent-map-result').last()).toContainText('Status: queued');
+    expect(approvals).toBe(1);
+    expect(turns).toBe(2);
+    expect(backend.edgeBodies).toEqual([]);
+  });
+
+  for (const mobile of [false, true]) {
+    test(`global Create Map shared shell ${mobile ? '@mobile' : 'desktop'}`, async ({ page }, testInfo) => {
+      await loginAndOpen(page, new CreateMapV3MockBackend());
+      await mockEmptyAgentHistory(page);
+      await captureAssistantShell(page, testInfo, 'create-map');
+    });
+  }
+
   test('aligns the source panel chrome with the Libraries sidebar', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const backend = new CreateMapV3MockBackend();
@@ -1035,6 +1094,9 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible();
     await expect(page.getByText('Grid ready', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Close inspector panel' }).click();
+    await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+      workbenchBox.x + workbenchBox.width - 1,
+    );
 
     const overlay = page.getByLabel('Editable collision grid');
     const bounds = await overlay.boundingBox();
@@ -1047,12 +1109,17 @@ test.describe('Create Map V3 mocked workflow', () => {
     });
 
     const tapPoint = point(20, 20);
+    await expect.poll(() => overlay.evaluate((element, target) =>
+      element.contains(document.elementFromPoint(target.x, target.y)), tapPoint)).toBe(true);
     await page.touchscreen.tap(tapPoint.x, tapPoint.y);
     await page.getByRole('button', { name: 'Open source panel' }).click();
     await page.getByRole('button', { name: 'View map plan' }).click();
     await page.getByRole('button', { name: 'Close source panel' }).click();
     await expect(page.getByText('2 blocked', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Close inspector panel' }).click();
+    await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+      workbenchBox.x + workbenchBox.width - 1,
+    );
 
     const dragBounds = await overlay.boundingBox();
     if (!dragBounds) throw new Error('Collision overlay is not visible for touch drag');

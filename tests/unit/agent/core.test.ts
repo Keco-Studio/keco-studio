@@ -26,6 +26,7 @@ jest.mock('@/lib/agent/trace-store', () => ({
 }));
 
 import { runAgentTurn } from '@/lib/agent/core';
+import * as toolRegistry from '@/lib/agent/tools';
 
 function input(workspace: AgentTurnInput['toolContext']['workspace'] = 'studio'): AgentTurnInput {
   return {
@@ -90,6 +91,31 @@ describe('agent workspace execution and turn schema', () => {
     await collect(accountInput);
 
     expect(getLibraryProperties).not.toHaveBeenCalled();
+  });
+
+  it('constructs one schema for a four-iteration turn and reuses its identity', async () => {
+    const builder = jest.spyOn(toolRegistry, 'createTurnToolSchema');
+    try {
+      streamLlm.mockImplementationOnce(llmToolCall('get_library_schema'))
+        .mockImplementationOnce(llmToolCall('get_library_schema'))
+        .mockImplementationOnce(llmToolCall('get_library_schema'))
+        .mockImplementationOnce(llmFinal);
+      executeAgentTool.mockImplementation(async function* () { return { success: true }; });
+      await collect(input());
+      expect(builder).toHaveBeenCalledTimes(1);
+      expect(getLibraryProperties).toHaveBeenCalledTimes(1);
+      expect(streamLlm).toHaveBeenCalledTimes(4);
+      for (const call of streamLlm.mock.calls) expect(call[1].tools).toBe(streamLlm.mock.calls[0][1].tools);
+    } finally { builder.mockRestore(); }
+  });
+
+  it.each(['projects', 'script', 'create-map', 'game-design-systems'] as const)
+  ('sends a smaller schema payload for %s than the complete registry', (workspace) => {
+    const all = toolRegistry.allTools.map((tool) => ({ type: 'function', function: {
+      name: tool.name, description: tool.description, parameters: tool.parameters,
+    } }));
+    expect(JSON.stringify(toolRegistry.getToolsForLlm({ workspace })).length)
+      .toBeLessThan(JSON.stringify(all).length);
   });
 
   it.each([
