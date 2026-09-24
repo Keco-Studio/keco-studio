@@ -110,7 +110,8 @@ function storageClient(
       }
       const result = await base.rpc(name, args);
       if (
-        name === 'service_reserve_project_storage_upload'
+        (name === 'service_reserve_project_storage_upload'
+          || name === 'service_reserve_project_storage_upload_v2')
         && result.data
         && typeof result.data === 'object'
         && !Array.isArray(result.data)

@@ -146,7 +146,7 @@ export async function reserveServiceStorage(
   if (!SOURCE_KINDS.includes(input.sourceKind)) throw new Error("Invalid storage quota source kind");
   const expectedBytes = positiveBytes(input.expectedBytes, "expectedBytes");
   try {
-    const { data, error } = await client.rpc("service_reserve_project_storage_upload", {
+    const { data, error } = await client.rpc("service_reserve_project_storage_upload_v2", {
       p_actor_user_id: actorUserId, p_project_id: projectId, p_bucket_id: input.bucketId,
       p_object_path: input.objectPath, p_expected_bytes: expectedBytes,
       p_display_name: input.displayName, p_mime_type: input.mimeType,
@@ -173,7 +173,7 @@ export async function finalizeServiceStorage(
     throw new Error("Invalid storage quota object created at");
   }
   try {
-    const { data, error } = await client.rpc("service_finalize_project_storage_upload", {
+    const { data, error } = await client.rpc("service_finalize_project_storage_upload_v2", {
       p_actor_user_id: actorUserId, p_reservation_id: reservationId,
       p_actual_bytes: actualBytes, p_source_entity_id: sourceEntityId,
       p_object_created_at: input.objectCreatedAt ?? null,

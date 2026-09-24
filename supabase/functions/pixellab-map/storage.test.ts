@@ -42,11 +42,11 @@ function fixtureClient(
     storage: { from(name: string) { calls.push({ name: "bucket", args: name }); return bucket; } },
     async rpc(name: string, args: unknown) {
       calls.push({ name, args });
-      if (name === "service_reserve_project_storage_upload") {
+      if (name === "service_reserve_project_storage_upload_v2") {
         if (reserveError) return { data: null, error: reserveError };
         return { data: { reservationId: "66666666-6666-4666-8666-666666666666", ownerId: IDs.actorUserId, projectId: IDs.projectId, expectedBytes: 5242880, reused: false }, error: null };
       }
-      if (name === "service_finalize_project_storage_upload") {
+      if (name === "service_finalize_project_storage_upload_v2") {
         return { data: { fileId: "77777777-7777-4777-8777-777777777777", ownerId: IDs.actorUserId, projectId: IDs.projectId, sizeBytes: bytes.byteLength, reservationId: "66666666-6666-4666-8666-666666666666", reused: false }, error: null };
       }
       if (name === "service_release_project_storage_upload") {
