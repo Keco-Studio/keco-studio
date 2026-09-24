@@ -38,7 +38,8 @@ describe('agent conversation switch lifecycle wiring', () => {
     expect(hookSource).toContain('isLoading: true');
     expect(hookSource).toContain('restoreEpochRef.current');
     expect(hookSource).toContain('if (!open || !ctx.userId) return false;');
-    expect(hookSource).toContain('if (!open || !ctx.userId || selectedRuntime?.conversationId');
+    expect(hookSource).toContain('if (!open || !ctx.userId) return;');
+    expect(hookSource).toContain('if (selectedRuntime?.conversationId || selectedRuntime?.isStreaming ||');
     expect(hookSource).toContain('[ctx.userId, ctx.workspace, ctx.projectId]');
     expect(panelSource).toContain('useAgentChat(ctx, open)');
     expect(panelSource).toContain('{showHistory && (');
@@ -46,7 +47,7 @@ describe('agent conversation switch lifecycle wiring', () => {
 
   it('blocks anonymous turns until the authenticated profile is ready', () => {
     expect(hookSource).toMatch(/if \(\s*!ctx\.userId/);
-    expect(panelSource).toContain('if (!currentProjectId || !userProfile?.id) return;');
+    expect(panelSource).toContain('if (!projectId || !userProfile?.id) return;');
   });
 
   it('invalidates pending automatic restores when the user selects New or History', () => {

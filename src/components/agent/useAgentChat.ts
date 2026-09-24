@@ -1051,8 +1051,11 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
     } else {
       resetToEmpty();
     }
-    if (!open || !ctx.userId || selectedRuntime?.conversationId ||
-        selectedRuntime?.isStreaming || selectedRuntime?.items.length) return;
+    // Collapsed mounts only select local runtime state. Auth/history requests
+    // begin after the panel is opened.
+    if (!open || !ctx.userId) return;
+    if (selectedRuntime?.conversationId || selectedRuntime?.isStreaming ||
+        selectedRuntime?.items.length) return;
     // A pending design-upload hand-off will drive a fresh conversation; skip the
     // normal restore so it cannot clobber the auto-sent message.
     if (ctx.projectId && peekDesignHandoff(ctx.projectId)) return;

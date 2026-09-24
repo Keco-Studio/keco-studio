@@ -24,6 +24,7 @@ interface ConversationItem {
 interface Props {
   projectId?: string;
   workspace: AgentWorkspace;
+  enabled: boolean;
   activeId?: string;
   onSelect: (id: string) => void;
 }
@@ -57,12 +58,13 @@ export function conversationHistoryLabel(item: Pick<ConversationItem, 'projectId
   return item.projectId ? (item.projectName || 'Unknown project') : workspaceLabels[item.workspace];
 }
 
-export function ConversationList({ projectId, workspace, activeId, onSelect }: Props) {
+export function ConversationList({ projectId, workspace, enabled, activeId, onSelect }: Props) {
   const supabase = useSupabase();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     const load = async () => {
       setConversations([]);
@@ -89,7 +91,7 @@ export function ConversationList({ projectId, workspace, activeId, onSelect }: P
     };
     void load();
     return () => controller.abort();
-  }, [projectId, workspace, supabase]);
+  }, [enabled, projectId, workspace, supabase]);
 
   return (
     <section
