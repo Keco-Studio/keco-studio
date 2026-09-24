@@ -1174,10 +1174,18 @@ test.describe('Create Map V3 mocked workflow', () => {
       type: 'touchStart',
       touchPoints: [{ id: 1, x: dragStart.x, y: dragStart.y, radiusX: 1, radiusY: 1, force: 1 }],
     });
+    await page.waitForTimeout(50);
+    const dragMiddle = dragPoint(22.5, 20);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: dragMiddle.x, y: dragMiddle.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await page.waitForTimeout(50);
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchMove',
       touchPoints: [{ id: 1, x: dragEnd.x, y: dragEnd.y, radiusX: 1, radiusY: 1, force: 1 }],
     });
+    await page.waitForTimeout(50);
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchEnd',
       touchPoints: [],

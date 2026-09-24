@@ -27,10 +27,24 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 function isLocalSupabase(url: string): boolean {
   try {
     const host = new URL(url).hostname;
-    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    return host === '127.0.0.1' || host === 'localhost' || host === '[::1]';
   } catch {
     return false;
   }
+}
+
+export function localPostgresUrl(): string {
+  const url = process.env.RLS_TEST_DB_URL;
+  if (!url) {
+    if (RLS_DB_TESTS_ENABLED) {
+      throw new Error('RLS_TEST_DB_URL is required for live database tests.');
+    }
+    return '';
+  }
+  if (!isLocalSupabase(url)) {
+    throw new Error('RLS_TEST_DB_URL must point to a local database.');
+  }
+  return url;
 }
 
 /**

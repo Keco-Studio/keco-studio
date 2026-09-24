@@ -42,9 +42,10 @@ npm run lint
 npm run typecheck
 npm run typecheck:api
 npm run check:mcp
-npm run test:mcp
+npm run test:edge
 npm run test:unit -- --runInBand tests/unit/mcp/oauth-probe.test.ts tests/unit/mcp/capabilities-probe.test.ts tests/unit/mcp/load-probe.test.ts tests/unit/mcp/performance-probe.test.ts tests/unit/mcp/evidence-scan.test.ts
 npm run test:unit
+npm run test:unit:db
 npm run build
 ```
 

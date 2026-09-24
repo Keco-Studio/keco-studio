@@ -29,7 +29,44 @@ npm run test:account-credit-db
 The command reads only the local Supabase development credentials from
 `supabase status`, runs the Credit migration contracts plus live RLS and
 EXPLAIN coverage, and fails instead of silently skipping when the live database
-suite is unavailable.
+suite is unavailable. It uses the same local URL and migration parity checks as
+`test:unit:db`; `SUPABASE_TEST_WORKDIR` can select an isolated local stack.
+
+## Local release database behavior gate
+
+With the Supabase CLI and `psql` installed and a migrated local stack running,
+run:
+
+```bash
+npm run test:unit:db
+```
+
+The gate reads local credentials from `supabase status`, rejects non-local URLs,
+and requires the local database migration history to match the repository. It
+runs every database behavior suite plus the shared-document and GDS route
+database tests, failing if any selected test is skipped. CI enables the same
+required RLS mode for its full Jest run. `npm run validate` requires this local
+database gate. A mismatched local stack must be replaced or migrated in an
+isolated environment before release evidence is recorded.
+
+To use an isolated Supabase project with its own project ID and ports, set
+`SUPABASE_TEST_WORKDIR` to the directory containing its `supabase` folder:
+
+```bash
+SUPABASE_TEST_WORKDIR=/path/to/isolated-project npm run test:unit:db
+```
+
+The gate exports that stack's database URL to all live tests, including tests
+that invoke `psql` directly. It does not reset either stack.
+
+## Edge Function test gate
+
+```bash
+npm run test:edge
+```
+
+This runs MCP, PixelLab map, and PixelLab character Deno suites. CI and
+`npm run validate` use this complete gate.
 
 ## Local Realtime authorization pool
 
