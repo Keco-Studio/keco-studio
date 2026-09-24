@@ -154,8 +154,8 @@ jobs:
       - name: Check MCP Edge Function types
         run: npm run check:mcp
 
-      - name: Test MCP Edge Function
-        run: npm run test:mcp
+      - name: Test Edge Functions
+        run: npm run test:edge
 
       - name: Test MCP Phase 2 probes
         run: |
@@ -183,14 +183,13 @@ jobs:
 
       - name: Run unit tests
         env:
-          # Point the RLS behavior tests at the LOCAL instance explicitly.
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.local-supabase.outputs.anon_key }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ steps.local-supabase.outputs.service_key }}
-          # Enable the DB-backed RLS behavior tests: a local Postgres with all
-          # migrations applied is running at this point (supabase start + db reset).
-          RLS_DB_TESTS: '1'
         run: npm run test:unit
+
+      - name: Run database behavior tests
+        run: npm run test:unit:db
 
       - name: Build representative MCP load fixture
         run: |

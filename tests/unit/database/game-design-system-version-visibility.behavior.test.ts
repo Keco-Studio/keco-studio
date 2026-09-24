@@ -1,5 +1,6 @@
 import {
   RLS_DB_TESTS_ENABLED,
+  localPostgresUrl,
   buildProjectFixture,
   createConfirmedOutsider,
   teardownProjectFixture,
@@ -20,7 +21,7 @@ if (process.env.REQUIRE_RLS_DB_TESTS === '1' && !RLS_DB_TESTS_ENABLED) {
 }
 
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
-const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const postgresUrl = localPostgresUrl();
 
 const rules = {
   schemaVersion: 1,

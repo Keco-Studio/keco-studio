@@ -68,26 +68,28 @@ describe('CI workflow gates', () => {
     expect(pkg.scripts.typecheck).toBe('tsc --noEmit');
     expect(pkg.scripts['typecheck:api']).toBe('tsc --noEmit -p tsconfig.api.json');
     expect(pkg.scripts.validate).toBe(
-      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run check:storage-writes && npm run test:mcp && npm run test:unit && npm run build'
+      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run check:storage-writes && npm run test:edge && npm run test:unit && npm run test:unit:db && npm run build'
     );
   });
 
-  it('runs Edge MCP checks in CI and local validate', () => {
+  it('runs the complete Edge and database gates in CI and local validate', () => {
     expect(workflow).toContain('npm run check:mcp');
-    expect(workflow).toContain('npm run test:mcp');
+    expect(workflow).toContain('npm run test:edge');
+    expect(workflow).toContain('npm run test:unit:db');
     const apiTypecheck = workflow.indexOf('npm run typecheck:api');
     const mcpCheck = workflow.indexOf('npm run check:mcp');
-    const mcpTest = workflow.indexOf('npm run test:mcp');
+    const edgeTest = workflow.indexOf('npm run test:edge');
     const unitTest = workflow.indexOf('npm run test:unit');
+    const databaseTest = workflow.indexOf('npm run test:unit:db');
     expect(apiTypecheck).toBeLessThan(mcpCheck);
-    expect(mcpCheck).toBeLessThan(mcpTest);
-    expect(mcpTest).toBeLessThan(unitTest);
+    expect(mcpCheck).toBeLessThan(edgeTest);
+    expect(edgeTest).toBeLessThan(unitTest);
+    expect(unitTest).toBeLessThan(databaseTest);
   });
 
   it('does not force unit tests to run serially', () => {
-    // The unit suite is pure (no shared live DB / global mutable state), so
-    // --runInBand only serializes work Jest can parallelize. Keep it off so CI
-    // wall time scales with the worker pool, not the sum of suite times.
+    // The live database suites run serially in the separate database gate.
+    // Keep the remaining unit suite parallel for CI wall time.
     expect(workflow).not.toContain('--runInBand');
     expect(pkg.scripts.validate).not.toContain('--runInBand');
   });
