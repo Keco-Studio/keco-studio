@@ -44,9 +44,9 @@ npm run test:unit:db
 The gate reads local credentials from `supabase status`, rejects non-local URLs,
 and requires the local database migration history to match the repository. It
 runs every database behavior suite plus the shared-document and GDS route
-database tests, failing if any selected test is skipped. CI enables the same
-required RLS mode for its full Jest run. `npm run validate` requires this local
-database gate. A mismatched local stack must be replaced or migrated in an
+database tests, failing if any selected test is skipped. CI runs this required
+database gate after its regular Jest run. `npm run validate` requires the gate.
+A mismatched local stack must be replaced or migrated in an
 isolated environment before release evidence is recorded.
 
 To use an isolated Supabase project with its own project ID and ports, set
