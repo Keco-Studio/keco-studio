@@ -981,7 +981,7 @@ test.describe('Create Map V3 mocked workflow', () => {
       const workbench = page.getByTestId('create-map-workbench');
       const canvas = page.getByLabel('Map canvas');
       await expect(workbench).toBeVisible();
-      await expectWithin(page.locator('[data-status="saved"]'), workbench);
+      await expectWithin(page.locator('[data-status="ready"]'), workbench);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
       if (viewport.width === 1024) {
         const sourcePanel = page.getByLabel('Map source and references');
