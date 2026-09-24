@@ -93,8 +93,34 @@ jobs:
     # Start local Supabase instance
     - name: Start Supabase
       run: |
+        set -euo pipefail
+        cleanup_supabase_stack() {
+          supabase stop --no-backup || true
+          docker ps -aq --filter "name=_keco-studio" | xargs -r docker rm -f || true
+          for port in \
+            "${{ matrix.supabaseApiPort }}" \
+            "${{ matrix.supabaseDbPort }}" \
+            "${{ matrix.supabaseShadowPort }}" \
+            "${{ matrix.supabaseStudioPort }}" \
+            "${{ matrix.supabaseInbucketPort }}" \
+            "${{ matrix.supabasePoolerPort }}"
+          do
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k "${port}/tcp" 2>/dev/null || true
+            fi
+          done
+        }
+
+        # A cancelled or partially started stack can retain a docker-proxy port
+        # binding. This must run before the first start, not only db-reset retries.
+        cleanup_supabase_stack
         # Edge runtime health can 502 transiently; wait on REST instead.
-        supabase start --ignore-health-check
+        if ! supabase start --ignore-health-check; then
+          echo "Supabase start failed; cleaning stale bindings and retrying once..."
+          cleanup_supabase_stack
+          sleep 3
+          supabase start --ignore-health-check
+        fi
         echo "✅ Supabase started successfully"
         # Wait a moment for all services to be fully ready
         sleep 3
