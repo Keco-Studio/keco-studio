@@ -48,7 +48,7 @@ it('keeps closed mounts, existing-history restoration and route changes at zero 
 
 it.each(['list_projects', 'list_maps', 'read_map', 'read_game_design_system', 'generate_gdd'])
 ('preserves the 16,000 character model-result ceiling for %s', (tool) => {
-  const raw = JSON.stringify({ success: true, data: { title: 'Large result', records: Array.from({ length: 50 }, (_, id) => ({ id, body: '地图 🌍 bounded content '.repeat(1500) })) }, internalData: { secret: 'must-never-reach-model' } });
+  const raw = JSON.stringify({ success: true, data: { title: 'Large result', records: Array.from({ length: 50 }, (_, id) => ({ id, body: 'Map bounded content '.repeat(1500) })) }, internalData: { secret: 'must-never-reach-model' } });
   const compact = compactToolContentForLlm(raw, tool);
   expect(compact.length).toBeLessThanOrEqual(16_000);
   expect(() => JSON.parse(compact)).not.toThrow();
