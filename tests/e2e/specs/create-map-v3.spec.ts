@@ -833,10 +833,10 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
     await askForMapPlan(page, 'A quiet top-down village market with open paths.');
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
     await page.getByLabel('PixelLab description').fill(exactDescription);
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     await generateReadyMap(page);
 
     await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
@@ -905,7 +905,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: 'Walkable', exact: true }).click();
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 10_000 });
 
     const map = backend.maps.get(MAP_ID);
     const savedGrid = map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid;
@@ -923,7 +923,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
     const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
     await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
@@ -941,7 +941,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     await page.reload();
     await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -1111,7 +1111,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: 'View map plan' }).click();
     await page.getByRole('button', { name: 'Close source panel' }).click();
     await expect(page.getByText('4 blocked', { exact: true })).toBeVisible();
-    await expect(page.getByText(/^Version\d+$/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 10_000 });
 
     await page.reload();
     await page.getByRole('button', { name: 'Open source panel' }).click();
