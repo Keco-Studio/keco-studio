@@ -3,7 +3,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
+import { AssetReferenceModal, autoScrollDelta } from '@/components/asset/AssetReferenceModal';
 
 const getLibrarySchema = jest.fn();
 const getLibraryAssetsWithProperties = jest.fn();
@@ -87,6 +87,25 @@ const rows = [
 ];
 
 describe('AssetReferenceModal cell selection', () => {
+  it('calculates horizontal auto-scroll while dragging at the table edges', () => {
+    const container = document.createElement('div');
+    jest.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+      top: 100,
+      right: 300,
+      bottom: 300,
+      left: 100,
+      toJSON: () => ({}),
+    });
+
+    expect(autoScrollDelta(container, 101, 200)).toMatchObject({ x: expect.any(Number), y: 0 });
+    expect(autoScrollDelta(container, 101, 200).x).toBeLessThan(0);
+    expect(autoScrollDelta(container, 299, 200).x).toBeGreaterThan(0);
+  });
+
   beforeEach(() => {
     getLibrarySchema.mockReset().mockResolvedValue({ properties: fields });
     getLibraryAssetsWithProperties.mockReset().mockResolvedValue(rows);
