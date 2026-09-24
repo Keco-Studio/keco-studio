@@ -18,6 +18,16 @@ type AuthAdminUser = User & { banned_until?: string | null };
 
 type CreditUserValue = KecoAdminCredits['users'][string];
 
+type KecoAdminStorage = {
+  usedBytes: number;
+  users: Record<string, number>;
+};
+
+// PostgreSQL's uuid type accepts canonical 8-4-4-4-12 UUID values beyond RFC versions 1-5.
+const DATABASE_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
 const ZERO_USER_CREDITS: Readonly<CreditUserValue> = Object.freeze({
   allocated: 0,
   used: 0,
@@ -45,6 +55,7 @@ function mapAuthUser(
   user: User,
   now: Date,
   credits: CreditUserValue,
+  storageUsedBytes: number,
 ): KecoAdminUser {
   return {
     id: user.id,
@@ -58,7 +69,64 @@ function mapAuthUser(
     creditOverage: credits.overage,
     deepseekTokens: credits.deepseekTokens,
     creditUsageIncompleteCount: credits.incompleteCount,
+    storageUsedBytes,
   };
+}
+
+function readStorageBytes(value: unknown, field: string): number {
+  let parsed: bigint;
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`Invalid Keco Admin Storage field: ${field}`);
+    }
+    return value;
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new Error(`Invalid Keco Admin Storage field: ${field}`);
+  }
+  try {
+    parsed = BigInt(value);
+  } catch {
+    throw new Error(`Invalid Keco Admin Storage field: ${field}`);
+  }
+  if (parsed > MAX_SAFE_BIGINT) {
+    throw new Error(`Invalid Keco Admin Storage field: ${field}`);
+  }
+  return Number(parsed);
+}
+
+async function readKecoAdminStorage(client: SupabaseClient): Promise<KecoAdminStorage> {
+  const { data, error } = await client
+    .from('account_storage_quotas')
+    .select('owner_id,used_bytes,logical_used_bytes');
+  if (error || !Array.isArray(data)) {
+    throw new Error('Unable to load Keco Admin Storage');
+  }
+
+  const users: Record<string, number> = {};
+  let usedBytes = 0;
+  for (const [index, row] of data.entries()) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error(`Invalid Keco Admin Storage row: ${index}`);
+    }
+    const candidate = row as Record<string, unknown>;
+    const ownerId = candidate.owner_id;
+    if (typeof ownerId !== 'string' || !DATABASE_UUID_PATTERN.test(ownerId) || ownerId in users) {
+      throw new Error(`Invalid Keco Admin Storage owner: ${index}`);
+    }
+    const physicalBytes = readStorageBytes(candidate.used_bytes, `rows.${index}.used_bytes`);
+    const logicalBytes = readStorageBytes(candidate.logical_used_bytes, `rows.${index}.logical_used_bytes`);
+    if (physicalBytes > Number.MAX_SAFE_INTEGER - logicalBytes) {
+      throw new Error(`Invalid Keco Admin Storage total: ${index}`);
+    }
+    const bytes = physicalBytes + logicalBytes;
+    if (usedBytes > Number.MAX_SAFE_INTEGER - bytes) {
+      throw new Error('Invalid Keco Admin Storage total');
+    }
+    users[ownerId] = bytes;
+    usedBytes += bytes;
+  }
+  return { usedBytes, users };
 }
 
 export async function readKecoAdminOverview(
@@ -66,12 +134,13 @@ export async function readKecoAdminOverview(
   now: () => Date = () => new Date(),
 ): Promise<KecoAdminOverview> {
   const currentTime = now();
-  const [authResult, credits] = await Promise.all([
+  const [authResult, credits, storage] = await Promise.all([
     client.auth.admin.listUsers({
       page: 1,
       perPage: USERS_PER_PAGE,
     }),
     readKecoAdminCredits(client),
+    readKecoAdminStorage(client),
   ]);
   const { data, error } = authResult;
 
@@ -89,6 +158,7 @@ export async function readKecoAdminOverview(
       user,
       currentTime,
       credits.users[user.id] ?? ZERO_USER_CREDITS,
+      storage.users[user.id] ?? 0,
     ))
     : [];
 
@@ -105,6 +175,7 @@ export async function readKecoAdminOverview(
   return {
     totalUsers: total as number,
     creditUsage,
+    storageUsage: { usedBytes: storage.usedBytes },
     refreshedAt: currentTime.toISOString(),
     users,
   };

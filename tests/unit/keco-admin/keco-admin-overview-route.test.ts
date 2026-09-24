@@ -42,6 +42,7 @@ const creditUsage = {
   incompleteCount: 1,
   trackedFrom: '2026-09-15T00:00:00.000Z',
 };
+const storageUsage = { usedBytes: 549_755_813_888 };
 
 function request() {
   return new NextRequest('https://keco.example/api/keco-admin/overview');
@@ -56,6 +57,7 @@ describe('Keco Admin overview API', () => {
     readKecoAdminOverview.mockResolvedValue({
       totalUsers: 9,
       creditUsage,
+      storageUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [],
     });
@@ -99,6 +101,7 @@ describe('Keco Admin overview API', () => {
     readKecoAdminOverview.mockResolvedValue({
       totalUsers: 9,
       creditUsage,
+      storageUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -113,6 +116,7 @@ describe('Keco Admin overview API', () => {
           creditOverage: 0,
           deepseekTokens: 21,
           creditUsageIncompleteCount: 1,
+          storageUsedBytes: 348_600_000_000,
         },
       ],
     });
@@ -124,6 +128,7 @@ describe('Keco Admin overview API', () => {
     await expect(response.json()).resolves.toEqual({
       totalUsers: 9,
       creditUsage,
+      storageUsage,
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -138,6 +143,7 @@ describe('Keco Admin overview API', () => {
           creditOverage: 0,
           deepseekTokens: 21,
           creditUsageIncompleteCount: 1,
+          storageUsedBytes: 348_600_000_000,
         },
       ],
     });

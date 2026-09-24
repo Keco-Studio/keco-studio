@@ -563,39 +563,17 @@
   position: relative;
 }
 
-.saveIndicator {
+.mapVersionIndicator {
   position: absolute;
   z-index: 2;
   top: 12px;
-  right: 14px;
+  left: 14px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   color: #68737c;
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.saveIndicator span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #41805a;
-}
-
-.saveIndicator[data-status='saving'],
-.saveIndicator[data-status='dirty'] {
-  color: #8b641e;
-}
-
-.saveIndicator[data-status='saving'] span,
-.saveIndicator[data-status='dirty'] span {
-  background: #c58a36;
-}
-
-.saveIndicator[data-status='error'] span {
-  background: #b7443c;
 }
 
 .canvasPanel {

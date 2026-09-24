@@ -56,7 +56,7 @@ export default function ProjectsPage() {
     };
   }, [loading, projectsError, projects.length, setShowCreateProjectBreadcrumb]);
 
-  const handleCreated = async ({ projectId, name, description }: CreatedProjectPayload) => {
+  const handleCreated = ({ projectId, name, description }: CreatedProjectPayload) => {
     const now = new Date().toISOString();
     upsertProjectInListCache(queryClient, {
       id: projectId,
@@ -66,9 +66,9 @@ export default function ProjectsPage() {
       created_at: now,
       updated_at: now,
     });
-    await queryClient.invalidateQueries({ queryKey: ['projects'] });
-    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     router.push(`/${projectId}/recent`);
+    void queryClient.invalidateQueries({ queryKey: ['projects'] });
+    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
   };
 
   const showEmpty = !loading && !projectsError && projects.length === 0;

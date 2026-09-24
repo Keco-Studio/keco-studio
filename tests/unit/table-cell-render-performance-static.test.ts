@@ -23,4 +23,12 @@ describe('library table cell render boundaries', () => {
     const source = read(`src/components/libraries/components/${fileName}`);
     expect(source).toMatch(/\bmemo\s*\(/);
   });
+
+  it('uses the compact 28 by 16 Boolean switch size', () => {
+    const source = read('src/components/libraries/components/BooleanCell.tsx');
+    const switches = source.match(/<Switch[\s\S]*?\/>/g) ?? [];
+
+    expect(switches).toHaveLength(2);
+    expect(switches.every((switchSource) => /\bsize="small"/.test(switchSource))).toBe(true);
+  });
 });

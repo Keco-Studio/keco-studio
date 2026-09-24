@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const sql = fs.readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/20260924130000_global_agent_conversations.sql'),
+  path.join(process.cwd(), 'supabase/migrations/20260924133000_global_agent_conversations.sql'),
   'utf8'
 );
 const config = fs.readFileSync(path.join(process.cwd(), 'supabase/config.toml'), 'utf8');

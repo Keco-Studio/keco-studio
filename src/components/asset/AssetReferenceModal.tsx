@@ -53,8 +53,46 @@ type DragSelection = {
   moved: boolean;
 };
 
+const AUTO_SCROLL_EDGE_PX = 48;
+const AUTO_SCROLL_MAX_SPEED_PX = 18;
+
 const selectionKey = (selection: Pick<ReferenceSelection, 'assetId' | 'fieldId'>) =>
   `${selection.assetId}::${selection.fieldId || ''}`;
+
+function cellPositionFromElement(element: Element | null): CellPosition | null {
+  const cell = element?.closest('td[role="gridcell"]');
+  const row = cell?.parentElement;
+  const body = row?.parentElement;
+  if (!cell || !row || !body) return null;
+
+  const rowIndex = Array.from(body.children).indexOf(row);
+  const columnIndex = Array.from(row.children).indexOf(cell);
+  return rowIndex >= 0 && columnIndex >= 0 ? { rowIndex, columnIndex } : null;
+}
+
+export function autoScrollDelta(container: HTMLElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = container.getBoundingClientRect();
+  const topProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, rect.top + AUTO_SCROLL_EDGE_PX - clientY));
+  const bottomProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, clientY - (rect.bottom - AUTO_SCROLL_EDGE_PX)));
+  const leftProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, rect.left + AUTO_SCROLL_EDGE_PX - clientX));
+  const rightProximity = Math.max(0, Math.min(AUTO_SCROLL_EDGE_PX, clientX - (rect.right - AUTO_SCROLL_EDGE_PX)));
+
+  let y = 0;
+  if (topProximity > 0) {
+    y = -Math.ceil((topProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  } else if (bottomProximity > 0) {
+    y = Math.ceil((bottomProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  }
+
+  let x = 0;
+  if (leftProximity > 0) {
+    x = -Math.ceil((leftProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  } else if (rightProximity > 0) {
+    x = Math.ceil((rightProximity / AUTO_SCROLL_EDGE_PX) * AUTO_SCROLL_MAX_SPEED_PX);
+  }
+
+  return { x, y };
+}
 
 interface AssetReferenceModalProps {
   open: boolean;
@@ -80,18 +118,21 @@ export function AssetReferenceModal({
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
   const [selectedSelections, setSelectedSelections] = useState<ReferenceSelection[]>([]);
   const selectedSelectionsRef = useRef(selectedSelections);
   const dragSelectionRef = useRef<DragSelection | null>(null);
   const suppressNextClickRef = useRef(false);
+  const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
 
-  const updateSelectedSelections = (
+  const updateSelectedSelections = useCallback((
     next: ReferenceSelection[] | ((prev: ReferenceSelection[]) => ReferenceSelection[])
   ) => {
     const valueNext = typeof next === 'function' ? next(selectedSelectionsRef.current) : next;
     selectedSelectionsRef.current = valueNext;
     setSelectedSelections(valueNext);
-  };
+  }, []);
 
   useEffect(() => {
     if (!open || referenceLibraries.length === 0) return;
@@ -116,7 +157,7 @@ export function AssetReferenceModal({
     };
 
     loadLibraries();
-  }, [open, referenceLibraries, supabase]);
+  }, [open, referenceLibraries, supabase, updateSelectedSelections]);
 
   useEffect(() => {
     if (!open || !selectedLibraryId) {
@@ -205,7 +246,7 @@ export function AssetReferenceModal({
     const normalizedSelections = normalizeReferenceSelections(value);
     updateSelectedSelections(normalizedSelections.filter((selection) => selection.assetId));
     setSearchText('');
-  }, [open, value]);
+  }, [open, updateSelectedSelections, value]);
 
   const handleCellClick = (selection: ReferenceSelection) => {
     if (suppressNextClickRef.current) {
@@ -220,7 +261,7 @@ export function AssetReferenceModal({
     });
   };
 
-  const selectionAt = (rowIndex: number, columnIndex: number): ReferenceSelection | null => {
+  const selectionAt = useCallback((rowIndex: number, columnIndex: number): ReferenceSelection | null => {
     const row = filteredRows[rowIndex];
     const field = libraryFields[columnIndex];
     if (!row || !field) return null;
@@ -232,9 +273,9 @@ export function AssetReferenceModal({
       fieldLabel: field.label || 'Column',
       displayValue,
     };
-  };
+  }, [filteredRows, libraryFields, valuesByAsset]);
 
-  const selectionsInRectangle = (start: CellPosition, end: CellPosition) => {
+  const selectionsInRectangle = useCallback((start: CellPosition, end: CellPosition) => {
     const rowStart = Math.min(start.rowIndex, end.rowIndex);
     const rowEnd = Math.max(start.rowIndex, end.rowIndex);
     const columnStart = Math.min(start.columnIndex, end.columnIndex);
@@ -248,7 +289,31 @@ export function AssetReferenceModal({
       }
     }
     return selections;
-  };
+  }, [selectionAt]);
+
+  const updateDragSelection = useCallback((position: CellPosition) => {
+    const drag = dragSelectionRef.current;
+    if (!drag) return;
+    if (
+      position.rowIndex === drag.start.rowIndex
+      && position.columnIndex === drag.start.columnIndex
+    ) return;
+
+    drag.moved = true;
+    const rectangleSelections = selectionsInRectangle(drag.start, position);
+    if (!drag.additive) {
+      updateSelectedSelections(rectangleSelections);
+      return;
+    }
+
+    const merged = new Map(
+      drag.baseSelections.map((selection) => [resolvedSelectionKey(selection), selection])
+    );
+    rectangleSelections.forEach((selection) => {
+      merged.set(resolvedSelectionKey(selection), selection);
+    });
+    updateSelectedSelections([...merged.values()]);
+  }, [resolvedSelectionKey, selectionsInRectangle, updateSelectedSelections]);
 
   const handleCellMouseDown = (
     event: React.MouseEvent<HTMLTableCellElement>,
@@ -269,27 +334,8 @@ export function AssetReferenceModal({
     event: React.MouseEvent<HTMLTableCellElement>,
     position: CellPosition
   ) => {
-    const drag = dragSelectionRef.current;
-    if (!drag || event.buttons !== 1) return;
-    if (
-      position.rowIndex === drag.start.rowIndex
-      && position.columnIndex === drag.start.columnIndex
-    ) return;
-
-    drag.moved = true;
-    const rectangleSelections = selectionsInRectangle(drag.start, position);
-    if (!drag.additive) {
-      updateSelectedSelections(rectangleSelections);
-      return;
-    }
-
-    const merged = new Map(
-      drag.baseSelections.map((selection) => [resolvedSelectionKey(selection), selection])
-    );
-    rectangleSelections.forEach((selection) => {
-      merged.set(resolvedSelectionKey(selection), selection);
-    });
-    updateSelectedSelections([...merged.values()]);
+    if (!dragSelectionRef.current || event.buttons !== 1) return;
+    updateDragSelection(position);
   };
 
   const handleCellMouseUp = (hasClickHandler: boolean) => {
@@ -300,12 +346,71 @@ export function AssetReferenceModal({
   };
 
   useEffect(() => {
+    const stopAutoScroll = () => {
+      if (autoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
+    };
+
+    const updateSelectionAtPointer = (pointer: { clientX: number; clientY: number }) => {
+      const position = cellPositionFromElement(
+        document.elementFromPoint(pointer.clientX, pointer.clientY)
+      );
+      if (position) updateDragSelection(position);
+    };
+
+    const scrollAtPointer = () => {
+      autoScrollFrameRef.current = null;
+      const pointer = dragPointerRef.current;
+      const container = tableWrapRef.current;
+      if (!pointer || !container || !dragSelectionRef.current) return;
+
+      const delta = autoScrollDelta(container, pointer.clientX, pointer.clientY);
+      const previousTop = container.scrollTop;
+      const previousLeft = container.scrollLeft;
+      container.scrollTop += delta.y;
+      container.scrollLeft += delta.x;
+      if (container.scrollTop === previousTop && container.scrollLeft === previousLeft) return;
+
+      updateSelectionAtPointer(pointer);
+      autoScrollFrameRef.current = window.requestAnimationFrame(scrollAtPointer);
+    };
+
+    const handleDragMove = (event: MouseEvent) => {
+      if (!dragSelectionRef.current || event.buttons !== 1) {
+        stopAutoScroll();
+        return;
+      }
+      dragPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
+      updateSelectionAtPointer(dragPointerRef.current);
+      const container = tableWrapRef.current;
+      if (
+        container
+        && (() => {
+          const delta = autoScrollDelta(container, event.clientX, event.clientY);
+          return delta.x !== 0 || delta.y !== 0;
+        })()
+        && autoScrollFrameRef.current === null
+      ) {
+        autoScrollFrameRef.current = window.requestAnimationFrame(scrollAtPointer);
+      }
+    };
+
     const finishDrag = () => {
+      stopAutoScroll();
+      dragPointerRef.current = null;
       dragSelectionRef.current = null;
     };
+
+    document.addEventListener('mousemove', handleDragMove);
     document.addEventListener('mouseup', finishDrag);
-    return () => document.removeEventListener('mouseup', finishDrag);
-  }, []);
+    return () => {
+      stopAutoScroll();
+      document.removeEventListener('mousemove', handleDragMove);
+      document.removeEventListener('mouseup', finishDrag);
+    };
+  }, [updateDragSelection]);
 
   const handleApply = () => {
     const currentSelections = selectedSelectionsRef.current.map((selection) => {
@@ -379,7 +484,7 @@ export function AssetReferenceModal({
 
             <p className={styles.selectionHint}>Select cells by clicking or dragging.</p>
 
-            <div className={styles.tableWrap}>
+            <div ref={tableWrapRef} className={styles.tableWrap}>
               {loading ? (
                 <div className={styles.loading}>
                   <Spin />

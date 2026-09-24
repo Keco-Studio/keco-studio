@@ -101,68 +101,6 @@
   color: #b42318;
 }
 
-.form {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.form label {
-  display: grid;
-  gap: 6px;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.form input {
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  color: #1e293b;
-  background: #fff;
-  font: inherit;
-}
-
-.form button {
-  justify-self: start;
-  min-height: 40px;
-  padding: 8px 14px;
-  border: 1px solid #1677ff;
-  border-radius: 7px;
-  color: #fff;
-  background: #1677ff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.form button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.pending {
-  margin: 0;
-  color: #475569;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.actions .secondaryButton {
-  color: #334155;
-  border-color: #cbd5e1;
-  background: #fff;
-}
-
 @media (max-width: 640px) {
   .page {
     padding: 24px 18px 40px;

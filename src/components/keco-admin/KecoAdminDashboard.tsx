@@ -11,9 +11,11 @@ import {
   RightOutlined,
   SearchOutlined,
   ThunderboltOutlined,
+  UserAddOutlined,
   UserOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
+import { InviteAdminModal } from './InviteAdminModal';
 import type {
   KecoAdminOverview,
   KecoAdminUser,
@@ -35,6 +37,10 @@ function isCreditAmount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 }
 
+function isStorageBytes(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 function isUser(value: unknown): value is KecoAdminUser {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<KecoAdminUser>;
@@ -50,6 +56,7 @@ function isUser(value: unknown): value is KecoAdminUser {
     isCreditAmount(candidate.creditOverage) &&
     isCreditCount(candidate.deepseekTokens) &&
     isCreditCount(candidate.creditUsageIncompleteCount)
+    && isStorageBytes(candidate.storageUsedBytes)
   );
 }
 
@@ -69,6 +76,7 @@ function isOverview(value: unknown): value is KecoAdminOverview {
     isCreditAmount(creditUsage?.overage) &&
     isCreditCount(creditUsage?.deepseekTokens) &&
     isCreditCount(creditUsage?.incompleteCount) &&
+    isStorageBytes(candidate.storageUsage?.usedBytes) &&
     typeof creditUsage?.trackedFrom === 'string' &&
     Number.isFinite(Date.parse(creditUsage.trackedFrom)) &&
     Array.isArray(candidate.users) &&
@@ -130,23 +138,28 @@ function formatCredits(value: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value);
 }
 
+function formatStorageBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'] as const;
+  let value = bytes;
+  let unit = -1;
+  do { value /= 1024; unit += 1; } while (value >= 1024 && unit < units.length - 1);
+  const digits = value >= 1000 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9])0$/, '')} ${units[unit]}`;
+}
+
 function incompleteUsageTitle(count: number): string {
   const record = count === 1 ? 'record is' : 'records are';
   return `${formatCredits(count)} usage ${record} awaiting final Credit totals and not included in Used.`;
 }
-
-const unavailableMetrics = [
-  {
-    label: 'Storage used',
-    icon: <DatabaseOutlined aria-hidden />,
-  },
-] as const;
 
 const plans = ['All', 'Starter', 'Pro', 'Studio', 'Enterprise'] as const;
 
 export function KecoAdminDashboard() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const [isInviteAdminOpen, setIsInviteAdminOpen] = useState(false);
+  const [adminInviteNotice, setAdminInviteNotice] = useState<string | null>(null);
   const overviewQuery = useQuery({
     queryKey: ['keco-admin-overview'],
     queryFn: fetchOverview,
@@ -191,6 +204,14 @@ export function KecoAdminDashboard() {
             <p>Account resource overview</p>
           </div>
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.inviteAdminButton}
+              onClick={() => setIsInviteAdminOpen(true)}
+            >
+              <UserAddOutlined aria-hidden />
+              Invite administrator
+            </button>
             {data ? (
               <span className={styles.refreshedAt}>
                 Synced {formatRefreshedAt(data.refreshedAt)}
@@ -224,6 +245,12 @@ export function KecoAdminDashboard() {
             {refreshFailed ? (
               <div className={styles.refreshError} role="status">
                 Refresh failed. Showing the last synced values.
+              </div>
+            ) : null}
+
+            {adminInviteNotice ? (
+              <div className={styles.adminInviteNotice} role="status">
+                {adminInviteNotice}
               </div>
             ) : null}
 
@@ -307,16 +334,24 @@ export function KecoAdminDashboard() {
                 </span>
               </article>
 
-              {unavailableMetrics.map((metric) => (
-                <article className={styles.metricPanel} key={metric.label}>
-                  <div className={styles.metricIcon}>{metric.icon}</div>
-                  <span className={styles.metricLabel}>{metric.label}</span>
-                  <strong className={`${styles.metricValue} ${styles.metricUnavailable}`}>
-                    &mdash;
+              <article className={`${styles.metricPanel} ${styles.metricPanelLive}`}>
+                <div className={`${styles.metricIcon} ${styles.metricIconLive}`}>
+                  <DatabaseOutlined aria-hidden />
+                </div>
+                <span className={styles.metricLabel}>Storage used</span>
+                {isLoading ? (
+                  <span className={styles.metricSkeleton} aria-label="Loading Storage used" />
+                ) : data ? (
+                  <strong className={styles.metricValue} data-testid="keco-admin-storage-used">
+                    {formatStorageBytes(data.storageUsage.usedBytes)}
                   </strong>
-                  <span className={styles.unavailableStatus}>Not connected</span>
-                </article>
-              ))}
+                ) : null}
+                <span className={styles.liveStatus}>
+                  <span aria-hidden />
+                  Live from storage quotas
+                </span>
+              </article>
+
             </section>
 
             <section className={styles.userSection} aria-labelledby="user-resource-heading">
@@ -464,7 +499,9 @@ export function KecoAdminDashboard() {
                             </div>
                           </td>
                           <td>
-                            <span className={styles.unavailableCell}>&mdash;</span>
+                            <span data-testid={`keco-admin-storage-used-${user.id}`}>
+                              {formatStorageBytes(user.storageUsedBytes)}
+                            </span>
                           </td>
                           <td>
                             <div
@@ -509,6 +546,18 @@ export function KecoAdminDashboard() {
             </section>
           </>
         )}
+        <InviteAdminModal
+          open={isInviteAdminOpen}
+          onClose={() => setIsInviteAdminOpen(false)}
+          onSuccess={(status, email) => {
+            setAdminInviteNotice(
+              status === 'granted'
+                ? `Admin access granted to ${email}.`
+                : `${email} already has Admin access.`,
+            );
+            void refetch();
+          }}
+        />
       </div>
     </main>
   );

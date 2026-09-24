@@ -63,6 +63,29 @@
   gap: 12px;
 }
 
+.inviteAdminButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--keco-blue);
+  border-radius: 7px;
+  color: #fff;
+  background: var(--keco-blue);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.inviteAdminButton:hover {
+  border-color: #1677ff;
+  background: #1677ff;
+}
+
 .refreshedAt {
   color: #64748b;
   font-size: 12px;
@@ -609,7 +632,18 @@
   margin-bottom: 14px;
 }
 
+.adminInviteNotice {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid #b7eb8f;
+  border-radius: 7px;
+  color: #237804;
+  background: #f6ffed;
+  font-size: 13px;
+}
+
 .refreshButton:focus-visible,
+.inviteAdminButton:focus-visible,
 .errorState button:focus-visible,
 .tableScroller:focus-visible {
   outline: 2px solid var(--keco-blue);

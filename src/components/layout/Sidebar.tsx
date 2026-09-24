@@ -1215,7 +1215,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     handleProjectDeleteViaAPI(projectId);
   };
 
-  const handleProjectCreated = async ({
+  const handleProjectCreated = ({
     projectId,
     name,
     description,
@@ -1239,22 +1239,18 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       updated_at: now,
     });
 
-    // Mirror projects/page.tsx handleCreated: invalidate both the list and the
-    // per-project key so the two creation entry points stay consistent.
-    await queryClient.invalidateQueries({ queryKey: ['projects'] });
-    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    await invalidateProjectData(queryClient, {
+    if (projectId) {
+      router.push(`/${projectId}/recent`);
+    }
+
+    // Refresh in the background so production network latency does not delay navigation.
+    void queryClient.invalidateQueries({ queryKey: ['projects'] });
+    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    void invalidateProjectData(queryClient, {
       projectId,
       userProjectList: true,
       refetchActiveProjects: true,
     });
-
-    // Always navigate to the newly created project's Recent page
-    if (projectId) {
-      router.push(`/${projectId}/recent`);
-      // React Query will automatically fetch folders and libraries when currentIds.projectId changes
-      // No need to manually call fetchFoldersAndLibraries
-    }
   };
 
   const handleLibraryCreated = async (libraryId: string) => {

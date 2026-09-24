@@ -5,6 +5,12 @@ import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+const push = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
+}));
+
 import { AccountCreditsSection } from '@/components/account/AccountCreditsSection';
 
 type FetchResult = {
@@ -57,6 +63,32 @@ function renderCredits(client = createCreditsClient()) {
 }
 
 describe('AccountCreditsSection', () => {
+  let getComputedStyleSpy: jest.SpyInstance;
+
+  beforeAll(() => {
+    const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+    getComputedStyleSpy = jest
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((element) => nativeGetComputedStyle(element));
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: jest.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      })),
+    });
+  });
+
+  afterAll(() => {
+    getComputedStyleSpy.mockRestore();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -187,6 +219,24 @@ describe('AccountCreditsSection', () => {
     expect((await screen.findByTestId('account-credits-used')).textContent).toBe('100,000,005');
     expect(screen.getByTestId('account-credits-remaining').textContent).toBe('0');
     expect(screen.getByRole('alert').textContent).toContain('Credit allocation exhausted. 5 Credits over allocation.');
+  });
+
+  it('prompts an over-limit account to recharge and takes them to Billing', async () => {
+    global.fetch = jest.fn(async () => response(200, {
+      ...summary,
+      used: 100000005,
+      remaining: 0,
+      overage: 5,
+    })) as never;
+
+    renderCredits();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Credit allocation exhausted' });
+    expect(dialog.textContent).toContain('Recharge to continue using Keco.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recharge Credits' }));
+
+    expect(push).toHaveBeenCalledWith('/billing');
   });
 
   it('does not show false zero values after a first-load failure and retries', async () => {
