@@ -10,6 +10,11 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace }),
 }));
 
+jest.mock('@/components/keco-admin/InviteAdminModal', () => ({
+  InviteAdminModal: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Invite administrator" /> : null,
+}));
+
 import { KecoAdminDashboard } from '@/components/keco-admin/KecoAdminDashboard';
 
 type FetchResult = {
@@ -31,6 +36,7 @@ const sampleUsers = [
     creditOverage: 0,
     deepseekTokens: 21,
     creditUsageIncompleteCount: 1,
+    storageUsedBytes: 348_600_000_000,
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
@@ -44,6 +50,7 @@ const sampleUsers = [
     creditOverage: 3,
     deepseekTokens: 24,
     creditUsageIncompleteCount: 0,
+    storageUsedBytes: 0,
   },
 ];
 
@@ -59,6 +66,7 @@ function overviewBody(overrides: Record<string, unknown> = {}) {
       incompleteCount: 1,
       trackedFrom: '2026-09-15T00:00:00.000Z',
     },
+    storageUsage: { usedBytes: 549_755_813_888 },
     refreshedAt: '2026-09-11T10:00:00.000Z',
     users: sampleUsers,
     ...overrides,
@@ -93,7 +101,7 @@ describe('Keco Admin dashboard', () => {
     cleanup();
   });
 
-  it('renders live account and per-user Credit data while Storage stays unavailable', async () => {
+  it('renders live account, Credit, and Storage data', async () => {
     global.fetch = jest.fn(async () => response(200, overviewBody())) as never;
 
     renderDashboard();
@@ -104,7 +112,7 @@ describe('Keco Admin dashboard', () => {
     expect(screen.getByTestId('keco-admin-credit-used').textContent).toBe('7');
     expect(screen.getByTestId('keco-admin-credit-allocated').textContent).toBe('100,000,000');
     expect(screen.getByTestId('keco-admin-credit-remaining').textContent).toBe('99,999,993');
-    expect(screen.getAllByText('Not connected')).toHaveLength(1);
+    expect(screen.getByTestId('keco-admin-storage-used').textContent).toBe('512 GB');
     expect(screen.queryByText('Stay duration')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Stay' })).toBeNull();
     expect(screen.getByText('Credit, Storage and account status')).toBeTruthy();
@@ -117,10 +125,25 @@ describe('Keco Admin dashboard', () => {
     expect(screen.getByText('Suspended')).toBeTruthy();
     expect(screen.getByTestId(`keco-admin-credit-used-${sampleUsers[0].id}`).textContent).toBe('7');
     expect(screen.getByTestId(`keco-admin-credit-remaining-${sampleUsers[0].id}`).textContent).toBe('99,999,993');
+    expect(screen.getByTestId(`keco-admin-storage-used-${sampleUsers[0].id}`).textContent).toBe('324.7 GB');
+    expect(screen.getByTestId(`keco-admin-storage-used-${sampleUsers[1].id}`).textContent).toBe('0 B');
+    const [aliceRow] = screen.getAllByTestId('keco-admin-user-row');
+    expect(aliceRow?.querySelectorAll('td')[1]?.textContent).toBe('\u2014');
+    expect(aliceRow?.querySelectorAll('td')[3]?.textContent).toBe('324.7 GB');
     expect(screen.getAllByText('Incomplete usage')).toHaveLength(2);
     expect(screen.getByText('Exhausted')).toBeTruthy();
     expect(screen.getByText('Showing 2 of 9 users')).toBeTruthy();
     expect(screen.queryByText('User detail data is not connected')).toBeNull();
+  });
+
+  it('opens the administrator invitation dialog from the header command', () => {
+    global.fetch = jest.fn(async () => response(200, overviewBody())) as never;
+
+    renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invite administrator' }));
+
+    expect(screen.getByRole('dialog', { name: 'Invite administrator' })).toBeTruthy();
   });
 
   it('filters users by email search', async () => {

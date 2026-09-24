@@ -434,4 +434,70 @@ describe('AssetReferenceModal cell selection', () => {
       },
     ]);
   });
+
+  it('continues a drag selection by scrolling when the pointer reaches the table edge', async () => {
+    const onApply = jest.fn();
+    const requestAnimationFrame = jest.spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback) => window.setTimeout(callback, 0));
+    const cancelAnimationFrame = jest.spyOn(window, 'cancelAnimationFrame')
+      .mockImplementation((frame) => window.clearTimeout(frame));
+    const originalElementFromPoint = document.elementFromPoint;
+    const elementFromPoint = jest.fn();
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: elementFromPoint,
+    });
+
+    render(
+      <AssetReferenceModal
+        open
+        referenceLibraries={['library-1']}
+        onClose={jest.fn()}
+        onApply={onApply}
+      />
+    );
+
+    const startCell = await screen.findByRole('gridcell', {
+      name: 'Bulbasaur, Name: Bulbasaur',
+    });
+    const endCell = screen.getByRole('gridcell', {
+      name: 'Charmander, Status: Blocked',
+    });
+    const tableWrap = startCell.closest('table')?.parentElement;
+    expect(tableWrap).not.toBeNull();
+    Object.defineProperties(tableWrap!, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 600 },
+    });
+    jest.spyOn(tableWrap!, 'getBoundingClientRect').mockReturnValue({
+      bottom: 200,
+      height: 200,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    elementFromPoint.mockReturnValue(endCell);
+
+    fireEvent.mouseDown(startCell, { button: 0 });
+    fireEvent.mouseMove(document, { buttons: 1, clientX: 80, clientY: 199 });
+
+    await waitFor(() => expect(tableWrap!.scrollTop).toBeGreaterThan(0));
+    fireEvent.mouseUp(document, { button: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(onApply).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ assetId: 'asset-2', fieldId: 'field-status' }),
+    ]));
+
+    requestAnimationFrame.mockRestore();
+    cancelAnimationFrame.mockRestore();
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: originalElementFromPoint,
+    });
+  });
 });

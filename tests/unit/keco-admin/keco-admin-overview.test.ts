@@ -5,6 +5,7 @@ import { readKecoAdminOverview } from '@/lib/server/kecoAdminOverview';
 
 const ALICE_ID = '11111111-1111-4111-8111-111111111111';
 const BOB_ID = '22222222-2222-4222-8222-222222222222';
+const LEGACY_UUID_OWNER_ID = '00000000-0000-0000-0000-000000000001';
 
 const validCredits = {
   allocated: 100_000_000,
@@ -48,11 +49,19 @@ function clientReturning(
     error,
   }));
   const rpc = jest.fn(async () => ({ data: creditData, error: null }));
+  const storageRows = [
+    { owner_id: ALICE_ID, used_bytes: '348600000000', logical_used_bytes: '0' },
+    { owner_id: BOB_ID, used_bytes: '201155813888', logical_used_bytes: '0' },
+  ];
+  const storageQuery = {
+    select: jest.fn(() => ({ data: storageRows, error: null })),
+  };
 
   return {
-    client: { auth: { admin: { listUsers } }, rpc } as never,
+    client: { auth: { admin: { listUsers } }, rpc, from: jest.fn(() => storageQuery) } as never,
     listUsers,
     rpc,
+    storageQuery,
   };
 }
 
@@ -123,14 +132,24 @@ describe('Keco Admin overview service', () => {
     const rpc = jest.fn(() => new Promise((resolve) => {
       resolveCredits = resolve;
     }));
+    const from = jest.fn(() => ({
+      select: jest.fn(async () => ({
+        data: [
+          { owner_id: ALICE_ID, used_bytes: '348600000000', logical_used_bytes: '0' },
+          { owner_id: BOB_ID, used_bytes: '201155813888', logical_used_bytes: '0' },
+        ],
+        error: null,
+      })),
+    }));
     const overviewPromise = readKecoAdminOverview(
-      { auth: { admin: { listUsers } }, rpc } as never,
+      { auth: { admin: { listUsers } }, rpc, from } as never,
       () => new Date('2026-09-11T10:00:00.000Z'),
     );
 
     await Promise.resolve();
     expect(listUsers).toHaveBeenCalledWith({ page: 1, perPage: 100 });
     expect(rpc).toHaveBeenCalledWith('keco_admin_credit_summary');
+    expect(from).toHaveBeenCalledWith('account_storage_quotas');
 
     resolveAuth({
       data: {
@@ -160,6 +179,7 @@ describe('Keco Admin overview service', () => {
         incompleteCount: 1,
         trackedFrom: '2026-09-15T00:00:00.000Z',
       },
+      storageUsage: { usedBytes: 549755813888 },
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -174,6 +194,7 @@ describe('Keco Admin overview service', () => {
           creditOverage: 0,
           deepseekTokens: 21,
           creditUsageIncompleteCount: 1,
+          storageUsedBytes: 348600000000,
         },
         {
           id: BOB_ID,
@@ -187,6 +208,7 @@ describe('Keco Admin overview service', () => {
           creditOverage: 0,
           deepseekTokens: 0,
           creditUsageIncompleteCount: 0,
+          storageUsedBytes: 201155813888,
         },
       ],
     });
@@ -219,6 +241,7 @@ describe('Keco Admin overview service', () => {
         incompleteCount: 1,
         trackedFrom: '2026-09-15T00:00:00.000Z',
       },
+      storageUsage: { usedBytes: 549755813888 },
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [
         {
@@ -233,8 +256,54 @@ describe('Keco Admin overview service', () => {
           creditOverage: 0,
           deepseekTokens: 0,
           creditUsageIncompleteCount: 0,
+          storageUsedBytes: 348600000000,
         },
       ],
+    });
+  });
+
+  it('accepts storage quota owners represented by valid database UUIDs outside RFC versions 1-5', async () => {
+    const listUsers = jest.fn(async () => ({
+      data: {
+        users: [authUser({ id: LEGACY_UUID_OWNER_ID })],
+        aud: 'authenticated',
+        total: 1,
+      },
+      error: null,
+    }));
+    const rpc = jest.fn(async () => ({ data: validCredits, error: null }));
+    const from = jest.fn(() => ({
+      select: jest.fn(async () => ({
+        data: [{ owner_id: LEGACY_UUID_OWNER_ID, used_bytes: '42', logical_used_bytes: '0' }],
+        error: null,
+      })),
+    }));
+
+    await expect(readKecoAdminOverview(
+      { auth: { admin: { listUsers } }, rpc, from } as never,
+      () => new Date('2026-09-24T00:00:00.000Z'),
+    )).resolves.toMatchObject({
+      storageUsage: { usedBytes: 42 },
+      users: [{ id: LEGACY_UUID_OWNER_ID, storageUsedBytes: 42 }],
+    });
+  });
+
+  it('combines each owner\'s physical files and logical content into Admin Storage used', async () => {
+    const { client } = clientReturning(1, [authUser()]);
+    const from = client.from as jest.Mock;
+    from.mockReturnValue({
+      select: jest.fn(async () => ({
+        data: [{ owner_id: ALICE_ID, used_bytes: '2', logical_used_bytes: '40' }],
+        error: null,
+      })),
+    });
+
+    await expect(readKecoAdminOverview(
+      client,
+      () => new Date('2026-09-24T00:00:00.000Z'),
+    )).resolves.toMatchObject({
+      storageUsage: { usedBytes: 42 },
+      users: [{ id: ALICE_ID, storageUsedBytes: 42 }],
     });
   });
 

@@ -33,6 +33,14 @@ const v4CompatibilitySql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260922230000_account_storage_v4_compatibility.sql',
 ), 'utf8');
+const adminStorageSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260924110000_grant_keco_admin_storage_read.sql',
+), 'utf8');
+const adminLogicalStorageSql = readFileSync(path.join(
+  process.cwd(),
+  'supabase/migrations/20260924120000_grant_keco_admin_logical_storage_read.sql',
+), 'utf8');
 const visibleStorageSql = readFileSync(path.join(
   process.cwd(),
   'supabase/migrations/20260924100000_user_visible_storage_accounting.sql',
@@ -52,6 +60,18 @@ describe('account project storage migration', () => {
     expect(sql).toMatch(/default 1099511627776/i);
     expect(sql).toMatch(/unique\s*\(bucket_id,\s*object_path\)/i);
     expect(sql).toMatch(/revoke all on table public\.account_storage_quotas from public, anon, authenticated/i);
+  });
+
+  it('permits the service role to read private quota totals for Keco Admin', () => {
+    expect(adminStorageSql).toMatch(
+      /grant select \(owner_id, used_bytes\)\s+on table public\.account_storage_quotas\s+to service_role/i,
+    );
+  });
+
+  it('permits the service role to read logical storage totals for Keco Admin', () => {
+    expect(adminLogicalStorageSql).toMatch(
+      /grant select \(logical_used_bytes\)\s+on table public\.account_storage_quotas\s+to service_role/i,
+    );
   });
 
   it('defines atomic authenticated and service-role quota functions', () => {

@@ -9,7 +9,7 @@ export default function AccountPage() {
       <div className={styles.content}>
         <header className={`${styles.pageHeader} ${styles.narrow}`}>
           <h1>Account</h1>
-          <p>Manage the email used to sign in and recover your account.</p>
+          <p>View the email used to sign in and recover your account.</p>
         </header>
         <div className={styles.narrow}><AccountCreditsSection /></div>
         <AccountStorageSection />
