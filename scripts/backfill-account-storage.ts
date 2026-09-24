@@ -92,20 +92,26 @@ async function knownProjects(client: BackfillClient): Promise<Map<string, string
   return projects;
 }
 
-async function nativeAttributions(client: BackfillClient, projects: Map<string, string>): Promise<Map<string, StorageAttribution[]>> {
+async function nativeAttributions(client: BackfillClient, projects: Map<string, string>): Promise<{
+  byObject: Map<string, StorageAttribution[]>;
+  registeredObjects: Set<string>;
+}> {
   const [registered, assets, references] = await Promise.all([
     selectRows(client, 'project_storage_files', 'bucket_id,object_path,project_id,owner_id,source_kind,source_entity_id,display_name,mime_type'),
     selectRows(client, 'project_game_assets', 'id,project_id,created_by,name,mime_type,storage_bucket,storage_path'),
     selectRows(client, 'map_reference_images', 'id,project_id,created_by,name,content_type,storage_path'),
   ]);
   const byObject = new Map<string, StorageAttribution[]>();
+  const registeredObjects = new Set<string>();
   const add = (bucketId: string, objectPath: unknown, value: StorageAttribution) => {
     if (typeof objectPath !== 'string' || !objectPath || !value.ownerId) return;
     const key = `${bucketId}\u0000${objectPath}`;
     byObject.set(key, [...(byObject.get(key) ?? []), value]);
   };
   for (const row of registered) {
-    if (typeof row.bucket_id !== 'string' || typeof row.owner_id !== 'string') continue;
+    if (typeof row.bucket_id !== 'string' || typeof row.object_path !== 'string') continue;
+    registeredObjects.add(`${row.bucket_id}\u0000${row.object_path}`);
+    if (typeof row.owner_id !== 'string') continue;
     add(row.bucket_id, row.object_path, {
       projectId: typeof row.project_id === 'string' ? row.project_id : null,
       ownerId: row.owner_id,
@@ -131,7 +137,7 @@ async function nativeAttributions(client: BackfillClient, projects: Map<string, 
       displayName: typeof row.name === 'string' ? row.name : undefined, mimeType: typeof row.content_type === 'string' ? row.content_type : undefined,
     });
   }
-  return byObject;
+  return { byObject, registeredObjects };
 }
 
 async function listNativeObjects(client: BackfillClient, bucketId: AccountedStorageBucket): Promise<StorageObject[]> {
@@ -172,11 +178,39 @@ async function listNativeObjects(client: BackfillClient, bucketId: AccountedStor
   return objects;
 }
 
+async function listRpcObjects(
+  client: BackfillClient,
+  bucketId: AccountedStorageBucket,
+  page: { offset: number; limit: number },
+): Promise<StorageObject[]> {
+  if (!client.rpc) throw new Error('Storage inventory RPC is unavailable');
+  const result = await client.rpc('service_account_storage_inventory', {
+    p_bucket_id: bucketId,
+    p_offset: page.offset,
+    p_limit: page.limit,
+  });
+  if (result.error || !Array.isArray(result.data)) throw new Error('Storage inventory RPC failed');
+  return result.data.map(raw => {
+    const row = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const size = typeof row.size_bytes === 'number' ? row.size_bytes : Number(row.size_bytes);
+    return {
+      bucketId,
+      objectPath: typeof row.object_path === 'string' ? row.object_path : '',
+      sizeBytes: Number.isSafeInteger(size) ? size : 0,
+      createdAt: typeof row.object_created_at === 'string' ? row.object_created_at : null,
+      mimeType: typeof row.mime_type === 'string' ? row.mime_type : null,
+      uploaderId: typeof row.uploader_id === 'string' ? row.uploader_id : null,
+    };
+  });
+}
+
 async function listObjects(client: BackfillClient, bucketId: AccountedStorageBucket): Promise<StorageObject[]> {
-  if (!client.listAccountedStorageObjects) return listNativeObjects(client, bucketId);
+  if (!client.listAccountedStorageObjects && !client.rpc) return listNativeObjects(client, bucketId);
   const objects: StorageObject[] = [];
   for (let offset = 0;; offset += PAGE_SIZE) {
-    const page = await client.listAccountedStorageObjects(bucketId, { offset, limit: PAGE_SIZE });
+    const page = client.listAccountedStorageObjects
+      ? await client.listAccountedStorageObjects(bucketId, { offset, limit: PAGE_SIZE })
+      : await listRpcObjects(client, bucketId, { offset, limit: PAGE_SIZE });
     objects.push(...page);
     if (page.length < PAGE_SIZE) return objects;
   }
@@ -273,7 +307,7 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
       report.scannedObjects += 1;
       const candidates = client.findStorageAttributions
         ? await client.findStorageAttributions(object)
-        : nativeReferences?.get(`${object.bucketId}\u0000${object.objectPath}`) ?? [];
+        : nativeReferences?.byObject.get(`${object.bucketId}\u0000${object.objectPath}`) ?? [];
       const resolution = resolveAttribution(object, candidates, projects);
       if (resolution.status === 'conflict' || !resolution.attribution) {
         report.conflicts += 1;
@@ -282,7 +316,10 @@ export async function backfillAccountStorage(client: BackfillClient, { apply }: 
       if (resolution.status === 'unassigned') report.unassignedObjects += 1;
       else report.attributableObjects += 1;
       report.physicalBytes += object.sizeBytes;
-      plannedImports.push({ ...object, ...resolution.attribution });
+      const objectKey = `${object.bucketId}\u0000${object.objectPath}`;
+      if (!nativeReferences?.registeredObjects.has(objectKey)) {
+        plannedImports.push({ ...object, ...resolution.attribution });
+      }
     }
   }
   if (apply && report.conflicts > 0) {

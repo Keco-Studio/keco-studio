@@ -38,7 +38,7 @@ declare
 begin
 perform pg_catalog.set_config('keco.storage_skip_entity_binding', 'on', true);
 
-with storage_inventory as (
+with storage_inventory as materialized (
   select
     object.bucket_id,
     object.name as object_path,
@@ -57,6 +57,18 @@ with storage_inventory as (
     and registered.id is null
     and object.metadata ->> 'size' ~ '^[0-9]+$'
     and (object.metadata ->> 'size')::numeric between 1 and 9223372036854775807
+), document_media as materialized (
+  select distinct
+    document.id as document_id,
+    document.project_id,
+    media_match[1] as bucket_id,
+    media_match[2] as object_path
+  from public.documents document
+  cross join lateral pg_catalog.regexp_matches(
+    coalesce(document.content, ''),
+    '/storage/v1/object/(?:public|sign|authenticated)/(library-media-files|tiptap-images)/([^[:space:]?#)>"&]+)',
+    'g'
+  ) media_match
 ), native_candidates as (
   select asset.storage_bucket as bucket_id, asset.storage_path as object_path,
     asset.project_id, 'project_asset'::text as source_kind, asset.id as source_entity_id,
@@ -80,12 +92,12 @@ with storage_inventory as (
   join public.character_assets asset on asset.id = attempt.character_asset_id
   where attempt.storage_path is not null
   union all
-  select inventory.bucket_id, inventory.object_path, document.project_id,
-    'document_image', document.id, 1
+  select inventory.bucket_id, inventory.object_path, media.project_id,
+    'document_image', media.document_id, 1
   from storage_inventory inventory
-  join public.documents document
-    on inventory.bucket_id in ('library-media-files', 'tiptap-images')
-    and pg_catalog.strpos(coalesce(document.content, ''), inventory.object_path) > 0
+  join document_media media
+    on media.bucket_id = inventory.bucket_id
+    and media.object_path = inventory.object_path
   union all
   select inventory.bucket_id, inventory.object_path, library.project_id,
     'library_media', asset.id, 2
@@ -294,14 +306,15 @@ after insert or update of project_id, source_kind, lifecycle_status
 on public.project_storage_files
 for each row execute function private.storage_activate_assets_workspace_from_file();
 
--- Rebuild cached physical totals after importing the historical objects.
-select public.service_repair_historical_project_storage();
+-- Historical data repair is invoked separately after schema deployment. Keeping
+-- the production-wide scan out of this transaction lets the schema commit even
+-- when backfill work needs to be retried or resumed independently.
 
 -- Assets existence is controlled by the root workspace, not by a positive
 -- physical subtotal. This also lets its detail endpoint return an empty list.
--- Use new function identities throughout this hierarchy. Replacing functions
--- used by the live Account page can wait indefinitely for in-flight calls.
-create or replace function private.storage_project_hierarchy_entities_v3(p_project_id uuid)
+-- Use identities that have never been deployed. Production may already have
+-- long-running v3/v4 calls, so this migration must not replace either version.
+create function private.storage_project_hierarchy_entities_v5(p_project_id uuid)
 returns table (
   entity_id uuid,
   entity_kind text,
@@ -379,7 +392,7 @@ as $$
     );
 $$;
 
-create or replace function private.storage_project_directory_entries_v3(
+create function private.storage_project_directory_entries_v5(
   p_project_id uuid,
   p_parent_folder_id uuid
 )
@@ -401,7 +414,7 @@ security definer
 set search_path = ''
 as $$
   with recursive entities as (
-    select * from private.storage_project_hierarchy_entities_v3(p_project_id)
+    select * from private.storage_project_hierarchy_entities_v5(p_project_id)
   ), folder_tree as (
     select folder.id as root_id, folder.id as descendant_id
     from public.folders folder
@@ -464,7 +477,7 @@ as $$
   select * from directory_entries;
 $$;
 
-create or replace function public.account_storage_project_entities_v4(
+create function public.account_storage_project_entities_v5(
   p_project_id uuid,
   p_query text default null,
   p_sort text default 'size_desc',
@@ -519,7 +532,7 @@ begin
   end if;
 
   select count(*) into v_total
-  from private.storage_project_directory_entries_v3(p_project_id, p_parent_folder_id) entry
+  from private.storage_project_directory_entries_v5(p_project_id, p_parent_folder_id) entry
   where nullif(btrim(p_query), '') is null
     or entry.display_name ilike '%' || btrim(p_query) || '%';
 
@@ -537,7 +550,7 @@ begin
   )), '[]'::jsonb) into v_items
   from (
     select entry.*
-    from private.storage_project_directory_entries_v3(p_project_id, p_parent_folder_id) entry
+    from private.storage_project_directory_entries_v5(p_project_id, p_parent_folder_id) entry
     where nullif(btrim(p_query), '') is null
       or entry.display_name ilike '%' || btrim(p_query) || '%'
     order by
@@ -563,7 +576,7 @@ $$;
 
 -- Use a versioned RPC so deployment never replaces the summary function that
 -- the currently deployed application may still be executing.
-create or replace function public.account_storage_summary_v4()
+create function public.account_storage_summary_v5()
 returns jsonb
 language plpgsql
 security definer
@@ -602,11 +615,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_hierarchy_entities_v3(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities_v5(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity),
       'ownedByCurrentUser', true
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity) as sort_bytes
     from public.projects project
     left join public.profiles profile on profile.id = project.owner_id
     where project.owner_id = v_actor
@@ -620,11 +633,11 @@ begin
       'ownerName', coalesce(profile.full_name, profile.username, ''),
       'fileCount',
         (select count(*) from public.folders folder where folder.project_id = project.id)
-        + (select count(*) from private.storage_project_hierarchy_entities_v3(project.id)),
-      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity),
+        + (select count(*) from private.storage_project_hierarchy_entities_v5(project.id)),
+      'usedBytes', (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity),
       'ownedByCurrentUser', false
     ) as row_json,
-    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v3(project.id) entity) as sort_bytes
+    (select coalesce(sum(entity.size_bytes), 0) from private.storage_project_hierarchy_entities_v5(project.id) entity) as sort_bytes
     from public.projects project
     join public.project_collaborators collaborator
       on collaborator.project_id = project.id
@@ -658,19 +671,19 @@ begin
 end;
 $$;
 
-revoke all on function private.storage_project_hierarchy_entities_v3(uuid)
+revoke all on function private.storage_project_hierarchy_entities_v5(uuid)
   from public, anon, authenticated, service_role;
 revoke all on function private.storage_activate_assets_workspace_from_file()
   from public, anon, authenticated, service_role;
-revoke all on function private.storage_project_directory_entries_v3(uuid, uuid)
+revoke all on function private.storage_project_directory_entries_v5(uuid, uuid)
   from public, anon, authenticated, service_role;
-revoke all on function public.account_storage_project_entities_v4(uuid, text, text, integer, integer, uuid)
+revoke all on function public.account_storage_project_entities_v5(uuid, text, text, integer, integer, uuid)
   from public, anon, service_role;
-grant execute on function public.account_storage_project_entities_v4(uuid, text, text, integer, integer, uuid)
+grant execute on function public.account_storage_project_entities_v5(uuid, text, text, integer, integer, uuid)
   to authenticated;
-revoke all on function public.account_storage_summary_v4()
+revoke all on function public.account_storage_summary_v5()
   from public, anon, service_role;
-grant execute on function public.account_storage_summary_v4()
+grant execute on function public.account_storage_summary_v5()
   to authenticated;
 revoke all on function public.service_repair_historical_project_storage()
   from public, anon, authenticated;

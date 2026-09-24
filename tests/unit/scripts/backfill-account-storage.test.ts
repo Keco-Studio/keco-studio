@@ -105,6 +105,93 @@ describe('account storage backfill', () => {
     expect(rpc).toHaveBeenCalledWith('service_rebuild_account_storage_quota_totals');
   });
 
+  it('reads uploader ownership from the service inventory RPC', async () => {
+    const rpc = jest.fn(async (name: string, parameters?: Record<string, unknown>) => {
+      if (name !== 'service_account_storage_inventory') {
+        throw new Error(`Unexpected RPC ${name}`);
+      }
+      return {
+        data: parameters?.p_bucket_id === 'project-assets'
+          ? [{
+            bucket_id: 'project-assets',
+            object_path: 'legacy/unassigned.png',
+            size_bytes: 1024,
+            object_created_at: '2026-09-01T00:00:00Z',
+            mime_type: 'image/png',
+            uploader_id: 'uploader-a',
+          }]
+          : [],
+        error: null,
+      };
+    });
+    const from = (table: string) => ({
+      async select() {
+        return {
+          data: table === 'projects' ? [{ id: 'project-a', owner_id: 'owner-a' }] : [],
+          error: null,
+        };
+      },
+    });
+
+    await expect(backfillAccountStorage({ from, rpc }, { apply: false })).resolves.toEqual({
+      scannedObjects: 1,
+      attributableObjects: 0,
+      unassignedObjects: 1,
+      conflicts: 0,
+      insertedFiles: 0,
+      physicalBytes: 1024,
+    });
+    expect(rpc).toHaveBeenCalledWith('service_account_storage_inventory', {
+      p_bucket_id: 'project-assets',
+      p_offset: 0,
+      p_limit: 100,
+    });
+  });
+
+  it('does not replay already registered objects during a resumed apply', async () => {
+    const inventory = [
+      { bucket_id: 'project-assets', object_path: 'legacy/already.png', size_bytes: 64, uploader_id: 'owner-a' },
+      { bucket_id: 'project-assets', object_path: 'legacy/missing.png', size_bytes: 128, uploader_id: 'owner-a' },
+    ];
+    const importedPaths: string[] = [];
+    const rpc = jest.fn(async (name: string, parameters?: Record<string, unknown>) => {
+      if (name === 'service_account_storage_inventory') {
+        return { data: parameters?.p_bucket_id === 'project-assets' ? inventory : [], error: null };
+      }
+      if (name === 'service_import_project_storage_file') {
+        importedPaths.push(String(parameters?.p_object_path));
+        return { data: { inserted: true }, error: null };
+      }
+      if (name === 'service_rebuild_account_storage_quota_totals') {
+        return { data: { rebuiltAccounts: 1 }, error: null };
+      }
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    const from = (table: string) => ({
+      async select() {
+        if (table === 'projects') return { data: [], error: null };
+        if (table === 'project_storage_files') {
+          return {
+            data: [{
+              bucket_id: 'project-assets', object_path: 'legacy/already.png', project_id: null,
+              owner_id: 'owner-a', source_kind: 'legacy_unassigned', source_entity_id: null,
+              display_name: 'already.png', mime_type: 'image/png',
+            }],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    });
+
+    await expect(backfillAccountStorage({ from, rpc }, { apply: true })).resolves.toMatchObject({
+      scannedObjects: 2,
+      unassignedObjects: 2,
+      insertedFiles: 1,
+    });
+    expect(importedPaths).toEqual(['legacy/missing.png']);
+  });
+
   it('includes TipTap images as document-image files in an otherwise safe apply plan', async () => {
     const { client } = clientFixture();
     const importStorageFile = jest.fn().mockResolvedValue({ inserted: true });

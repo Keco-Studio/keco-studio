@@ -798,7 +798,7 @@ describeDb('account project storage real Postgres behavior', () => {
     const sharedDocument = await fx.svc.from('documents').insert({
       project_id: fx.projectId,
       name: `Shared historical media ${fx.suffix}`,
-      content: `![shared](https://example.test/${sharedMediaPath})`,
+      content: `![shared](https://example.test/storage/v1/object/public/library-media-files/${sharedMediaPath})`,
       created_by: fx.owner.id,
     }).select('id').single();
     expect(sharedDocument.error).toBeNull();
