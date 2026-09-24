@@ -2,6 +2,7 @@
  * create_folder — create a new folder in the project.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { createFolderServer, listProjectFolders } from '../data-access';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -21,12 +22,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const { name, description } = parsed.data;
 
   try {
-    const existing = await listProjectFolders(ctx.supabase, ctx.projectId, ctx);
+    const existing = await listProjectFolders(ctx.supabase, requireProjectContext(ctx), ctx);
     if (existing.some((folder) => norm(folder.name) === norm(name))) {
       return { success: false, error: `Folder "${name.trim()}" already exists in this project.` };
     }
 
-    const folderId = await createFolderServer(ctx.supabase, ctx.projectId, name, description);
+    const folderId = await createFolderServer(ctx.supabase, requireProjectContext(ctx), name, description);
 
     return {
       success: true,

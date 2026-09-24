@@ -2,6 +2,7 @@
  * create_asset — add a new asset to a library (pre_execute confirmation).
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   createAsset as createAssetService,
@@ -45,7 +46,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };
@@ -134,7 +135,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       );
       scheduleReindexForAssetFields(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         emptyRow.asset.id,
         Object.keys(resolvedWithReferences)
       );
@@ -156,7 +157,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     const assetId = await createAssetService(ctx.supabase, library.id, name, resolvedWithReferences);
     scheduleReindexForAssetFields(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       assetId,
       Object.keys(resolvedWithReferences)
     );

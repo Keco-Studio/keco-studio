@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { readDocumentSlice, type DocumentReadRequest } from '../document-read';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
@@ -76,7 +77,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       selector,
       ctx
     );
@@ -90,12 +91,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
     const { documentStateGateway } = await import('@/lib/documents/documentStateGateway');
     const state = await documentStateGateway.read(ctx.supabase, resolution.document.id);
-    if (state.projectId !== ctx.projectId) {
+    if (state.projectId !== requireProjectContext(ctx)) {
       return { success: false, error: 'Document not found in this project.' };
     }
     const visibleMarkdown = await resolveReferencesForPlainMarkdown(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       state.markdown
     );
 

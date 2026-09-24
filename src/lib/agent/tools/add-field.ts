@@ -2,6 +2,7 @@
  * add_field — add a new column (field definition) to a library.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { addLibraryField } from '@/lib/services/libraryAssetsService';
 import { scheduleLibrarySchemaReindex } from '../embedding-index';
@@ -43,7 +44,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };
@@ -55,7 +56,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   if (parsed.data.referenceLibraries && parsed.data.referenceLibraries.length > 0) {
     resolvedReferenceLibraryIds = [];
     for (const refName of parsed.data.referenceLibraries) {
-      const refResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, refName, ctx);
+      const refResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), refName, ctx);
       const refLookupError = errorFromLookupResult(refResult);
       if (refLookupError !== undefined) {
         return { success: false, error: refLookupError };
@@ -79,7 +80,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       }
     );
     scheduleLibrarySchemaReindex(ctx.supabase, {
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       libraryId: library.id,
     });
     return {

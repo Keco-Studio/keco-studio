@@ -5,6 +5,7 @@
  * against SCRIPT_COLUMNS, then reconstructs a structured line per asset row.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { getLibraryAssets } from '../data-access';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -44,7 +45,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };

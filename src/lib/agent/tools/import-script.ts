@@ -3,6 +3,7 @@
  * relationship plan, then imports the server-hydrated StoryDocument.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import type { RoleMap } from '@/lib/script-parser';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
@@ -42,7 +43,7 @@ async function validateParamsAndFolder(
   }
   try {
     const folder = await getFolderRow(ctx.supabase, parsed.data.folderId);
-    if (!folder || folder.project_id !== ctx.projectId) {
+    if (!folder || folder.project_id !== requireProjectContext(ctx)) {
       return {
         error: {
           success: false,
@@ -103,7 +104,7 @@ async function* executeStream(
   try {
     const result = await importStoryDocument(ctx.supabase, {
       userId: ctx.userId,
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       folderId: data.folderId,
       libraryName: data.libraryName,
       document: resolution.resolved.document,

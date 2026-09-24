@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   listResolvedProjectDocuments,
@@ -35,7 +36,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
   try {
     const { nameQuery, folderName, limit, offset } = parsed.data;
-    const allDocuments = await listResolvedProjectDocuments(ctx.supabase, ctx.projectId);
+    const allDocuments = await listResolvedProjectDocuments(ctx.supabase, requireProjectContext(ctx));
     const normalizedNameQuery = nameQuery?.toLowerCase();
     const matchedDocuments = allDocuments.filter(
       (document) =>

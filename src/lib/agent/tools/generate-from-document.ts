@@ -7,6 +7,7 @@
  * because it commonly exceeds the agent-chat turn deadline (~110s).
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImportProgress';
@@ -73,7 +74,7 @@ function selectorFromParams(params: z.infer<typeof ParamsSchema>): DocumentSelec
 async function resolveTarget(params: z.infer<typeof ParamsSchema>, ctx: ToolContext) {
   const resolution = await resolveDocumentForTool(
     ctx.supabase,
-    ctx.projectId,
+    requireProjectContext(ctx),
     selectorFromParams(params),
     ctx
   );
@@ -87,7 +88,7 @@ async function resolveTarget(params: z.infer<typeof ParamsSchema>, ctx: ToolCont
       },
     };
   }
-  if (resolution.document.project_id !== ctx.projectId) {
+  if (resolution.document.project_id !== requireProjectContext(ctx)) {
     return {
       ok: false as const,
       error: { success: false as const, error: 'Document not found in this project.' },
@@ -131,7 +132,7 @@ async function prepareConfirmation(
       error: error instanceof Error ? error.message : 'Document export source failed',
     };
   }
-  if (source.projectId !== ctx.projectId) {
+  if (source.projectId !== requireProjectContext(ctx)) {
     return { success: false, error: 'Source document not found in this project' };
   }
 

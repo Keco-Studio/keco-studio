@@ -13,7 +13,7 @@ import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
-export type AgentWorkspace = 'studio' | 'script';
+export type AgentWorkspace = 'projects' | 'studio' | 'script' | 'create-map' | 'game-design-systems';
 
 export interface DocumentTableExportContext {
   sourceDocumentId: string;
@@ -37,7 +37,7 @@ export type JSONSchema = Record<string, unknown>;
 
 export interface ToolContext {
   userId: string;
-  projectId: string;
+  projectId?: string;
   conversationId: string;
   currentFolderId?: string;
   currentFolderName?: string;
@@ -46,8 +46,8 @@ export interface ToolContext {
   currentLibraryId?: string;
   currentLibraryName?: string;
   supabase: SupabaseClient;
-  userRole: UserRole;
-  workspace?: AgentWorkspace;
+  userRole?: UserRole;
+  workspace: AgentWorkspace;
   /** Server-validated source binding for tables generated from a document. */
   documentExport?: DocumentTableExportContext;
   /** Request-scoped authorization results; a new map is created for every turn. */

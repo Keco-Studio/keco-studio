@@ -65,6 +65,14 @@ describe('resolveScopeFromNavigation', () => {
     expect(resolveScopeFromNavigation({})).toEqual({ level: 'global' });
   });
 
+  it('preserves workspace for an account scope and ignores stray project navigation', () => {
+    expect(resolveScopeFromNavigation({
+      workspace: 'create-map',
+      currentFolderId: FOLDER,
+      currentLibraryId: LIBRARY,
+    })).toEqual({ level: 'global', workspace: 'create-map' });
+  });
+
   it('prefers table over folder when both a folder and library are present', () => {
     const scope = resolveScopeFromNavigation({
       projectId: PROJECT,
@@ -78,7 +86,7 @@ describe('resolveScopeFromNavigation', () => {
 
 describe('contextFieldsFromScope', () => {
   it('degrades legacy (no scope) to the fallback project id', () => {
-    expect(contextFieldsFromScope(undefined, PROJECT)).toEqual({ projectId: PROJECT });
+    expect(contextFieldsFromScope(undefined, PROJECT)).toEqual({ projectId: PROJECT, workspace: 'studio' });
   });
 
   it('maps a table scope to full navigation fields', () => {
@@ -90,8 +98,9 @@ describe('contextFieldsFromScope', () => {
       libraryId: LIBRARY,
       libraryName: 'Characters',
     };
-    expect(contextFieldsFromScope(scope, 'fallback')).toEqual({
+    expect(contextFieldsFromScope(scope, PROJECT)).toEqual({
       projectId: PROJECT,
+      workspace: 'studio',
       currentFolderId: FOLDER,
       currentFolderName: 'Worldview',
       currentLibraryId: LIBRARY,
@@ -106,8 +115,9 @@ describe('contextFieldsFromScope', () => {
       folderId: FOLDER,
       folderName: 'Worldview',
     };
-    expect(contextFieldsFromScope(scope, 'fallback')).toEqual({
+    expect(contextFieldsFromScope(scope, PROJECT)).toEqual({
       projectId: PROJECT,
+      workspace: 'studio',
       currentFolderId: FOLDER,
       currentFolderName: 'Worldview',
       currentLibraryId: undefined,
@@ -115,8 +125,20 @@ describe('contextFieldsFromScope', () => {
     });
   });
 
-  it('falls back to the conversation project id when scope.projectId is missing', () => {
-    const scope: ConversationScope = { level: 'global' };
+  it('uses the conversation binding even when scope metadata has another project', () => {
+    const scope: ConversationScope = { level: 'project', projectId: 'other-project', workspace: 'script' };
     expect(contextFieldsFromScope(scope, PROJECT).projectId).toBe(PROJECT);
+  });
+
+  it('leaves project context absent for an account-bound conversation', () => {
+    const scope: ConversationScope = { level: 'global', workspace: 'projects' };
+    expect(contextFieldsFromScope(scope, null)).toEqual({
+      projectId: undefined,
+      workspace: 'projects',
+      currentFolderId: undefined,
+      currentFolderName: undefined,
+      currentLibraryId: undefined,
+      currentLibraryName: undefined,
+    });
   });
 });

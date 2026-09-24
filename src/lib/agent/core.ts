@@ -72,6 +72,7 @@ import {
 } from './turn-budget';
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
 import { normalizeToolCallForReplay } from './tool-call-recovery';
+import { requireProjectContext } from './workspace';
 import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import {
@@ -164,15 +165,17 @@ export async function buildAgentSystemContext(
   let gameDesignPolicy: GameDesignPolicyContext | undefined;
   let artStyleContext: string | undefined;
 
-  try {
-    const { data: project } = await ctx.supabase
-      .from('projects')
-      .select('name')
-      .eq('id', ctx.projectId)
-      .single();
-    projectName = project?.name;
-  } catch {
-    // best-effort
+  if (ctx.projectId) {
+    try {
+      const { data: project } = await ctx.supabase
+        .from('projects')
+        .select('name')
+        .eq('id', ctx.projectId)
+        .single();
+      projectName = project?.name;
+    } catch {
+      // best-effort
+    }
   }
 
   if (ctx.currentLibraryId && !currentLibraryName) {
@@ -201,39 +204,41 @@ export async function buildAgentSystemContext(
     }
   }
 
-  try {
-    const { data: binding } = await ctx.supabase
-      .from('project_game_design_systems')
-      .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules, art_style)')
-      .eq('project_id', ctx.projectId)
-      .maybeSingle();
-    const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
-    const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
-    const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
-    if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
-      const system = rawSystem as Record<string, unknown>;
-      const version = rawVersion as Record<string, unknown>;
-      if (
-        system.migration_status === 'ready'
-        && typeof version.version_number === 'number'
-        && typeof row?.design_system_id === 'string'
-        && typeof row.version_id === 'string'
-      ) {
-        const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
-        const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
-        artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
-        gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
-        gameDesignPolicy = {
-          systemId: row.design_system_id,
-          versionId: row.version_id,
-          version: version.version_number,
-          includedRuleIds: policy.appliedRuleIds,
-          omittedRuleIds: policy.omittedRuleIds,
-        };
+  if (ctx.projectId) {
+    try {
+      const { data: binding } = await ctx.supabase
+        .from('project_game_design_systems')
+        .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules, art_style)')
+        .eq('project_id', ctx.projectId)
+        .maybeSingle();
+      const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
+      const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
+      const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
+      if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
+        const system = rawSystem as Record<string, unknown>;
+        const version = rawVersion as Record<string, unknown>;
+        if (
+          system.migration_status === 'ready'
+          && typeof version.version_number === 'number'
+          && typeof row?.design_system_id === 'string'
+          && typeof row.version_id === 'string'
+        ) {
+          const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
+          const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
+          artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
+          gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
+          gameDesignPolicy = {
+            systemId: row.design_system_id,
+            versionId: row.version_id,
+            version: version.version_number,
+            includedRuleIds: policy.appliedRuleIds,
+            omittedRuleIds: policy.omittedRuleIds,
+          };
+        }
       }
+    } catch {
+      // A missing binding must never block the normal agent turn.
     }
-  } catch {
-    // A missing binding must never block the normal agent turn.
   }
 
   const basePrompt = buildSystemPrompt({
@@ -276,7 +281,7 @@ async function loadRetrievedContextBlock(
   userMessage: string,
   usageBinding?: AiUsageBinding,
 ): Promise<string | undefined> {
-  if (!AGENT_RETRIEVAL_ENABLED) return undefined;
+  if (!AGENT_RETRIEVAL_ENABLED || !ctx.projectId) return undefined;
   try {
     const queryText = stripContextAugmentation(userMessage);
     if (!queryText.trim()) return undefined;
@@ -313,8 +318,10 @@ async function loadRetrievedContextBlock(
 function indexingContext(
   ctx: ToolContext,
   usageBinding?: AiUsageBinding,
-): SaveMessageIndexingContext {
-  return { projectId: ctx.projectId, userId: ctx.userId, usageBinding };
+): SaveMessageIndexingContext | undefined {
+  return ctx.projectId
+    ? { projectId: ctx.projectId, userId: ctx.userId, usageBinding }
+    : undefined;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -357,6 +364,9 @@ export function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext
 /** Permission gate run before any write tool executes. */
 function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | null {
   if (tool.category !== 'write') return null;
+  if (!ctx.userRole) {
+    return { success: false, error: 'Select a project before using this operation.' };
+  }
   if (ctx.userRole === 'viewer') {
     return { success: false, error: 'Viewer role cannot perform write operations.' };
   }
@@ -1016,7 +1026,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       result = toolResultFromClientCompletion(
         pending.args,
         input.clientCompletedResult,
-        turnContext.projectId
+        requireProjectContext(turnContext)
       );
       trace?.recordToolCall({
         tool: tool.name,
