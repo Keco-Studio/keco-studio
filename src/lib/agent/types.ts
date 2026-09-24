@@ -112,8 +112,8 @@ export interface AgentTool {
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
-  /** An authenticated account operation with no project role to evaluate. */
-  permissionScope?: 'account';
+  /** Account writes, or explicit-target writes that revalidate project access in their domain adapter. */
+  permissionScope?: 'account' | 'explicit-project';
   /** Resolve and seal approval-critical arguments before a pre-execute pause. */
   prepareConfirmation?: (
     params: unknown,

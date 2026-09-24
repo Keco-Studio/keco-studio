@@ -45,8 +45,22 @@ import { createMapDraftTool } from './create-map-draft';
 import { generateMapImageTool } from './generate-map-image';
 import { getMapGenerationStatusTool } from './get-map-generation-status';
 import { retryMapGenerationTool } from './retry-map-generation';
+import { listGameDesignSystemsTool } from './list-game-design-systems';
+import { readGameDesignSystemTool } from './read-game-design-system';
+import { generateGameDesignSystemTool } from './generate-game-design-system';
+import { copyGameDesignSystemTool } from './copy-game-design-system';
+import { applyGameDesignSystemTool } from './apply-game-design-system';
+import { generateGddTool } from './generate-gdd';
+import { getGenerationStatusTool } from './get-generation-status';
 
 const tools: AgentTool[] = [
+  listGameDesignSystemsTool,
+  readGameDesignSystemTool,
+  generateGameDesignSystemTool,
+  copyGameDesignSystemTool,
+  applyGameDesignSystemTool,
+  generateGddTool,
+  getGenerationStatusTool,
   listMapsTool,
   readMapTool,
   createMapDraftTool,

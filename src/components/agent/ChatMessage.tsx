@@ -106,9 +106,18 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
       return <AssistantBubble item={item} streaming={streaming} />;
     case 'error':
       return <div className={styles.errorBubble}>{item.error}</div>;
-    case 'tool':
+    case 'tool': {
+      const data = item.toolCall?.data as { jobType?: unknown; jobId?: unknown; status?: unknown } | undefined;
+      if (item.toolCall?.status === 'success' && (data?.jobType === 'gdd' || data?.jobType === 'game-design-system') &&
+          typeof data.jobId === 'string' && typeof data.status === 'string') {
+        return <div className={`${styles.bubble} ${styles.assistant}`} data-testid="generation-job-status">
+          <div>{data.jobType === 'gdd' ? 'GDD generation' : 'Game Design System generation'}: {data.status.slice(0, 80)}</div>
+          <div>Job: {data.jobId.slice(0, 64)}</div>
+        </div>;
+      }
       return item.toolCall?.displayHint === 'map' && item.toolCall.status === 'success'
         ? <MapToolResultCard data={item.toolCall.data} /> : null;
+    }
     case 'confirmation': {
       if (!item.confirmation) return null;
       if (item.confirmation.tool === 'generate_map_image' || item.confirmation.tool === 'retry_map_generation') {

@@ -370,7 +370,7 @@ export function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext
 /** Permission gate run before any write tool executes. */
 function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | null {
   if (tool.category !== 'write') return null;
-  if (tool.permissionScope === 'account') {
+  if (tool.permissionScope === 'account' || tool.permissionScope === 'explicit-project') {
     return ctx.userId ? null : { success: false, error: 'Authentication required.' };
   }
   if (!ctx.userRole) {

@@ -64,6 +64,12 @@ function historyToolCall(tool: string, text: string): ToolCallView {
     if (result.displayHint === 'map') return {
       tool, status: result.success === true ? 'success' : 'failure', displayHint: 'map', data: result.data,
     };
+    const job = result.data as Record<string, unknown> | null | undefined;
+    if (job && (job.jobType === 'gdd' || job.jobType === 'game-design-system') &&
+        typeof job.jobId === 'string' && typeof job.status === 'string') return {
+      tool, status: result.success === true ? 'success' : 'failure', displayHint: 'text',
+      data: { jobType: job.jobType, jobId: job.jobId.slice(0, 64), status: job.status.slice(0, 80) },
+    };
   }
   return { tool, status: 'success', data };
 }

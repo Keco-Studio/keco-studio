@@ -29,13 +29,13 @@ describe('workspace Tool policy', () => {
     expect(getAllowedToolNames('game-design-systems').has('create_project')).toBe(false);
     expect(getToolsForLlm({ workspace: 'create-map' }).map((tool) => tool.function.name).sort())
       .toEqual([...discoveryAndSettings, ...mapTools].sort());
-    expect(getToolsForLlm({ workspace: 'game-design-systems' }).map((tool) => tool.function.name))
-      .toEqual(discoveryAndSettings);
+    expect(getToolsForLlm({ workspace: 'game-design-systems' }).map((tool) => tool.function.name).sort())
+      .toEqual([...discoveryAndSettings, ...gdsTools].sort());
   });
 
   it('retains the current registry in Studio and limits Script mutations', () => {
     expect([...getAllowedToolNames('studio')].sort()).toEqual(
-      allTools.map((tool) => tool.name).filter((name) => !['list_projects', 'create_project', 'select_project', ...mapTools].includes(name)).sort()
+      allTools.map((tool) => tool.name).filter((name) => !['list_projects', 'create_project', 'select_project', ...mapTools, ...gdsTools].includes(name)).sort()
     );
     for (const name of ['list_projects', 'create_project', 'select_project']) {
       expect(getAllowedToolNames('studio').has(name)).toBe(false);
