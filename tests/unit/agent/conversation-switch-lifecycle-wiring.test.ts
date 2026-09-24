@@ -14,21 +14,19 @@ const panelSource = readFileSync(
 describe('agent conversation switch lifecycle wiring', () => {
   it('does not abort an active Agent turn when changing the visible conversation', () => {
     const loadConversationBlock =
-      hookSource.match(/const loadConversation[\s\S]*?\n\s*\},\n\s*\[getToken[\s\S]*?\]\n\s*\);/)?.[0] ?? '';
-    const restoreProjectConversationBlock =
-      hookSource.match(
-        /const restoreProjectConversation[\s\S]*?\n\s*\},\s*\[ctx\.userId,\s*ctx\.projectId,\s*loadConversation,\s*resetToEmpty,\s*activateRuntime\]\s*\);/
-      )?.[0] ?? '';
+      hookSource.match(/const loadConversation[\s\S]*?const restoreScopedConversation/)?.[0] ?? '';
+    const restoreScopedConversationBlock =
+      hookSource.match(/const restoreScopedConversation[\s\S]*?useEffect\(/)?.[0] ?? '';
     const startNewConversationBlock =
-      hookSource.match(/const startNewConversation[\s\S]*?\n\s*\},\s*\[resetToEmpty,\s*ctx\.userId,\s*ctx\.projectId\]\s*\);/)?.[0] ?? '';
+      hookSource.match(/const startNewConversation[\s\S]*?const loadConversation/)?.[0] ?? '';
 
     expect(loadConversationBlock).not.toContain('stopStreaming(');
     expect(loadConversationBlock).not.toContain('streamAbortRef');
-    expect(restoreProjectConversationBlock).not.toContain('stopStreaming(');
-    expect(restoreProjectConversationBlock).not.toContain('streamAbortRef');
+    expect(restoreScopedConversationBlock).not.toContain('stopStreaming(');
+    expect(restoreScopedConversationBlock).not.toContain('streamAbortRef');
     expect(startNewConversationBlock).not.toContain('stopStreaming(');
     expect(startNewConversationBlock).not.toContain('streamAbortRef');
-    expect(hookSource).toContain('getProjectAgentRuntime(ctx.userId, ctx.projectId)');
+    expect(hookSource).toContain('getScopedAgentRuntime(runtimeScope)');
   });
 
   it('routes send and confirmation streams through their originating runtime key', () => {
@@ -39,6 +37,11 @@ describe('agent conversation switch lifecycle wiring', () => {
   it('guards history loading and stale project restores', () => {
     expect(hookSource).toContain('isLoading: true');
     expect(hookSource).toContain('restoreEpochRef.current');
+    expect(hookSource).toContain('if (!open || !ctx.userId) return false;');
+    expect(hookSource).toContain('if (!open || !ctx.userId || selectedRuntime?.conversationId');
+    expect(hookSource).toContain('[ctx.userId, ctx.workspace, ctx.projectId]');
+    expect(panelSource).toContain('useAgentChat(ctx, open)');
+    expect(panelSource).toContain('{showHistory && (');
   });
 
   it('blocks anonymous turns until the authenticated profile is ready', () => {

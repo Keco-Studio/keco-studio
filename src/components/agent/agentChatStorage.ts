@@ -1,5 +1,5 @@
 /**
- * Browser-local persistence for agent chat draft and per-project active sessions.
+ * Browser-local persistence for agent chat draft and per-scope active sessions.
  * Pure functions with no React dependencies.
  */
 
@@ -12,17 +12,17 @@ function storage(): Storage | null {
   return window.localStorage;
 }
 
-export function getDraft(userId: string): string {
-  const raw = storage()?.getItem(`${DRAFT_KEY_PREFIX}${userId}`);
+export function getDraft(userId: string, scopeKey?: string): string {
+  const raw = storage()?.getItem(`${DRAFT_KEY_PREFIX}${userId}${scopeKey ? `:${scopeKey}` : ''}`);
   return raw ?? '';
 }
 
-export function setDraft(userId: string, text: string): void {
-  storage()?.setItem(`${DRAFT_KEY_PREFIX}${userId}`, text);
+export function setDraft(userId: string, text: string, scopeKey?: string): void {
+  storage()?.setItem(`${DRAFT_KEY_PREFIX}${userId}${scopeKey ? `:${scopeKey}` : ''}`, text);
 }
 
-export function clearDraft(userId: string): void {
-  storage()?.removeItem(`${DRAFT_KEY_PREFIX}${userId}`);
+export function clearDraft(userId: string, scopeKey?: string): void {
+  storage()?.removeItem(`${DRAFT_KEY_PREFIX}${userId}${scopeKey ? `:${scopeKey}` : ''}`);
 }
 
 export function getLastConversationMap(userId: string): Record<string, string> {
@@ -39,15 +39,15 @@ export function getLastConversationMap(userId: string): Record<string, string> {
   return {};
 }
 
-export function setLastConversation(userId: string, projectId: string, conversationId: string): void {
+export function setLastConversation(userId: string, scopeKey: string, conversationId: string): void {
   const map = getLastConversationMap(userId);
-  map[projectId] = conversationId;
+  map[scopeKey] = conversationId;
   storage()?.setItem(`${LAST_CONV_KEY_PREFIX}${userId}`, JSON.stringify(map));
 }
 
-export function clearLastConversation(userId: string, projectId: string): void {
+export function clearLastConversation(userId: string, scopeKey: string): void {
   const map = getLastConversationMap(userId);
-  delete map[projectId];
+  delete map[scopeKey];
   storage()?.setItem(`${LAST_CONV_KEY_PREFIX}${userId}`, JSON.stringify(map));
 }
 

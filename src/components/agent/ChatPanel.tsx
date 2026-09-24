@@ -11,6 +11,7 @@ import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import botIcon from '@/assets/images/bot.svg';
 import chatIcon from '@/assets/images/chat.svg';
 import { useAgentChat } from './useAgentChat';
+import { agentRuntimeScopeKey } from './agentChatRuntimeStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
@@ -86,7 +87,12 @@ export function ChatPanel() {
     startNewConversation,
     loadConversation,
     appendNote,
-  } = useAgentChat(ctx);
+  } = useAgentChat(ctx, open);
+  const draftScopeKey = agentRuntimeScopeKey({
+    userId: userProfile?.id,
+    workspace,
+    projectId: currentProjectId ?? undefined,
+  });
 
   // Close the panel whenever the navigation scope it was opened in changes
   // (a different project, folder, or table/library). The scope is captured when
@@ -287,7 +293,8 @@ export function ChatPanel() {
 
       {showHistory && (
         <ConversationList
-          projectId={currentProjectId}
+          projectId={currentProjectId || undefined}
+          workspace={workspace}
           activeId={conversationId}
           onSelect={(id) => {
             setShowHistory(false);
@@ -334,6 +341,7 @@ export function ChatPanel() {
 
           <ChatInput
             userId={userProfile?.id}
+            draftScopeKey={draftScopeKey}
             projectId={currentProjectId ?? undefined}
             isStreaming={isStreaming}
             autoExecute={autoExecute}

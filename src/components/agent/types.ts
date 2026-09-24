@@ -4,7 +4,7 @@
  */
 
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
-import type { DocumentTableExportContext } from '@/lib/agent/types';
+import type { AgentWorkspace, DocumentTableExportContext } from '@/lib/agent/types';
 import type { GameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 export type { AgentInvalidation } from '@/lib/agent/types';
 
@@ -73,5 +73,11 @@ export interface SendContext {
   currentFolderName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
-  workspace: 'studio' | 'script';
+  workspace: AgentWorkspace;
+}
+
+export interface AgentRuntimeScope {
+  userId?: string;
+  workspace: AgentWorkspace;
+  projectId?: string;
 }

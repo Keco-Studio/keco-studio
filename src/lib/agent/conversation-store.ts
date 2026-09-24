@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   ChatContentPart,
   ChatMessage,
+  AgentWorkspace,
   ConversationMeta,
   ConversationScope,
   DocumentTableExportContext,
@@ -317,7 +318,8 @@ export async function updateConversationMeta(
 export interface ConversationListItem {
   id: string;
   projectId: string | null;
-  projectName: string;
+  projectName?: string;
+  workspace: AgentWorkspace;
   meta: ConversationMeta;
   /** Convenience mirror of meta.scope for the History list badge. */
   scope?: ConversationScope;
@@ -327,20 +329,33 @@ export interface ConversationListItem {
   updatedAt: string;
 }
 
+export interface ConversationFilter {
+  userId: string;
+  workspace: AgentWorkspace;
+  projectId: string | null;
+  limit?: number;
+}
+
 export async function listConversations(
   supabase: SupabaseClient,
-  projectId: string,
-  userId: string
+  filter: ConversationFilter
 ): Promise<ConversationListItem[]> {
-  const { data, error } = await supabase
+  const limit = Math.min(50, Math.max(1, Number.isFinite(filter.limit) ? Math.floor(filter.limit!) : 20));
+  let query = supabase
     .from('agent_conversations')
     .select('id, meta, title, created_at, updated_at, project_id, projects(name)')
-    .eq('project_id', projectId)
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
+    .eq('user_id', filter.userId);
+  query = filter.projectId === null
+    ? query.is('project_id', null)
+    : query.eq('project_id', filter.projectId);
+  const { data, error } = await query
+    .order('updated_at', { ascending: false })
+    .limit(50);
   if (error || !data) return [];
 
-  return data.map((row) => mapConversationListRow(row));
+  return data.map((row) => mapConversationListRow(row))
+    .filter((row) => row.workspace === filter.workspace)
+    .slice(0, limit);
 }
 
 export async function listAllConversations(
@@ -360,14 +375,15 @@ export async function listAllConversations(
 function mapConversationListRow(row: Record<string, unknown>): ConversationListItem {
   const projects = row.projects as { name?: string } | { name?: string }[] | null | undefined;
   const projectName = Array.isArray(projects)
-    ? (projects[0]?.name ?? 'Unknown project')
-    : (projects?.name ?? 'Unknown project');
+    ? projects[0]?.name
+    : projects?.name;
 
   const meta = resolveConversationMeta((row.meta ?? {}) as ConversationMeta);
   return {
     id: row.id as string,
     projectId: (row.project_id as string | null) ?? null,
-    projectName,
+    ...(projectName ? { projectName } : {}),
+    workspace: meta.scope?.workspace ?? 'studio',
     meta,
     scope: meta.scope,
     title: (row.title as string | null) ?? null,
