@@ -51,6 +51,7 @@ export const deleteLibrary: AgentTool = {
     'Delete a library (table) and all of its fields, assets and values. This is irreversible and requires the admin role. Params: libraryName (required).',
   category: 'write',
   confirmationMode: 'pre_execute',
+  confirmationPolicy: 'always',
   requiredPermission: 'admin',
   parameters: {
     type: 'object',

@@ -65,6 +65,7 @@ export const deleteAsset: AgentTool = {
     'Delete an asset (row) from a library. libraryName defaults to the active library from page context when omitted. Params: assetId (required), libraryName (optional).',
   category: 'write',
   confirmationMode: 'pre_execute',
+  confirmationPolicy: 'always',
   requiredPermission: 'editor',
   parameters: {
     type: 'object',
