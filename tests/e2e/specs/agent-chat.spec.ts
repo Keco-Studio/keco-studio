@@ -694,6 +694,26 @@ test.describe('Agent chat', () => {
     await expect(page.getByTestId('agent-launcher')).toHaveAttribute('aria-pressed', 'false');
   });
 
+  test('rail assistant stays reachable on a short landscape viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await page.goto('/projects');
+
+    const rail = page.getByRole('navigation', { name: 'Product' });
+    const launcher = page.getByTestId('agent-launcher');
+    const launcherBox = await launcher.boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(launcherBox!.y).toBeGreaterThanOrEqual(0);
+    expect(launcherBox!.y + launcherBox!.height).toBeLessThanOrEqual(390);
+    await launcher.click();
+    await expect(page.getByTestId('agent-panel')).toBeVisible();
+    await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
+
+    await rail.getByRole('button', { name: 'System' }).click();
+    await expect(page).toHaveURL(/game-design-systems/);
+  });
+
   for (const route of ['/simulation-system', '/account', '/billing', '/mcp', '/keco-admin', '/keco-101']) {
     test(`excluded workspace ${route} has no assistant launcher`, async ({ page }) => {
       const login = new LoginPage(page);
