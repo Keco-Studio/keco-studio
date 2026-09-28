@@ -64,7 +64,7 @@ describe('Keco 101 page shell', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
     expect(source).toContain('isKeco101Path');
     expect(source).toMatch(/showStudioSidebar\s*=[\s\S]*?!onKeco101/);
-    expect(source).toContain('<AssistantHost />');
+    expect(source).toContain('<AssistantHost context={assistantContext}');
     expect(deriveAgentWorkspaceContext('/keco-101', {} as never, null)).toBeNull();
     expect(source).toContain('showTopBar && !onKeco101');
   });

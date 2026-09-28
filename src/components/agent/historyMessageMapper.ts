@@ -102,7 +102,11 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
 
     if (m.role === 'user' && text) {
       flushTurn();
-      const display = deriveUserDisplay(text, imageUrlsFromBody(body));
+      const media = body.game_media_attachment;
+      const mediaName = media && typeof media === 'object' && !Array.isArray(media)
+        && typeof (media as Record<string, unknown>).fileName === 'string'
+        ? (media as Record<string, string>).fileName : undefined;
+      const display = deriveUserDisplay(text, imageUrlsFromBody(body), undefined, mediaName);
       loaded.push({ id: m.id, role: 'user', text: display.text, attachments: display.attachments });
       i++;
       continue;

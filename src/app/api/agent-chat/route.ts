@@ -14,10 +14,13 @@ import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '
 import { buildDesignMessage } from '@/lib/design-message';
 import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { isAgentWorkspace, workspaceAllowsAccountScope } from '@/lib/agent/workspace';
+import { MAX_AGENT_GAME_MEDIA_BYTES, validateGameMediaAttachment } from '@/lib/agent/game-media-attachment';
+import { MAX_AGENT_MAP_REFERENCE_BYTES, validateMapReferenceAttachment } from '@/lib/agent/map-reference-attachment';
 import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
 export const maxDuration = 120;
+export const runtime = 'nodejs';
 
 const isUuid = (v: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -27,11 +30,13 @@ export const POST = withAuth(async function POST(
   _context,
   { supabase, user }
 ) {
-  let body: {
+  type Body = {
     conversationId?: string;
     projectId?: string;
     message?: string;
     imageUrls?: unknown;
+    gameMediaSubmissionId?: unknown;
+    mapReferenceSubmissionId?: unknown;
     selectionContext?: unknown;
     currentDocumentId?: string;
     currentFolderId?: string;
@@ -43,8 +48,33 @@ export const POST = withAuth(async function POST(
     autoExecute?: unknown;
     documentExport?: unknown;
   };
+  let body: Body;
+  let gameMediaFile: File | null = null;
+  let mapReferenceFile: File | null = null;
   try {
-    body = await request.json();
+    if (request.headers.get('content-type')?.toLowerCase().startsWith('multipart/form-data')) {
+      const contentLength = Number(request.headers.get('content-length'));
+      if (!Number.isSafeInteger(contentLength) || contentLength < 1) {
+        return NextResponse.json({ error: 'Content-Length is required for game media' }, { status: 411 });
+      }
+      if (contentLength > MAX_AGENT_GAME_MEDIA_BYTES + 64 * 1024) {
+        return NextResponse.json({ error: 'Game media must be 10 MB or smaller.' }, { status: 413 });
+      }
+      const form = await request.formData();
+      const rawBody = form.get('payload');
+      const gameFiles = form.getAll('gameMedia');
+      const mapFiles = form.getAll('mapReference');
+      const files = [...gameFiles, ...mapFiles];
+      if (typeof rawBody !== 'string' || files.length !== 1 || !(files[0] instanceof File)
+        || Array.from(form.keys()).some((key) => !['payload', 'gameMedia', 'mapReference'].includes(key))) {
+        return NextResponse.json({ error: 'Invalid attachment' }, { status: 400 });
+      }
+      body = JSON.parse(rawBody) as Body;
+      if (gameFiles.length === 1) gameMediaFile = files[0] as File;
+      else mapReferenceFile = files[0] as File;
+    } else {
+      body = await request.json();
+    }
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -52,6 +82,20 @@ export const POST = withAuth(async function POST(
   const clientMessage = String(body.message ?? '').trim();
   if (!clientMessage) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  }
+  const gameMediaSubmissionId = body.gameMediaSubmissionId;
+  if (gameMediaFile && (typeof gameMediaSubmissionId !== 'string' || !isUuid(gameMediaSubmissionId))) {
+    return NextResponse.json({ error: 'Invalid game-media submission id' }, { status: 400 });
+  }
+  if (!gameMediaFile && gameMediaSubmissionId !== undefined) {
+    return NextResponse.json({ error: 'Game-media submission requires an attachment' }, { status: 400 });
+  }
+  const mapReferenceSubmissionId = body.mapReferenceSubmissionId;
+  if (mapReferenceFile && (typeof mapReferenceSubmissionId !== 'string' || !isUuid(mapReferenceSubmissionId))) {
+    return NextResponse.json({ error: 'Invalid Map reference submission id' }, { status: 400 });
+  }
+  if (!mapReferenceFile && mapReferenceSubmissionId !== undefined) {
+    return NextResponse.json({ error: 'Map reference submission requires an attachment' }, { status: 400 });
   }
 
   const isNewConversation = !body.conversationId;
@@ -201,6 +245,33 @@ export const POST = withAuth(async function POST(
     const userRole = contextFields.projectId
       ? await resolveUserRole(supabase, contextFields.projectId, user.id)
       : undefined;
+    if (gameMediaFile && (contextFields.workspace !== 'studio'
+      || !contextFields.projectId || userRole === 'viewer' || !userRole)) {
+      return NextResponse.json({ error: 'Editor or admin project access is required for game media' }, { status: 403 });
+    }
+    if (mapReferenceFile && (contextFields.workspace !== 'create-map'
+      || !contextFields.projectId || userRole === 'viewer' || !userRole)) {
+      return NextResponse.json({ error: 'Editor or admin Create Map access is required' }, { status: 403 });
+    }
+    let gameMediaAttachment;
+    if (gameMediaFile) {
+      try {
+        gameMediaAttachment = await validateGameMediaAttachment(gameMediaFile);
+      } catch {
+        return NextResponse.json({ error: 'Invalid game-media attachment' }, { status: 400 });
+      }
+    }
+    let mapReferenceAttachment;
+    if (mapReferenceFile) {
+      if (mapReferenceFile.size > MAX_AGENT_MAP_REFERENCE_BYTES) {
+        return NextResponse.json({ error: 'Map reference must be 5 MB or smaller' }, { status: 413 });
+      }
+      try {
+        mapReferenceAttachment = await validateMapReferenceAttachment(mapReferenceFile);
+      } catch {
+        return NextResponse.json({ error: 'Invalid Map reference attachment' }, { status: 400 });
+      }
+    }
     if (boundMeta.documentExport && userRole !== 'admin') {
       throw new AgentAccessError('Only admin users can export project content');
     }
@@ -252,6 +323,10 @@ export const POST = withAuth(async function POST(
       userMessage: message,
       signal: abortController.signal,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      gameMediaAttachment,
+      gameMediaSubmissionId: gameMediaFile ? gameMediaSubmissionId as string : undefined,
+      mapReferenceAttachment,
+      mapReferenceSubmissionId: mapReferenceFile ? mapReferenceSubmissionId as string : undefined,
       selectionContext,
       toolContext,
       conversationMeta: boundMeta,

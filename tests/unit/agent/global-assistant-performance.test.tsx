@@ -3,6 +3,7 @@ import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssistantHost } from '@/components/agent/AssistantHost';
+import { deriveAgentWorkspaceContext } from '@/lib/agent/client-workspace';
 import { agentRuntimeScopeKey, resetAgentChatRuntimeStoreForTests } from '@/components/agent/agentChatRuntimeStore';
 import { setLastConversation } from '@/components/agent/agentChatStorage';
 import { compactToolContentForLlm } from '@/lib/agent/tool-result-for-llm';
@@ -32,12 +33,22 @@ afterEach(() => { cleanup(); global.fetch = originalFetch; });
 it('keeps closed mounts, existing-history restoration and route changes at zero network work', async () => {
   setLastConversation('performance-user', agentRuntimeScopeKey({ userId: 'performance-user', workspace: 'projects' }), 'existing-conversation');
   const queryClient = new QueryClient();
-  const tree = () => <QueryClientProvider client={queryClient}><AssistantHost /></QueryClientProvider>;
+  const tree = () => <QueryClientProvider client={queryClient}>
+    <AssistantHost
+      context={deriveAgentWorkspaceContext(mockPathname, {
+        currentProjectId: null, currentProjectName: null, currentDocumentId: null,
+        currentFolderId: null, currentFolderName: null, currentLibraryId: null,
+        currentLibraryName: null,
+      }, null)}
+      open={false}
+      onOpenChange={jest.fn()}
+    />
+  </QueryClientProvider>;
   const view = render(tree());
   for (const pathname of ['/projects', '/create-map', '/game-design-systems', '/script-system', '/11111111-1111-4111-8111-111111111111', '/projects']) {
     mockPathname = pathname;
     await act(async () => { view.rerender(tree()); });
-    expect(view.queryAllByTestId('agent-launcher')).toHaveLength(1);
+    expect(view.queryAllByTestId('agent-launcher')).toHaveLength(0);
     expect(view.queryByTestId('agent-panel')).toBeNull();
   }
   for (const spy of [mockFetch, mockNetwork.auth.getSession, mockNetwork.auth.getUser, mockNetwork.from, mockNetwork.rpc, mockNetwork.channel, mockNetwork.storage.from]) {

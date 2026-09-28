@@ -143,25 +143,38 @@ test.describe('Collaborator role management', () => {
     });
   });
 
-  test('blocks demoting and removing the last admin', async ({ page }) => {
-    await admin
-      .from('project_collaborators')
-      .delete()
-      .eq('project_id', projectId)
-      .eq('user_id', owner.id);
-    const soleAdmin = await createTemporaryUser(admin, 'roles-sole-admin');
-    members.push(soleAdmin);
-    await addProjectCollaborator(admin, projectId, soleAdmin.id, 'admin', owner.id);
+  test('keeps the last admin after another admin is demoted and removed', async ({ page }) => {
+    const otherAdmin = await createTemporaryUser(admin, 'roles-other-admin');
+    members.push(otherAdmin);
+    await addProjectCollaborator(admin, projectId, otherAdmin.id, 'admin', owner.id);
     await login(page, owner);
 
     const collaborators = new CollaboratorPage(page);
     await collaborators.goto(projectId);
-    await collaborators.changeRole(soleAdmin.email, 'viewer');
-    await collaborators.expectError(/Cannot change the last admin/i);
-    await expect(collaborators.collaboratorRow(soleAdmin.email)).toContainText('Admin');
+    await collaborators.changeRole(otherAdmin.email, 'viewer');
+    await expect(collaborators.collaboratorRow(otherAdmin.email)).toContainText('Viewer');
+    await collaborators.remove(otherAdmin.email);
+    await expect(collaborators.collaboratorRow(otherAdmin.email)).toHaveCount(0);
 
-    await collaborators.remove(soleAdmin.email);
-    await collaborators.expectError(/Cannot remove the last admin/i);
-    await expect(collaborators.collaboratorRow(soleAdmin.email)).toBeVisible();
+    const demoteLastAdmin = await admin
+      .from('project_collaborators')
+      .update({ role: 'viewer' })
+      .eq('project_id', projectId)
+      .eq('user_id', owner.id);
+    expect(demoteLastAdmin.error?.code).toBe('PT409');
+    const removeLastAdmin = await admin
+      .from('project_collaborators')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('user_id', owner.id);
+    expect(removeLastAdmin.error?.code).toBe('PT409');
+    const { data: remainingAdmin, error: lookupError } = await admin
+      .from('project_collaborators')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', owner.id)
+      .single();
+    expect(lookupError).toBeNull();
+    expect(remainingAdmin?.role).toBe('admin');
   });
 });

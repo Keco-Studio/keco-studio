@@ -39,8 +39,17 @@ import { getAllowedToolNames } from './workspace-policy';
 import { listProjectsTool } from './list-projects';
 import { createProjectTool } from './create-project';
 import { selectProjectTool } from './select-project';
+import { updateProjectTool } from './update-project';
+import { deleteProjectTool } from './delete-project';
 import { listMapsTool } from './list-maps';
 import { readMapTool } from './read-map';
+import { readMapDetailTool } from './read-map-detail';
+import { updateMapDraftTool } from './update-map-draft';
+import { readMapCollisionGridTool, changeMapCollisionGridTool } from './map-collision-tools';
+import { listMapReferencesTool, changeMapReferenceTool } from './map-reference-tools';
+import { listMapGenerationHistoryTool } from './list-map-generation-history';
+import { uploadMapReferenceTool } from './upload-map-reference';
+import { analyzeMapCollisionGridTool } from './analyze-map-collision-grid';
 import { createMapDraftTool } from './create-map-draft';
 import { generateMapImageTool } from './generate-map-image';
 import { getMapGenerationStatusTool } from './get-map-generation-status';
@@ -52,10 +61,52 @@ import { copyGameDesignSystemTool } from './copy-game-design-system';
 import { applyGameDesignSystemTool } from './apply-game-design-system';
 import { generateGddTool } from './generate-gdd';
 import { getGenerationStatusTool } from './get-generation-status';
+import { updateGameDesignSystemTool } from './update-game-design-system';
+import { deleteGameDesignSystemTool } from './delete-game-design-system';
+import { createGameDesignSystemTool } from './create-game-design-system';
+import { createGameDesignSystemVersionTool } from './create-game-design-system-version';
+import { unbindGameDesignSystemTool } from './unbind-game-design-system';
+import { retryGameDesignSystemGenerationTool } from './retry-game-design-system-generation';
+import { cancelGddGenerationTool } from './cancel-gdd-generation';
+import { retryGddResourceJobTool, retryGddDialogueJobTool } from './retry-gdd-subjobs';
+import {
+  updateFolderTool, moveFolderTool, duplicateFolderTool, deleteFolderTool,
+  updateLibraryTool, moveLibraryTool, duplicateLibraryTool,
+} from './studio-structure-actions';
+import { reorderLibraryFieldsTool } from './reorder-library-fields';
+import { editLibraryFieldTool } from './edit-library-field';
+import { deleteLibraryFieldTool } from './delete-library-field';
+import { listGameMediaTool } from './list-game-media';
+import { uploadGameMediaTool } from './upload-game-media';
+import { reorderScriptDialogueTool } from './reorder-script-dialogue';
+import { editScriptDialogueTool, changeScriptDialogueSpeakerTool } from './edit-script-dialogue';
+import {
+  insertScriptDialogueTool, deleteScriptDialogueBlockTool, undoScriptDialogueActionTool,
+} from './mutate-script-dialogue';
+import {
+  listProjectCollaboratorsTool, inviteProjectCollaboratorTool,
+  changeProjectCollaboratorRoleTool, removeProjectCollaboratorTool,
+} from './collaboration-actions';
+import {
+  listDocumentVersionsTool, createDocumentVersionTool, restoreDocumentVersionTool,
+} from './document-version-actions';
+import { deleteDocumentVersionTool } from './delete-document-version';
+import {
+  addScriptDocumentTool, removeScriptDocumentTool, renameScriptTool, deleteScriptTool,
+} from './script-workspace-action-tools';
 
 const tools: AgentTool[] = [
   listGameDesignSystemsTool,
   readGameDesignSystemTool,
+  createGameDesignSystemTool,
+  createGameDesignSystemVersionTool,
+  updateGameDesignSystemTool,
+  deleteGameDesignSystemTool,
+  unbindGameDesignSystemTool,
+  retryGameDesignSystemGenerationTool,
+  cancelGddGenerationTool,
+  retryGddResourceJobTool,
+  retryGddDialogueJobTool,
   generateGameDesignSystemTool,
   copyGameDesignSystemTool,
   applyGameDesignSystemTool,
@@ -63,6 +114,15 @@ const tools: AgentTool[] = [
   getGenerationStatusTool,
   listMapsTool,
   readMapTool,
+  readMapDetailTool,
+  updateMapDraftTool,
+  readMapCollisionGridTool,
+  changeMapCollisionGridTool,
+  listMapReferencesTool,
+  changeMapReferenceTool,
+  listMapGenerationHistoryTool,
+  uploadMapReferenceTool,
+  analyzeMapCollisionGridTool,
   createMapDraftTool,
   generateMapImageTool,
   getMapGenerationStatusTool,
@@ -70,9 +130,21 @@ const tools: AgentTool[] = [
   listProjectsTool,
   createProjectTool,
   selectProjectTool,
+  updateProjectTool,
+  deleteProjectTool,
   listProjectStructure,
   listDocumentsTool,
+  listDocumentVersionsTool,
+  createDocumentVersionTool,
+  restoreDocumentVersionTool,
+  deleteDocumentVersionTool,
+  listProjectCollaboratorsTool,
+  inviteProjectCollaboratorTool,
+  changeProjectCollaboratorRoleTool,
+  removeProjectCollaboratorTool,
   queryAssets,
+  listGameMediaTool,
+  uploadGameMediaTool,
   semanticSearch,
   createDocumentTool,
   readDocument,
@@ -90,9 +162,29 @@ const tools: AgentTool[] = [
   updateAsset,
   deleteAsset,
   importScript,
+  addScriptDocumentTool,
+  removeScriptDocumentTool,
+  renameScriptTool,
+  deleteScriptTool,
+  reorderScriptDialogueTool,
+  editScriptDialogueTool,
+  changeScriptDialogueSpeakerTool,
+  insertScriptDialogueTool,
+  deleteScriptDialogueBlockTool,
+  undoScriptDialogueActionTool,
   setConversationOption,
   createLibrary,
   createFolder,
+  updateFolderTool,
+  moveFolderTool,
+  duplicateFolderTool,
+  deleteFolderTool,
+  updateLibraryTool,
+  moveLibraryTool,
+  duplicateLibraryTool,
+  reorderLibraryFieldsTool,
+  editLibraryFieldTool,
+  deleteLibraryFieldTool,
   deleteLibrary,
   renameLibrary,
 ];

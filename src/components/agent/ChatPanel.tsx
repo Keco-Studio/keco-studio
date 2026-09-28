@@ -7,7 +7,6 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import type { AgentWorkspaceContext } from '@/lib/agent/client-workspace';
 import { peekDesignHandoff, takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
-import botIcon from '@/assets/images/bot.svg';
 import chatIcon from '@/assets/images/chat.svg';
 import { useAgentChat } from './useAgentChat';
 import { agentRuntimeScopeKey } from './agentChatRuntimeStore';
@@ -15,14 +14,16 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
 import { AgentPanelHeader } from './AgentPanelHeader';
-import { useDraggableLauncherPosition } from './useDraggableLauncherPosition';
 import styles from './ChatPanel.module.css';
 
-export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
+export function ChatPanel({ context, open, onOpenChange }: {
+  context: AgentWorkspaceContext;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { workspace, projectId, projectName, currentDocumentId, currentFolderId,
     currentFolderName, currentLibraryId, currentLibraryName } = context;
   const { userProfile } = useAuth();
-  const [open, setOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
   const [inputFocusRequest, setInputFocusRequest] = useState(0);
@@ -31,11 +32,13 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastScrollSampleRef = useRef<{ top: number; time: number } | null>(null);
   const scrollJumpHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const {
-    style: launcherStyle,
-    onPointerDown: onLauncherPointerDown,
-    isDragging: isLauncherDragging,
-  } = useDraggableLauncherPosition();
+
+  useEffect(() => {
+    if (!open) {
+      setShowHistory(false);
+      setPendingSelectionContext(undefined);
+    }
+  }, [open]);
 
   const ctx = useMemo(
     () => ({
@@ -82,25 +85,6 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
     workspace,
     projectId,
   });
-
-  // Close when the navigation scope changes without a route remount.
-  const openScopeRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!open) {
-      openScopeRef.current = null;
-      return;
-    }
-    const scopeKey = `${workspace}|${projectId ?? ''}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}`;
-    if (openScopeRef.current === null) {
-      openScopeRef.current = scopeKey;
-      return;
-    }
-    if (openScopeRef.current !== scopeKey) {
-      setOpen(false);
-      setShowHistory(false);
-      setPendingSelectionContext(undefined);
-    }
-  }, [open, projectId, currentFolderId, currentLibraryId, workspace]);
 
   // Locked-target label: an existing conversation shows its frozen scope; a new
   // one previews what the current navigation will bind to on first message.
@@ -193,16 +177,16 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
   }, [projectId, userProfile?.id, startNewConversation, send]);
 
   useEffect(() => {
-    if (projectId && peekDesignHandoff(projectId)) setOpen(true);
+    if (projectId && peekDesignHandoff(projectId)) onOpenChange(true);
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail;
       if (detail?.projectId && detail.projectId !== projectId) return;
-      setOpen(true);
+      onOpenChange(true);
       if (open) consumeDesignHandoff();
     };
     window.addEventListener(DESIGN_UPLOAD_EVENT, handler);
     return () => window.removeEventListener(DESIGN_UPLOAD_EVENT, handler);
-  }, [consumeDesignHandoff, open, projectId]);
+  }, [consumeDesignHandoff, onOpenChange, open, projectId]);
 
   useEffect(() => {
     if (open) consumeDesignHandoff();
@@ -212,13 +196,13 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ selectionContext?: AgentSelectionContext }>).detail;
       if (!detail?.selectionContext) return;
-      setOpen(true);
+      onOpenChange(true);
       setPendingSelectionContext(detail.selectionContext);
       setInputFocusRequest((value) => value + 1);
     };
     window.addEventListener('agent:open-with-selection', handler);
     return () => window.removeEventListener('agent:open-with-selection', handler);
-  }, []);
+  }, [onOpenChange]);
 
   // Append a note when an import completes via the handoff to ImportScriptModal.
   useEffect(() => {
@@ -233,28 +217,7 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
 
   return (
     <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''} ${workspace === 'create-map' ? styles.panelSlotMap : ''}`}>
-      {!open ? (
-      <button
-        className={`${styles.launcher} ${isLauncherDragging ? styles.launcherDragging : ''}`}
-        data-testid="agent-launcher"
-        title="Keco Assistant"
-        style={launcherStyle}
-        onPointerDown={onLauncherPointerDown}
-        onClick={() => {
-          setPendingSelectionContext(undefined);
-          setOpen(true);
-        }}
-      >
-        <Image
-          src={botIcon}
-          alt=""
-          width={56}
-          height={56}
-          className={styles.launcherIcon}
-          aria-hidden="true"
-        />
-      </button>
-      ) : (
+      {open && (
       <div className={styles.panel} data-testid="agent-panel">
       <AgentPanelHeader
         canManageConversations={Boolean(userProfile?.id)}
@@ -270,7 +233,7 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
         onClose={() => {
           setPendingSelectionContext(undefined);
           setShowHistory(false);
-          setOpen(false);
+          onOpenChange(false);
         }}
       />
 
@@ -327,6 +290,7 @@ export function ChatPanel({ context }: { context: AgentWorkspaceContext }) {
             userId={userProfile?.id}
             draftScopeKey={draftScopeKey}
             projectId={projectId}
+            workspace={workspace}
             isStreaming={isStreaming}
             autoExecute={autoExecute}
             focusRequest={inputFocusRequest}

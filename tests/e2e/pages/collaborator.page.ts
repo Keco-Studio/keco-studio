@@ -64,8 +64,4 @@ export class CollaboratorPage {
     await removeButton.click();
     await this.page.getByRole('button', { name: 'Remove', exact: true }).click();
   }
-
-  async expectError(message: string | RegExp): Promise<void> {
-    await expect(this.page.getByTestId('collaborators-error')).toContainText(message);
-  }
 }

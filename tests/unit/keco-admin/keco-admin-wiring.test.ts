@@ -18,7 +18,7 @@ describe('Keco Admin page wiring', () => {
     expect(layout).toContain("pathname === '/keco-admin'");
     expect(layout).toMatch(/showLeftNav[\s\S]+isKecoAdminPage/);
     expect(layout).toMatch(/showStudioSidebar[\s\S]+!isKecoAdminPage/);
-    expect(layout).toContain('<AssistantHost />');
+    expect(layout).toContain('<AssistantHost context={assistantContext}');
     expect(deriveAgentWorkspaceContext('/keco-admin', {} as never, null)).toBeNull();
     expect(layout).toContain('<TopBar');
   });

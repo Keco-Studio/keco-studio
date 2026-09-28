@@ -29,6 +29,7 @@
   line-height: 1;
   user-select: none;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .items {
@@ -38,6 +39,8 @@
   width: 100%;
   gap: 0;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .item {
@@ -73,6 +76,11 @@
   width: 20px;
   height: 20px;
   display: block;
+}
+
+.assistantIconWrap :global(img) {
+  width: 32px;
+  height: 32px;
 }
 
 .label {
@@ -114,6 +122,17 @@
 
 .footer {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.item:focus-visible,
+.collapseButton:focus-visible,
+.expandTab:focus-visible {
+  outline: 2px solid #0b99ff;
+  outline-offset: -2px;
 }
 
 .collapseButton {

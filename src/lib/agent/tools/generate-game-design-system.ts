@@ -1,9 +1,12 @@
 import type { AgentTool } from '../types';
+import { z } from 'zod';
+
+const GENERATION_WARNING = 'Generate a Game Design System using paid AI credits.';
 
 export const generateGameDesignSystemTool: AgentTool = {
   name: 'generate_game_design_system',
   description: 'Enqueue account Game Design System generation and return its durable job ID immediately. Reuse idempotencyKey for the same request. Supply a valid published art style preset and at least one design input. Never wait or poll inside this operation.',
-  category: 'write', permissionScope: 'account', confirmationMode: 'pre_execute',
+  category: 'write', permissionScope: 'account', confirmationMode: 'pre_execute', confirmationPolicy: 'always',
   parameters: { type: 'object', additionalProperties: false, properties: {
     idempotencyKey: { type: 'string', minLength: 8, maxLength: 128 },
     input: { type: 'object', additionalProperties: false, properties: {
@@ -29,8 +32,21 @@ export const generateGameDesignSystemTool: AgentTool = {
       }, required: ['presetId', 'presetVersion', 'customization'] },
     }, required: ['title', 'artStyle'] },
   }, required: ['input', 'idempotencyKey'] },
+  async prepareConfirmation(params, ctx) {
+    try {
+      if (!ctx.userId) return { success: false, error: 'Authentication required.' };
+      const { generateSystemSchema } = await import('../game-design-system-tool-service');
+      const input = generateSystemSchema.parse(params);
+      return { success: true, args: { ...input, confirmedGeneration: true },
+        preview: { action: 'generate_game_design_system', title: input.input.title,
+          idempotencyKey: input.idempotencyKey, warning: GENERATION_WARNING } };
+    } catch { return { success: false, error: 'Invalid Game Design System generation request.' }; }
+  },
   async execute(params, ctx) {
     const { designToolResult, generateDesignSystem } = await import('../game-design-system-tool-service');
-    return designToolResult(() => generateDesignSystem(ctx, params));
+    const sealed = z.object({ confirmedGeneration: z.literal(true) }).passthrough().safeParse(params);
+    if (!sealed.success) return { success: false, error: 'Generation approval is required.' };
+    const { confirmedGeneration: _confirmedGeneration, ...input } = sealed.data;
+    return designToolResult(() => generateDesignSystem(ctx, input));
   },
 };

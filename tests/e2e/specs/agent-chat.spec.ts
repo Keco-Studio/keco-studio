@@ -195,7 +195,7 @@ test.describe('Agent chat', () => {
     });
 
     const agent = await openProject(page);
-    await agent.panel.locator('input[type="file"]').setInputFiles({
+    await agent.panel.getByTestId('agent-chat-attachment-input').setInputFiles({
       name: 'visible.docx',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       buffer: docx,
@@ -670,6 +670,49 @@ test.describe('Agent chat', () => {
       await captureAssistantShell(page, testInfo, 'projects');
     });
   }
+
+  test('rail assistant sits above collapse and closes on product navigation', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'The mobile panel covers the rail while open');
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await page.goto('/projects');
+    const launcher = page.getByTestId('agent-launcher');
+    const rail = page.getByRole('navigation', { name: 'Product' });
+    await expect(launcher).toHaveCount(1);
+    await expect(launcher).toHaveAttribute('aria-pressed', 'false');
+    const launcherBox = await launcher.boundingBox();
+    const collapseBox = await rail.getByRole('button', { name: 'Collapse navigation' }).boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(collapseBox).not.toBeNull();
+    expect(launcherBox!.y + launcherBox!.height).toBeLessThanOrEqual(collapseBox!.y);
+    await launcher.click();
+    await expect(launcher).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('agent-panel')).toBeVisible();
+    await rail.getByRole('button', { name: 'Map' }).click();
+    await expect(page).toHaveURL(/\/create-map/);
+    await expect(page.getByTestId('agent-panel')).toHaveCount(0);
+    await expect(page.getByTestId('agent-launcher')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('rail assistant stays reachable on a short landscape viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await page.goto('/projects');
+
+    const rail = page.getByRole('navigation', { name: 'Product' });
+    const launcher = page.getByTestId('agent-launcher');
+    const launcherBox = await launcher.boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(launcherBox!.y).toBeGreaterThanOrEqual(0);
+    expect(launcherBox!.y + launcherBox!.height).toBeLessThanOrEqual(390);
+    await launcher.click();
+    await expect(page.getByTestId('agent-panel')).toBeVisible();
+    await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
+
+    await rail.getByRole('button', { name: 'System' }).click();
+    await expect(page).toHaveURL(/game-design-systems/);
+  });
 
   for (const route of ['/simulation-system', '/account', '/billing', '/mcp', '/keco-admin', '/keco-101']) {
     test(`excluded workspace ${route} has no assistant launcher`, async ({ page }) => {

@@ -10,8 +10,10 @@ jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({ resolveGameDesign
 jest.mock('@/lib/services/gameDesignSystemService', () => ({
   ...jest.requireActual('@/lib/services/gameDesignSystemService'),
   getGameDesignSystem: jest.fn(), getGameDesignSystemDetail: jest.fn(), getGameDesignSystemVersion: jest.fn(),
-  copyGameDesignSystem: jest.fn(), setProjectGameDesignSystem: jest.fn(),
   createGameDesignSystemGenerationJob: jest.fn(), findGameDesignSystemGenerationJobByIdempotencyKey: jest.fn(),
+}));
+jest.mock('@/lib/agent/agent-gds-copy-service', () => ({
+  ...jest.requireActual('@/lib/agent/agent-gds-copy-service'), copyAgentGameDesignSystem: jest.fn(),
 }));
 jest.mock('@/lib/services/gddGenerationService', () => ({ createGddGenerationJob: jest.fn() }));
 jest.mock('@/lib/agent/data-access', () => ({ getLibraryProperties: jest.fn().mockResolvedValue([]) }));
@@ -35,10 +37,11 @@ import { getUserProjectRole, verifyProjectAccess } from '@/lib/services/authoriz
 import { resolveGameDesignSourceSnapshots } from '@/lib/game-design-system/sourceSnapshots';
 import { buildLegacyRuleSet, buildCompatibilityGameDesignDocument } from '@/lib/game-design-system/ruleSchema';
 import {
-  copyGameDesignSystem, createGameDesignSystemGenerationJob, findGameDesignSystemGenerationJobByIdempotencyKey,
-  getGameDesignSystem, getGameDesignSystemDetail, getGameDesignSystemVersion, setProjectGameDesignSystem,
+  createGameDesignSystemGenerationJob, findGameDesignSystemGenerationJobByIdempotencyKey,
+  getGameDesignSystem, getGameDesignSystemDetail, getGameDesignSystemVersion,
   type GameDesignSystem, type GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
+import { CopyOutputDeletedError, copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
 import { createGddGenerationJob } from '@/lib/services/gddGenerationService';
 import { GDD_GENERATION_WARNING } from '@/lib/agent/game-design-system-tool-service';
 import { listGameDesignSystemsTool } from '@/lib/agent/tools/list-game-design-systems';
@@ -86,7 +89,7 @@ function fakeClient() {
       then(resolve: (value: unknown) => unknown) { return Promise.resolve(resolve({ data: rows, error: null })); },
     };
     return query;
-  }), rpc: jest.fn().mockResolvedValue({ data: [], error: null }) } as unknown as SupabaseClient;
+  }), rpc: jest.fn(async (name: string) => ({ data: name === 'agent_apply_game_design_system_if_current' ? true : [], error: null })) } as unknown as SupabaseClient;
 }
 
 beforeEach(() => {
@@ -117,7 +120,7 @@ beforeEach(() => {
   jest.mocked(getGameDesignSystem).mockImplementation(async () => system);
   jest.mocked(getGameDesignSystemVersion).mockImplementation(async () => version);
   jest.mocked(getGameDesignSystemDetail).mockImplementation(async () => ({ ...system, current_version: version, versions: [version] }));
-  jest.mocked(copyGameDesignSystem).mockImplementation(async () => ({ ...system, id: id(99) }));
+  jest.mocked(copyAgentGameDesignSystem).mockImplementation(async () => ({ ...system, id: id(99) }));
   jest.mocked(findGameDesignSystemGenerationJobByIdempotencyKey).mockResolvedValue(null);
   jest.mocked(createGameDesignSystemGenerationJob).mockResolvedValue({ id: jobId, status: 'queued', input: { private: 'secret' } } as never);
   jest.mocked(createGddGenerationJob).mockResolvedValue({ id: jobId, status: 'queued', maps: ['private'], input: { private: 'secret' } } as never);
@@ -189,25 +192,44 @@ describe('GDS account tools', () => {
 
   it.each(['official', 'user'] as const)('copies %s source through the domain without a project context', async (source) => {
     system.source = source;
-    expect((await copyGameDesignSystemTool.execute({ designSystemId }, ctx)).success).toBe(true);
-    expect(copyGameDesignSystem).toHaveBeenCalledWith(service, system, userId);
+    const result = await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx);
+    expect(result.success).toBe(true);
+    expect(result.invalidations).toEqual([{ type: 'game-design-systems' }]);
+    expect(copyAgentGameDesignSystem).toHaveBeenCalledWith(service, system, userId, id(10));
     expect(copyGameDesignSystemTool.permissionScope).toBe('account');
   });
 
   it('denies foreign nonofficial copies and invisible systems', async () => {
     system.owner_id = id(80);
-    expect((await copyGameDesignSystemTool.execute({ designSystemId }, ctx)).success).toBe(false);
+    expect((await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx)).success).toBe(false);
     jest.mocked(getGameDesignSystem).mockResolvedValue(null);
+    expect((await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx)).success).toBe(false);
+    expect(copyAgentGameDesignSystem).not.toHaveBeenCalled();
+  });
+
+  it('requires an idempotency key for account copies', async () => {
     expect((await copyGameDesignSystemTool.execute({ designSystemId }, ctx)).success).toBe(false);
-    expect(copyGameDesignSystem).not.toHaveBeenCalled();
+    expect(copyAgentGameDesignSystem).not.toHaveBeenCalled();
+  });
+
+  it('explains a deleted copy without exposing other database errors', async () => {
+    jest.mocked(copyAgentGameDesignSystem).mockRejectedValueOnce(new CopyOutputDeletedError());
+    expect(await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx))
+      .toMatchObject({ success: false, error: 'The copied Game Design System was deleted; use a new idempotency key.' });
+    jest.mocked(copyAgentGameDesignSystem).mockRejectedValueOnce(new Error('private database detail'));
+    expect(await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx))
+      .toMatchObject({ success: false, error: 'Game design operation failed. Check access and request parameters.' });
   });
 
   it('normalizes input, preserves hash/key idempotency, and only enqueues a GDS job', async () => {
+    const prepared = await generateGameDesignSystemTool.prepareConfirmation!(generationArgs, ctx);
+    if (!prepared.success) throw new Error('prepare failed');
+    expect(prepared.args).toMatchObject({ confirmedGeneration: true, input: { title: 'Rules', genres: ['RPG'] } });
     jest.mocked(createGameDesignSystemGenerationJob).mockImplementationOnce(async () => {
       calls.push(['enqueue']);
       return { id: jobId, status: 'queued' } as never;
     });
-    const result = await generateGameDesignSystemTool.execute(generationArgs, ctx);
+    const result = await generateGameDesignSystemTool.execute(prepared.args, ctx);
     expect(result).toEqual({ success: true, displayHint: 'text', data: { jobType: 'game-design-system', jobId, status: 'queued' } });
     expect(createGameDesignSystemGenerationJob).toHaveBeenCalledWith(service, userId,
       expect.objectContaining({ title: 'Rules', genres: ['RPG'], artStyle: expect.objectContaining({ presetId: 'pixel-art' }) }),
@@ -215,14 +237,15 @@ describe('GDS account tools', () => {
     expect(calls.slice(calls.findIndex((call) => call[0] === 'enqueue') + 1)).toEqual([]);
     const prior = jest.mocked(createGameDesignSystemGenerationJob).mock.calls[0][2];
     jest.mocked(findGameDesignSystemGenerationJobByIdempotencyKey).mockResolvedValue({ id: jobId, status: 'queued', input: prior } as never);
-    expect((await generateGameDesignSystemTool.execute(generationArgs, ctx)).data).toEqual(result.data);
+    expect((await generateGameDesignSystemTool.execute(prepared.args, ctx)).data).toEqual(result.data);
     expect(createGameDesignSystemGenerationJob).toHaveBeenCalledTimes(1);
-    expect((await generateGameDesignSystemTool.execute({ ...generationArgs, input: { ...generationArgs.input, title: 'Changed' } }, ctx)).error).toContain('different payload');
+    expect((await generateGameDesignSystemTool.execute({ ...prepared.args as object, input: { ...generationArgs.input, title: 'Changed' } }, ctx)).error).toContain('different payload');
   });
 
   it('fails unauthenticated generation and invalid domain input before enqueue', async () => {
-    expect((await generateGameDesignSystemTool.execute(generationArgs, { ...ctx, userId: '' })).success).toBe(false);
-    expect((await generateGameDesignSystemTool.execute({ ...generationArgs, input: { ...generationArgs.input, artStyle: {} } }, ctx)).success).toBe(false);
+    expect((await generateGameDesignSystemTool.prepareConfirmation!(generationArgs, { ...ctx, userId: '' })).success).toBe(false);
+    expect((await generateGameDesignSystemTool.execute(generationArgs, ctx)).error).toContain('approval');
+    expect((await generateGameDesignSystemTool.prepareConfirmation!({ ...generationArgs, input: { ...generationArgs.input, artStyle: {} } }, ctx)).success).toBe(false);
     expect(createGameDesignSystemGenerationJob).not.toHaveBeenCalled();
   });
 
@@ -243,28 +266,50 @@ describe('explicit project writes', () => {
     ['admin', false, true], ['editor', false, false], ['viewer', false, false], ['viewer', true, true],
   ] as const)('apply checks fresh target access for %s owner=%s', async (role, isOwner, allowed) => {
     jest.mocked(getUserProjectRole).mockResolvedValue({ role, isOwner });
-    const result = await applyGameDesignSystemTool.execute(applyArgs, { ...ctx, projectId: id(88), userRole: 'admin' });
-    expect(result.success).toBe(allowed);
+    const prepared = await applyGameDesignSystemTool.prepareConfirmation!(applyArgs, { ...ctx, projectId: id(88), userRole: 'admin' });
+    expect(prepared.success).toBe(allowed);
     expect(getUserProjectRole).toHaveBeenCalledWith(actor, projectId, userId);
-    expect(setProjectGameDesignSystem).toHaveBeenCalledTimes(allowed ? 1 : 0);
-    if (allowed) expect(setProjectGameDesignSystem).toHaveBeenCalledWith(actor, projectId, designSystemId, versionId, userId);
+    if (prepared.success) {
+      expect(prepared.args).toEqual({ ...applyArgs, expectedDesignSystemId: designSystemId,
+        expectedVersionId: versionId, expectedUpdatedAt: null });
+      expect((await applyGameDesignSystemTool.execute(prepared.args, ctx)).success).toBe(true);
+      expect(actor.rpc).toHaveBeenCalledWith('agent_apply_game_design_system_if_current', {
+        p_project_id: projectId, p_design_system_id: designSystemId, p_version_id: versionId,
+        p_expected_design_system_id: designSystemId, p_expected_version_id: versionId, p_expected_updated_at: null,
+      });
+    } else expect(actor.rpc).not.toHaveBeenCalledWith('agent_apply_game_design_system_if_current', expect.anything());
   });
 
   it('rejects missing/ambiguous project ID, foreign version, hidden system, and conflicts', async () => {
     for (const args of [{ designSystemId, versionId }, { ...applyArgs, projectId: 'Duplicate name' }, { ...applyArgs, projectName: 'Name' }, { ...applyArgs, versionId: id(99) }]) {
-      expect((await applyGameDesignSystemTool.execute(args, ctx)).success).toBe(false);
+      expect((await applyGameDesignSystemTool.prepareConfirmation!(args, ctx)).success).toBe(false);
     }
     jest.mocked(getGameDesignSystem).mockResolvedValueOnce(null);
-    expect((await applyGameDesignSystemTool.execute(applyArgs, ctx)).success).toBe(false);
+    expect((await applyGameDesignSystemTool.prepareConfirmation!(applyArgs, ctx)).success).toBe(false);
     version.conflicts = [{ ruleId: 'rule', reason: 'Conflict' }];
+    expect((await applyGameDesignSystemTool.prepareConfirmation!(applyArgs, ctx)).success).toBe(false);
     expect((await applyGameDesignSystemTool.execute(applyArgs, ctx)).success).toBe(false);
-    expect(setProjectGameDesignSystem).not.toHaveBeenCalled();
+    expect(actor.rpc).not.toHaveBeenCalledWith('agent_apply_game_design_system_if_current', expect.anything());
   });
 
   it('denies apply after target access is revoked despite the current context admin role', async () => {
+    const prepared = await applyGameDesignSystemTool.prepareConfirmation!(applyArgs, ctx);
+    if (!prepared.success) throw new Error('prepare failed');
     jest.mocked(getUserProjectRole).mockRejectedValue(new Error('Revoked'));
-    expect((await applyGameDesignSystemTool.execute(applyArgs, { ...ctx, userRole: 'admin' })).success).toBe(false);
-    expect(setProjectGameDesignSystem).not.toHaveBeenCalled();
+    expect((await applyGameDesignSystemTool.execute(prepared.args, { ...ctx, userRole: 'admin' })).success).toBe(false);
+    expect(actor.rpc).not.toHaveBeenCalledWith('agent_apply_game_design_system_if_current', expect.anything());
+  });
+
+  it('rejects a stale binding at the atomic apply RPC', async () => {
+    tables.project_game_design_systems[0].updated_at = '2026-09-28T00:00:00Z';
+    const prepared = await applyGameDesignSystemTool.prepareConfirmation!(applyArgs, ctx);
+    if (!prepared.success) throw new Error('prepare failed');
+    tables.project_game_design_systems[0].updated_at = '2026-09-28T00:01:00Z';
+    jest.mocked(actor.rpc).mockResolvedValueOnce({ data: false, error: null } as never);
+    expect((await applyGameDesignSystemTool.execute(prepared.args, ctx)).error).toContain('binding changed');
+    expect(actor.rpc).toHaveBeenCalledWith('agent_apply_game_design_system_if_current', expect.objectContaining({
+      p_expected_updated_at: '2026-09-28T00:00:00Z',
+    }));
   });
 
   it.each(['admin', 'editor', 'viewer'] as const)('GDD checks %s access and seals pin/mode/warning', async (role) => {
@@ -328,6 +373,8 @@ describe('one-shot job status', () => {
 });
 
 async function coreEvents(toolName: string, args: unknown, context = ctx) {
+  jest.mocked(streamLlm).mockReset();
+  jest.mocked(executeAgentTool).mockReset();
   jest.mocked(streamLlm).mockImplementationOnce(() => (async function* () {
     yield { type: 'tool_call_delta' as const, index: 0, id: 'call-1', name: toolName, arguments: JSON.stringify(args) };
     yield { type: 'finish' as const, reason: 'tool_calls' };
@@ -339,8 +386,8 @@ async function coreEvents(toolName: string, args: unknown, context = ctx) {
 }
 
 describe('core explicit-target capability', () => {
-  it.each(['apply_game_design_system', 'generate_game_design_system', 'copy_game_design_system'])('allows authenticated %s with no current project/role', async (name) => {
-    const events = await coreEvents(name, applyArgs);
+  it('allows authenticated copy with no current project/role', async () => {
+    const events = await coreEvents('copy_game_design_system', { designSystemId });
     expect(executeAgentTool).toHaveBeenCalledTimes(1);
     expect(events).toContainEqual(expect.objectContaining({ type: 'tool_result', success: true }));
   });
@@ -357,5 +404,20 @@ describe('core explicit-target capability', () => {
     expect(createGddGenerationJob).not.toHaveBeenCalled();
     expect(savePendingAction).toHaveBeenCalledWith(actor, expect.objectContaining({ args: { ...gddArgs, designSystemId, versionId, warning: GDD_GENERATION_WARNING } }), userId);
     expect(events).toContainEqual(expect.objectContaining({ type: 'confirmation_request', args: { ...gddArgs, designSystemId, versionId, warning: GDD_GENERATION_WARNING } }));
+  });
+
+  it.each([
+    ['apply_game_design_system', applyArgs],
+    ['generate_game_design_system', generationArgs],
+  ] as const)('Auto pauses %s with prepared arguments', async (name, args) => {
+    const events = await coreEvents(name, args);
+    expect(executeAgentTool).not.toHaveBeenCalled();
+    expect(actor.rpc).not.toHaveBeenCalledWith('agent_apply_game_design_system_if_current', expect.anything());
+    expect(createGameDesignSystemGenerationJob).not.toHaveBeenCalled();
+    const expectedArgs = name === 'apply_game_design_system'
+      ? { ...applyArgs, expectedDesignSystemId: designSystemId, expectedVersionId: versionId, expectedUpdatedAt: null }
+      : { confirmedGeneration: true, input: expect.objectContaining({ title: 'Rules' }), idempotencyKey: id(6) };
+    expect(savePendingAction).toHaveBeenCalledWith(actor, expect.objectContaining({ args: expectedArgs }), userId);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'confirmation_request', args: expectedArgs }));
   });
 });

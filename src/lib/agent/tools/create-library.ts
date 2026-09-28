@@ -7,6 +7,7 @@
  */
 
 import { requireProjectContext } from '../workspace';
+import { replayStudioCreate, studioCreateInputHash } from '../studio-create-idempotency-service';
 import { z } from 'zod';
 import {
   createLibraryServer,
@@ -25,6 +26,7 @@ const ParamsSchema = z.object({
   name: z.string().min(1),
   folderName: z.string().min(1).optional(),
   description: z.string().optional(),
+  idempotencyKey: z.string().uuid(),
 });
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -49,6 +51,7 @@ async function prepareConfirmation(
     );
     const args = {
       name: parsed.data.name,
+      idempotencyKey: parsed.data.idempotencyKey,
       ...(parsed.data.description !== undefined
         ? { description: parsed.data.description }
         : {}),
@@ -76,9 +79,27 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   if (!parsed.success) {
     return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
   }
-  const { name, folderName, description } = parsed.data;
+  const { name, folderName, description, idempotencyKey } = parsed.data;
 
   try {
+    const projectId = requireProjectContext(ctx);
+    const inputHash = studioCreateInputHash({
+      name: name.trim(), folderName: ctx.documentExport ? null : folderName?.trim().toLowerCase() || null,
+      description: description?.trim() || null,
+      documentSource: ctx.documentExport
+        ? { sourceDocumentId: ctx.documentExport.sourceDocumentId, exportType: ctx.documentExport.exportType }
+        : null,
+    });
+    const request = { projectId, operation: 'library' as const, idempotencyKey, inputHash };
+    const resultFor = (libraryId: string, folderNameValue?: string, sourceDocumentName?: string): ToolResult => ({
+      success: true, displayHint: 'text',
+      data: { libraryId, libraryName: name.trim(), folderName: folderNameValue, sourceDocumentName },
+      invalidations: [{ type: 'library', id: libraryId,
+        ...(ctx.documentExport ? { projectId, sourceDocumentId: ctx.documentExport.sourceDocumentId } : {}) }],
+    });
+    const previousId = await replayStudioCreate(ctx.supabase, request);
+    if (previousId) return resultFor(previousId);
+
     let folderId: string | undefined;
     let resolvedFolderName: string | undefined;
     let sourceDocumentName: string | undefined;
@@ -113,35 +134,16 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       return { success: false, error: `Library "${name.trim()}" already exists in this project.` };
     }
 
-    const libraryId = await createLibraryServer(
-      ctx.supabase,
-      requireProjectContext(ctx),
-      name,
-      folderId,
-      description,
-      ctx.documentExport
-    );
-
-    return {
-      success: true,
-      displayHint: 'text',
-      data: {
-        libraryId,
-        libraryName: name.trim(),
-        folderName: resolvedFolderName,
-        sourceDocumentName,
-      },
-      invalidations: [{
-        type: 'library',
-        id: libraryId,
-        ...(ctx.documentExport
-          ? {
-              projectId: requireProjectContext(ctx),
-              sourceDocumentId: ctx.documentExport.sourceDocumentId,
-            }
-          : {}),
-      }],
-    };
+    let libraryId: string;
+    try {
+      libraryId = await createLibraryServer(ctx.supabase, projectId, name, folderId,
+        description, ctx.documentExport, { key: idempotencyKey, hash: inputHash });
+    } catch (error) {
+      const committedId = await replayStudioCreate(ctx.supabase, request);
+      if (!committedId) throw error;
+      libraryId = committedId;
+    }
+    return resultFor(libraryId, resolvedFolderName, sourceDocumentName);
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to create library.' };
   }
@@ -150,7 +152,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const createLibrary: AgentTool = {
   name: 'create_library',
   description:
-    'Create a new empty library (table) in the project. Optionally place it in a folder by name (folderName). Use setup_library instead when you also need to create the fields/columns. Params: name (required), folderName (optional), description (optional).',
+    'Create a new empty library (table) in the project. Optionally place it in a folder by name (folderName). Reuse the UUID idempotencyKey for retries of the same request.',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',
@@ -164,8 +166,9 @@ export const createLibrary: AgentTool = {
           'Folder name to place the library in. Omit to leave it at project root.',
       },
       description: { type: 'string', description: 'Optional library description' },
+      idempotencyKey: { type: 'string', format: 'uuid' },
     },
-    required: ['name'],
+    required: ['name', 'idempotencyKey'],
   },
   execute,
   prepareConfirmation,

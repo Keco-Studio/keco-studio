@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   createGameDesignSystemVersion,
   createGameDesignSystem,
+  createAgentStructuredGameDesignSystem,
   createGameDesignSystemGenerationJob,
   copyGameDesignSystem,
   completeGameDesignSystemGenerationJob,
@@ -57,6 +58,20 @@ const artStyle = compileGameArtStyle({
 });
 
 describe('gameDesignSystemService version and job behavior', () => {
+  it('submits a structured create through the atomic keyed RPC', async () => {
+    const rpc = jest.fn(async (_name: string, _args: Record<string, unknown>) => ({
+      data: { id: 'system-1', title: 'Rules', current_version_id: 'version-1' }, error: null,
+    }));
+    const created = await createAgentStructuredGameDesignSystem({ rpc } as never, 'owner-1', {
+      idempotencyKey: '10000000-0000-4000-8000-000000000001', title: 'Rules', rules: ruleSet,
+    });
+    expect(created.current_version_id).toBe('version-1');
+    expect(rpc).toHaveBeenCalledWith('create_agent_game_design_system', expect.objectContaining({
+      p_actor_id: 'owner-1', p_idempotency_key: '10000000-0000-4000-8000-000000000001',
+      p_rules: ruleSet, p_document: expect.any(Object), p_diff: expect.any(Object),
+    }));
+  });
+
   it('creates an immutable version through the atomic RPC with a deterministic diff', async () => {
     const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
       data: {
