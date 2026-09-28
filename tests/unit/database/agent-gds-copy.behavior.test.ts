@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
 import { buildLegacyRuleSet, buildCompatibilityGameDesignDocument } from '@/lib/game-design-system/ruleSchema';
-import { createGameDesignSystem, IdempotencyConflictError } from '@/lib/services/gameDesignSystemService';
+import { createGameDesignSystem, getGameDesignSystem, IdempotencyConflictError } from '@/lib/services/gameDesignSystemService';
 import { RLS_DB_TESTS_ENABLED, buildProjectFixture, teardownProjectFixture,
   type ProjectFixture } from './helpers/rlsTestClient';
 
@@ -20,11 +20,13 @@ describeDb('agent Game Design System copy (live database)', () => {
     const snapshots = [{ kind: 'document' as const, projectId: fx.projectId,
       resourceId: randomUUID(), label: 'Private reference', contentHash: 'a'.repeat(64),
       byteCount: 10, truncated: false }];
-    const source = await createGameDesignSystem(fx.svc, fx.owner.id, {
+    const created = await createGameDesignSystem(fx.svc, fx.owner.id, {
       title: 'Source rules', summary: 'Summary', genres: rules.genres,
       philosophies: rules.philosophies, document, rules, sourceSnapshots: snapshots,
       provenance: { description: 'Original lineage' },
     });
+    const source = await getGameDesignSystem(fx.svc, created.id);
+    if (!source) throw new Error('Created Game Design System could not be reloaded');
     const key = randomUUID();
     const [first, replay] = await Promise.all([
       copyAgentGameDesignSystem(fx.svc, source, fx.owner.id, key),
