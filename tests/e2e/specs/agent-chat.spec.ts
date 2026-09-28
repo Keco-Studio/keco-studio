@@ -671,6 +671,29 @@ test.describe('Agent chat', () => {
     });
   }
 
+  test('rail assistant sits above collapse and closes on product navigation', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'The mobile panel covers the rail while open');
+    const login = new LoginPage(page);
+    await login.goto(); await login.login(owner); await login.expectLoginSuccess();
+    await page.goto('/projects');
+    const launcher = page.getByTestId('agent-launcher');
+    const rail = page.getByRole('navigation', { name: 'Product' });
+    await expect(launcher).toHaveCount(1);
+    await expect(launcher).toHaveAttribute('aria-pressed', 'false');
+    const launcherBox = await launcher.boundingBox();
+    const collapseBox = await rail.getByRole('button', { name: 'Collapse navigation' }).boundingBox();
+    expect(launcherBox).not.toBeNull();
+    expect(collapseBox).not.toBeNull();
+    expect(launcherBox!.y + launcherBox!.height).toBeLessThanOrEqual(collapseBox!.y);
+    await launcher.click();
+    await expect(launcher).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('agent-panel')).toBeVisible();
+    await rail.getByRole('button', { name: 'Map' }).click();
+    await expect(page).toHaveURL(/\/create-map/);
+    await expect(page.getByTestId('agent-panel')).toHaveCount(0);
+    await expect(page.getByTestId('agent-launcher')).toHaveAttribute('aria-pressed', 'false');
+  });
+
   for (const route of ['/simulation-system', '/account', '/billing', '/mcp', '/keco-admin', '/keco-101']) {
     test(`excluded workspace ${route} has no assistant launcher`, async ({ page }) => {
       const login = new LoginPage(page);

@@ -1,12 +1,13 @@
 /** @jest-environment jsdom */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssistantHost } from '@/components/agent/AssistantHost';
+import { LeftNav } from '@/components/layout/LeftNav';
 import { agentRuntimeScopeKey, resetAgentChatRuntimeStoreForTests } from '@/components/agent/agentChatRuntimeStore';
 import { setLastConversation } from '@/components/agent/agentChatStorage';
-import type { AgentNavigationContext } from '@/lib/agent/client-workspace';
+import { deriveAgentWorkspaceContext, type AgentNavigationContext } from '@/lib/agent/client-workspace';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 let mockPathname = '/projects';
@@ -18,7 +19,6 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
   useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }),
 }));
-jest.mock('@/lib/contexts/NavigationContext', () => ({ useNavigation: () => mockNavigation }));
 jest.mock('@/lib/contexts/AuthContext', () => ({
   useAuth: () => ({ userProfile: { id: 'user-1' } }),
 }));
@@ -37,9 +37,26 @@ const mockFetch = jest.fn(async (input: RequestInfo | URL) => ({
     : { messages: [] },
 }));
 
-function mountHost() {
+function AssistantShell() {
+  const context = deriveAgentWorkspaceContext(mockPathname, mockNavigation, null);
+  const scopeKey = context ? `${mockPathname}|${context.workspace}|${context.projectId ?? ''}` : null;
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const open = Boolean(scopeKey && openKey === scopeKey);
+  useEffect(() => {
+    if (openKey && openKey !== scopeKey) setOpenKey(null);
+  }, [openKey, scopeKey]);
+  const onOpenChange = (next: boolean) => setOpenKey(next ? scopeKey : null);
+  return <>
+    {context && <LeftNav assistantAvailable assistantOpen={open} onAssistantToggle={() => onOpenChange(!open)} />}
+    <AssistantHost context={context} open={open} onOpenChange={onOpenChange} />
+  </>;
+}
+
+function mountShell() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><AssistantHost /></QueryClientProvider>);
+  const tree = () => <QueryClientProvider client={client}><AssistantShell /></QueryClientProvider>;
+  const view = render(tree());
+  return { ...view, rerenderShell: () => view.rerender(tree()) };
 }
 
 beforeEach(() => {
@@ -58,14 +75,14 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('AssistantHost', () => {
+describe('Assistant rail', () => {
   it.each(['/projects', `/${PROJECT}/doc/doc-1`, '/script-system',
     `/script-system/${PROJECT}/doc/doc-1`, '/create-map', '/game-design-systems/create'])
-  ('renders one collapsed launcher on %s', (path) => {
+  ('renders one rail launcher on %s without loading chat', (path) => {
     mockPathname = path;
-    const { container } = mountHost();
+    const { container } = mountShell();
     expect(container.querySelectorAll('[data-testid="agent-launcher"]')).toHaveLength(1);
-    expect(container.querySelector('[title="Keco Assistant"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Keco Assistant' }).getAttribute('aria-pressed')).toBe('false');
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockGetSession).not.toHaveBeenCalled();
   });
@@ -74,27 +91,35 @@ describe('AssistantHost', () => {
     '/keco-admin', '/keco-101', '/auth/callback', '/accept-invitation',
     '/oauth/consent', '/payment/success'])('renders no launcher on %s', (path) => {
     mockPathname = path;
-    const { container } = mountHost();
+    const { container } = mountShell();
     expect(container.querySelector('[data-testid="agent-launcher"]')).toBeNull();
+    expect(container.querySelector('[data-testid="agent-panel"]')).toBeNull();
   });
 
-  it('restores history only after opening and closes on workspace navigation', async () => {
+  it('opens and closes from the rail, restores history lazily, and closes on navigation', async () => {
     setLastConversation('user-1', agentRuntimeScopeKey({ userId: 'user-1', workspace: 'projects' }), 'conv-1');
-    const view = mountHost();
+    const view = mountShell();
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockGetSession).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('agent-launcher'));
+    expect(screen.getByTestId('agent-panel')).not.toBeNull();
+    expect(screen.getByTestId('agent-launcher').getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
       '/api/agent-chat/conversations/conv-1/messages?limit=200', expect.any(Object)
     ));
     expect(mockGetSession).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('agent-launcher'));
+    expect(screen.queryByTestId('agent-panel')).toBeNull();
+    fireEvent.click(screen.getByTestId('agent-launcher'));
+    expect(screen.getByTestId('agent-panel')).not.toBeNull();
     const requestsAfterOpen = mockFetch.mock.calls.length;
 
     mockPathname = '/create-map';
-    view.rerender(<QueryClientProvider client={new QueryClient()}><AssistantHost /></QueryClientProvider>);
+    view.rerenderShell();
     expect(screen.queryByTestId('agent-panel')).toBeNull();
     expect(screen.getAllByTestId('agent-launcher')).toHaveLength(1);
+    expect(screen.getByTestId('agent-launcher').getAttribute('aria-pressed')).toBe('false');
     expect(mockFetch).toHaveBeenCalledTimes(requestsAfterOpen);
   });
 });

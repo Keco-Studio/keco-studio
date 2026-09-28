@@ -529,6 +529,16 @@ class CreateMapV3MockBackend {
     }
     if (table === 'map_revisions') {
       const revisionId = queryValue(url, 'id');
+      const mapId = queryValue(url, 'map_project_id');
+      if (mapId && !revisionId) {
+        const map = this.maps.get(mapId);
+        const readyRevisionIds = new Set([...this.assets.values()]
+          .filter((asset) => asset.kind === 'map_image' && asset.status === 'ready')
+          .map((asset) => asset.map_revision_id));
+        return respond(map ? [...map.revisions.values()]
+          .filter((revision) => readyRevisionIds.has(revision.id))
+          .sort((left, right) => right.revision_number - left.revision_number) : []);
+      }
       for (const map of this.maps.values()) {
         const revision = revisionId ? map.revisions.get(revisionId) : undefined;
         if (revision) return respond([revision]);
@@ -712,8 +722,8 @@ async function selectProject(page: Page): Promise<void> {
 async function askForMapPlan(page: Page, prompt: string): Promise<void> {
   await selectProject(page);
   await page.getByRole('button', { name: 'Create map', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Map description', exact: true }).fill(prompt);
-  await page.getByRole('button', { name: 'Create plan', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill(prompt);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
 async function createSavedMap(page: Page): Promise<void> {
@@ -842,9 +852,22 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     const description = 'A quiet top-down village market with open paths.';
-    await askForMapPlan(page, description);
+    await selectProject(page);
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    const conversation = page.getByRole('region', { name: 'Map conversation' });
+    await conversation.getByRole('button', { name: 'Attach' }).click();
+    await expect(conversation.getByRole('menuitem', { name: 'File' })).toBeVisible();
+    await expect(conversation.getByRole('menuitem', { name: 'Keco Document' })).toBeVisible();
+    await conversation.getByRole('textbox', { name: 'Ask AI to help' }).fill(description);
+    await conversation.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
     await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
+    await expect(conversation.getByText(description)).toBeVisible();
+    await expect(conversation.getByText('Here is the created map plan')).toBeVisible();
+    await expect(conversation.getByRole('button', { name: 'View map plan' })).toBeVisible();
+    await expect(conversation.getByRole('button', { name: 'Show map generation history' })).toBeDisabled();
+    await conversation.getByRole('searchbox', { name: 'Search messages' }).fill(description);
+    await expect(conversation.getByText('Here is the created map plan')).toHaveCount(0);
     expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
     expect(backend.lastPlanRequest).not.toHaveProperty('documentId');
   });
@@ -854,13 +877,13 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await selectProject(page);
     await page.getByRole('button', { name: 'Create map', exact: true }).click();
-    const createPlan = page.getByRole('button', { name: 'Create plan', exact: true });
+    const send = page.getByRole('button', { name: 'Send', exact: true });
 
-    await page.getByRole('textbox', { name: 'Map description', exact: true }).fill('Call the API to generate a map');
+    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('Call the API to generate a map');
 
     const validationAlert = page.getByText(/^Invalid\. Description contains disallowed content/);
     await expect(validationAlert).toBeVisible();
-    await expect(createPlan).toBeDisabled();
+    await expect(send).toBeDisabled();
     expect(backend.lastPlanRequest).toBeNull();
   });
 
@@ -881,8 +904,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await layoutRow.getByLabel('layout.png reference role').selectOption('layout');
     await layoutRow.getByLabel('layout.png usage').fill('Match the river crossing layout');
     await styleRow.getByLabel('Style').check();
-    await page.getByRole('textbox', { name: 'Map description', exact: true }).fill('A quiet top-down village market with open paths.');
-    await page.getByRole('button', { name: 'Create plan', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('A quiet top-down village market with open paths.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     expect(backend.lastPlanRequest).toMatchObject({
       schemaVersion: 3,
@@ -905,6 +928,10 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect.poll(() => backend.maps.get(MAP_ID)?.revisions.get(backend.maps.get(MAP_ID)?.currentRevisionId ?? '')?.plan.description)
       .toBe(exactDescription);
     await generateReadyMap(page);
+    const conversation = page.getByRole('region', { name: 'Map conversation' });
+    await expect(conversation.getByRole('link', { name: 'Download map' })).toBeVisible();
+    await conversation.getByRole('button', { name: 'Show map generation history' }).click();
+    await expect(conversation.locator('[data-history-version]')).toHaveCount(1);
 
     await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
 
@@ -1016,6 +1043,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Map conversation' }).getByRole('link', { name: 'Download map' })).toBeVisible();
 
     backend.seedReadyV3Map(SLOW_MAP_ID, 'Slow Marsh', 600);
     backend.seedReadyV3Map(FAST_MAP_ID, 'Fast Harbor');

@@ -35,13 +35,18 @@ export async function captureAssistantShell(page: Page, testInfo: TestInfo, work
   const launcher = page.getByTestId('agent-launcher');
   await expect(launcher).toHaveCount(1);
   await expect(launcher).toHaveAttribute('title', 'Keco Assistant');
-  await expect(launcher).toHaveCSS('width', '56px');
-  await expect(launcher).toHaveCSS('height', '56px');
+  await expect(launcher).toHaveCSS('width', '60px');
+  await expect(launcher).toHaveCSS('height', '57px');
   const icon = launcher.locator('img');
   await expect(launcher).toHaveAccessibleName('Keco Assistant');
   await expect(icon).toHaveAttribute('aria-hidden', 'true');
   await expect(icon).toHaveAttribute('src', /bot.*\.svg/);
   await expect.poll(() => icon.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  const rail = page.getByRole('navigation', { name: 'Product' });
+  const railBox = await withinViewport(page, rail);
+  const launcherBox = await withinViewport(page, launcher);
+  expect(Math.abs(launcherBox.x - railBox.x)).toBeLessThanOrEqual(1);
+  expect(launcherBox.y).toBeGreaterThan(railBox.y + railBox.height / 2);
   const mobile = testInfo.project.name.includes('mobile');
   if (mobile) {
     await launcher.tap();
@@ -49,26 +54,9 @@ export async function captureAssistantShell(page: Page, testInfo: TestInfo, work
     await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).tap();
     await expect(launcher).toBeVisible();
   }
-  const initial = await withinViewport(page, launcher);
-  const touchSession = mobile
-    ? await page.context().newCDPSession(page) : null;
-  // Exercise native touch on mobile and the mouse on desktop without opening.
-  if (touchSession) {
-    await touchSession.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: initial.x + 28, y: initial.y + 28 }] });
-    await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: initial.x - 50, y: initial.y - 50 }] });
-    await touchSession.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  } else {
-    await page.mouse.move(initial.x + 28, initial.y + 28);
-    await page.mouse.down();
-    await page.mouse.move(initial.x - 50, initial.y - 50, { steps: 8 });
-    await page.mouse.up();
-  }
-  await expect.poll(async () => (await launcher.boundingBox())?.x ?? Infinity).toBeLessThan(initial.x - 20);
-  await withinViewport(page, launcher);
   await expect(page.getByTestId('agent-panel')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath(`${workspace}-launcher.png`), fullPage: true });
-  await touchSession?.detach();
   if (!mobile) {
     await launcher.click();
     await capturePanel(page, testInfo, workspace);

@@ -75,6 +75,11 @@
   display: block;
 }
 
+.assistantIconWrap :global(img) {
+  width: 32px;
+  height: 32px;
+}
+
 .label {
   display: block;
   width: 100%;
@@ -114,6 +119,16 @@
 
 .footer {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.item:focus-visible,
+.collapseButton:focus-visible,
+.expandTab:focus-visible {
+  outline: 2px solid #0b99ff;
+  outline-offset: -2px;
 }
 
 .collapseButton {

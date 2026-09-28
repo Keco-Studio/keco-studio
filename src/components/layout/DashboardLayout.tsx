@@ -14,8 +14,14 @@ import { getCreateMapDashboardChrome } from '@/lib/create-map/dashboardChrome';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isKeco101Path } from '@/lib/keco-101/isKeco101Path';
 import styles from './DashboardLayout.module.css';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import {
+  CREATE_MAP_PROJECT_EVENT,
+  readCreateMapProjectPreference,
+  type CreateMapProjectPreference,
+} from '@/lib/create-map/projectPreference';
+import { deriveAgentWorkspaceContext } from '@/lib/agent/client-workspace';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -24,9 +30,18 @@ type DashboardLayoutProps = {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
-  const { currentProjectId } = useNavigation();
+  const navigation = useNavigation();
+  const { currentProjectId } = navigation;
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantOpenKey, setAssistantOpenKey] = useState<string | null>(null);
+  const [createMapPreference, setCreateMapPreference] = useState<CreateMapProjectPreference | null>(null);
+  const assistantContext = deriveAgentWorkspaceContext(pathname, navigation, createMapPreference);
+  const assistantContextKey = assistantContext
+    ? `${pathname}|${assistantContext.workspace}|${assistantContext.projectId ?? ''}|${assistantContext.currentFolderId ?? ''}|${assistantContext.currentLibraryId ?? ''}`
+    : null;
+  const assistantVisible = assistantOpen && assistantOpenKey === assistantContextKey;
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
   const hideSidebarForGameDesignSystems = pathname?.startsWith('/game-design-systems') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
@@ -34,7 +49,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
   const onKeco101 = isKeco101Path(pathname);
   const isKecoAdminPage = pathname === '/keco-admin';
-  const showLeftNav = createMapChrome.showLeftNav || hideSidebarForGameDesignSystems || isKecoAdminPage;
+  const showLeftNav = Boolean(assistantContext) || createMapChrome.showLeftNav || hideSidebarForGameDesignSystems || isKecoAdminPage;
   // Dedicated product workspaces hide Studio resource chrome.
   // Script mounts ScriptSidebar as a left sibling of TopBar/main.
   const showStudioSidebar =
@@ -46,6 +61,26 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     !isKecoAdminPage;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
   const isMcpAccountPage = pathname === '/mcp' || pathname === '/account' || pathname === '/billing';
+
+  useEffect(() => {
+    if (!pathname?.startsWith('/create-map')) return;
+    const update = () => setCreateMapPreference(readCreateMapProjectPreference());
+    update();
+    window.addEventListener(CREATE_MAP_PROJECT_EVENT, update);
+    return () => window.removeEventListener(CREATE_MAP_PROJECT_EVENT, update);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (assistantOpen && assistantOpenKey !== assistantContextKey) {
+      setAssistantOpen(false);
+      setAssistantOpenKey(null);
+    }
+  }, [assistantOpen, assistantOpenKey, assistantContextKey]);
+
+  const changeAssistantOpen = useCallback((open: boolean) => {
+    setAssistantOpen(open);
+    setAssistantOpenKey(open ? assistantContextKey : null);
+  }, [assistantContextKey]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -93,7 +128,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className={styles.dashboard}>
-      {showLeftNav ? <LeftNav userId={userProfile?.id} /> : null}
+      {showLeftNav ? (
+        <LeftNav
+          userId={userProfile?.id}
+          assistantAvailable={Boolean(assistantContext)}
+          assistantOpen={assistantVisible}
+          onAssistantToggle={() => changeAssistantOpen(!assistantVisible)}
+        />
+      ) : null}
       {showStudioSidebar ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
@@ -113,7 +155,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className={styles.content}>
             {children}
           </div>
-          <AssistantHost />
+          <AssistantHost context={assistantContext} open={assistantVisible} onOpenChange={changeAssistantOpen} />
         </div>
       </div>
       <AgentImportBridge />
