@@ -7,6 +7,7 @@ import {
   LoadingOutlined,
   PlusOutlined,
   ArrowUpOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import addIcon from '@/assets/images/add.svg';
 import pluginIcon from '@/assets/images/plugin.svg';
@@ -16,8 +17,10 @@ import { buildDesignMessage } from '@/lib/design-message';
 import { uploadDocumentImages, uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
 import { validateMediaFile } from '@/lib/services/mediaFileUploadService';
+import { canonicalProjectAssetMimeType, projectAssetExtensionMatches, projectAssetMimeFromName, PROJECT_ASSET_EXTENSIONS } from '@/lib/services/projectAssetUploadContract';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+import type { AgentWorkspace } from '@/lib/agent/types';
 import type { SendOptions } from './types';
 import { focusChatInputWithRetry } from './chatInputFocus';
 import styles from './ChatPanel.module.css';
@@ -26,6 +29,7 @@ interface Props {
   userId?: string;
   draftScopeKey?: string;
   projectId?: string;
+  workspace: AgentWorkspace;
   isStreaming: boolean;
   autoExecute: boolean;
   focusRequest?: number;
@@ -44,11 +48,14 @@ const DEFAULT_IMAGE_PROMPT = 'Please analyze the attached image(s).';
 const DOC_ACCEPT = SUPPORTED_DESIGN_EXTENSIONS.map((ext) => `.${ext}`).join(',');
 const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
+const GAME_MEDIA_ACCEPT = [...new Set(Object.values(PROJECT_ASSET_EXTENSIONS).flat())]
+  .map((extension) => `.${extension}`).join(',');
 
 export function ChatInput({
   userId,
   draftScopeKey,
   projectId,
+  workspace,
   isStreaming,
   autoExecute,
   focusRequest = 0,
@@ -61,6 +68,8 @@ export function ChatInput({
   const supabase = useSupabase();
   const [value, setValue] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [gameMediaFile, setGameMediaFile] = useState<File | null>(null);
+  const [mapReferenceFile, setMapReferenceFile] = useState<File | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -68,6 +77,8 @@ export function ChatInput({
   const [dragActive, setDragActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const gameMediaInputRef = useRef<HTMLInputElement>(null);
+  const mapReferenceInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -127,6 +138,8 @@ export function ChatInput({
     }
     // Images and a design document are mutually exclusive per message.
     setFile(null);
+    setGameMediaFile(null);
+    setMapReferenceFile(null);
     setImages((prev) => {
       const merged = [...prev, ...valid];
       if (merged.length > MAX_CHAT_IMAGES) {
@@ -155,6 +168,8 @@ export function ChatInput({
         return;
       }
       setImages([]);
+      setGameMediaFile(null);
+      setMapReferenceFile(null);
       setFile(doc);
       setFileError(null);
     },
@@ -165,6 +180,36 @@ export function ChatInput({
     setFile(null);
     setFileError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const acceptGameMedia = useCallback((incoming: File | null) => {
+    if (!incoming) return;
+    const mime = canonicalProjectAssetMimeType(incoming.type)
+      ?? projectAssetMimeFromName(incoming.name);
+    if (!mime || !projectAssetExtensionMatches(incoming.name, mime)
+      || incoming.size < 1 || incoming.size > 10 * 1024 * 1024) {
+      setFileError('Choose supported game media of 10 MB or less.');
+      return;
+    }
+    setFile(null);
+    setImages([]);
+    setGameMediaFile(incoming);
+    setMapReferenceFile(null);
+    setFileError(null);
+  }, []);
+
+  const acceptMapReference = useCallback((incoming: File | null) => {
+    if (!incoming) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(incoming.type)
+      || incoming.size < 1 || incoming.size > 5 * 1024 * 1024) {
+      setFileError('Choose a PNG, JPEG, or WebP image of 5 MB or less.');
+      return;
+    }
+    setFile(null);
+    setImages([]);
+    setGameMediaFile(null);
+    setMapReferenceFile(incoming);
+    setFileError(null);
   }, []);
 
   const removeImage = useCallback((index: number) => {
@@ -179,7 +224,33 @@ export function ChatInput({
   const submit = useCallback(async () => {
     if (isStreaming || parsing) return;
     const trimmed = value.trim();
-    if (!trimmed && !file && images.length === 0) return;
+    if (!trimmed && !file && images.length === 0 && !gameMediaFile && !mapReferenceFile) return;
+
+    if (mapReferenceFile) {
+      onSend(trimmed || `Upload ${mapReferenceFile.name} as a Map reference.`, {
+        mapReferenceFile, selectionContext, composerDraft: trimmed,
+      });
+      setValue('');
+      setMapReferenceFile(null);
+      onClearSelectionContext?.();
+      if (userId) clearDraft(userId, draftScopeKey);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      return;
+    }
+
+    if (gameMediaFile) {
+      onSend(trimmed || `Upload ${gameMediaFile.name} to game media.`, {
+        gameMediaFile, selectionContext, composerDraft: trimmed,
+      });
+      setValue('');
+      setGameMediaFile(null);
+      onClearSelectionContext?.();
+      if (userId) clearDraft(userId, draftScopeKey);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      return;
+    }
 
     if (images.length > 0) {
       setParsing(true);
@@ -266,6 +337,8 @@ export function ChatInput({
     parsing,
     value,
     file,
+    gameMediaFile,
+    mapReferenceFile,
     images,
     onSend,
     userId,
@@ -349,7 +422,7 @@ export function ChatInput({
   };
 
   const sendDisabled =
-    parsing || (!isStreaming && !value.trim() && !file && images.length === 0);
+    parsing || (!isStreaming && !value.trim() && !file && images.length === 0 && !gameMediaFile && !mapReferenceFile);
 
   return (
     <div
@@ -420,11 +493,11 @@ export function ChatInput({
         </div>
       )}
 
-      {(file || fileError) && (
+      {(file || gameMediaFile || mapReferenceFile || fileError) && (
         <div className={styles.attachmentRow}>
           <span className={`${styles.fileChip} ${fileError ? styles.fileChipError : ''}`}>
             <PlusOutlined className={styles.fileChipIcon} />
-            <span className={styles.fileChipName}>{file ? file.name : fileError}</span>
+            <span className={styles.fileChipName}>{file?.name ?? gameMediaFile?.name ?? mapReferenceFile?.name ?? fileError}</span>
             {file && (
               <button
                 type="button"
@@ -433,6 +506,18 @@ export function ChatInput({
                 aria-label="Remove file"
                 disabled={parsing}
               >
+                <CloseOutlined />
+              </button>
+            )}
+            {gameMediaFile && (
+              <button type="button" className={styles.fileChipRemove}
+                onClick={() => setGameMediaFile(null)} aria-label="Remove game media" disabled={parsing}>
+                <CloseOutlined />
+              </button>
+            )}
+            {mapReferenceFile && (
+              <button type="button" className={styles.fileChipRemove}
+                onClick={() => setMapReferenceFile(null)} aria-label="Remove Map reference" disabled={parsing}>
                 <CloseOutlined />
               </button>
             )}
@@ -453,6 +538,7 @@ export function ChatInput({
       <div className={styles.inputBar}>
         <input
           ref={fileInputRef}
+          data-testid="agent-chat-attachment-input"
           type="file"
           accept={ACCEPT}
           multiple
@@ -462,6 +548,17 @@ export function ChatInput({
             e.target.value = '';
           }}
         />
+        {workspace === 'studio' && <input ref={gameMediaInputRef} type="file" accept={GAME_MEDIA_ACCEPT}
+          className={styles.fileInputHidden} onChange={(event) => {
+            acceptGameMedia(event.target.files?.[0] ?? null);
+            event.target.value = '';
+          }} />}
+        {workspace === 'create-map' && <input ref={mapReferenceInputRef} type="file"
+          accept="image/png,image/jpeg,image/webp" className={styles.fileInputHidden}
+          onChange={(event) => {
+            acceptMapReference(event.target.files?.[0] ?? null);
+            event.target.value = '';
+          }} />}
         <textarea
           ref={textareaRef}
           data-testid="agent-input"
@@ -471,7 +568,11 @@ export function ChatInput({
           placeholder={
             isStreaming
               ? 'Keco Assistant is working…'
-              : file
+              : gameMediaFile
+                ? 'Add instructions for this game media (optional)…'
+                : mapReferenceFile
+                  ? 'Add instructions for this Map reference (optional)…'
+                : file
                 ? 'Add a prompt for this document (optional)…'
                 : images.length > 0
                   ? 'Add a prompt for these images (optional)…'
@@ -498,6 +599,18 @@ export function ChatInput({
             >
               <Image src={addIcon} alt="" width={22} height={22} aria-hidden="true" />
             </button>
+            {workspace === 'studio' && <button type="button" className={styles.attachBtn}
+              onClick={() => gameMediaInputRef.current?.click()}
+              disabled={isStreaming || parsing || !projectId}
+              aria-label="Attach game media" title="Attach game media to upload with AI">
+              <UploadOutlined />
+            </button>}
+            {workspace === 'create-map' && <button type="button" className={styles.attachBtn}
+              onClick={() => mapReferenceInputRef.current?.click()}
+              disabled={isStreaming || parsing || !projectId}
+              aria-label="Attach Map reference" title="Attach a Map reference image">
+              <UploadOutlined />
+            </button>}
             <button
               type="button"
               className={styles.attachBtn}

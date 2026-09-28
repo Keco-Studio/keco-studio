@@ -23,6 +23,7 @@ export type ReplaceDocumentAsAgentInput = {
   markdown: string;
   changeSummary?: string;
   derivedTableOperations?: readonly DerivedDialogueTableOperation[];
+  originScript?: { libraryId: string; expectedFingerprint: string };
   scriptReorder?: {
     libraryId: string;
     expectedOrderIds: readonly string[];
@@ -91,7 +92,9 @@ export async function replaceDocumentAsAgent(
     ? current.markdown
     : await documentContentCodec.yjsStateToMarkdown(merged, []);
   const replacementYjsState = await documentContentCodec.markdownToYjsState(input.markdown);
-  const rpcName = input.scriptReorder
+  const rpcName = input.originScript
+    ? 'replace_document_with_markdown_and_sync_origin_script'
+    : input.scriptReorder
     ? 'replace_document_with_markdown_and_reorder_script'
     : input.derivedTableOperations && input.derivedTableOperations.length > 0
       ? 'replace_document_with_markdown_and_sync_tables'
@@ -119,6 +122,10 @@ export async function replaceDocumentAsAgent(
     ...(input.derivedTableOperations && input.derivedTableOperations.length > 0
       ? { p_derived_table_operations: input.derivedTableOperations }
       : {}),
+    ...(input.originScript ? {
+      p_origin_script_library_id: input.originScript.libraryId,
+      p_expected_origin_fingerprint: input.originScript.expectedFingerprint,
+    } : {}),
   };
   const { data, error } = await admin.rpc(rpcName, rpcInput);
 

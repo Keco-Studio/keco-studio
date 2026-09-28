@@ -290,6 +290,7 @@ export function ChatPanel({ context, open, onOpenChange }: {
             userId={userProfile?.id}
             draftScopeKey={draftScopeKey}
             projectId={projectId}
+            workspace={workspace}
             isStreaming={isStreaming}
             autoExecute={autoExecute}
             focusRequest={inputFocusRequest}

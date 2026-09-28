@@ -201,7 +201,8 @@ export async function createLibraryServer(
   name: string,
   folderId?: string,
   description?: string,
-  documentSource?: DocumentLibrarySource
+  documentSource?: DocumentLibrarySource,
+  agentCreate?: { key: string; hash: string }
 ): Promise<string> {
   return createLibrary(supabase, {
     projectId,
@@ -209,6 +210,7 @@ export async function createLibraryServer(
     folderId,
     description,
     documentSource,
+    agentCreate,
   });
 }
 
@@ -224,9 +226,10 @@ export async function createFolderServer(
   supabase: SupabaseClient,
   projectId: string,
   name: string,
-  description?: string
+  description?: string,
+  agentCreate?: { key: string; hash: string }
 ): Promise<string> {
-  return createFolder(supabase, { projectId, name, description });
+  return createFolder(supabase, { projectId, name, description, agentCreate });
 }
 
 export async function deleteLibraryServer(

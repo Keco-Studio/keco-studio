@@ -78,6 +78,8 @@ export interface ChatAttachment {
 
 export interface SendOptions {
   imageUrls?: string[];
+  gameMediaFile?: File;
+  mapReferenceFile?: File;
   selectionContext?: AgentSelectionContext;
   documentExport?: DocumentTableExportContext;
   /** Composer text to restore if the user stops this turn mid-stream. */

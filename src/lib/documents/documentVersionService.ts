@@ -102,6 +102,9 @@ function throwMutationError(
   error: { code?: string; message?: string },
   token?: DocumentStateToken
 ): never {
+  if (error.message?.includes('IDEMPOTENCY_OUTPUT_DELETED')) {
+    throw new Error('The document version from this request was deleted; use a new idempotency key');
+  }
   if (isConflictError(error)) {
     throw new DocumentStateConflictError(error.message, token);
   }
@@ -109,6 +112,9 @@ function throwMutationError(
     throw new DocumentAccessError('Document version not found');
   }
   if (error.code === '42501') throw new DocumentReadOnlyError();
+  if (error.code === '23505' && error.message?.includes('IDEMPOTENCY_CONFLICT')) {
+    throw new Error('Idempotency key was already used with a different document version request');
+  }
   throw error;
 }
 
@@ -167,15 +173,22 @@ async function loadProfiles(
 
 export async function listDocumentVersions(
   client: SupabaseClient,
-  documentId: string
+  documentId: string,
+  page?: { offset: number; limit: number }
 ): Promise<DocumentVersionSummary[]> {
   assertDocumentId(documentId);
-  const { data, error } = await client
+  if (page && (!Number.isSafeInteger(page.offset) || page.offset < 0
+    || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 51)) {
+    throw new Error('Invalid document version page');
+  }
+  let query = client
     .from('document_versions')
     .select(DOCUMENT_VERSION_METADATA_COLUMNS)
     .eq('document_id', documentId)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false });
+  if (page) query = query.range(page.offset, page.offset + page.limit - 1);
+  const { data, error } = await query;
   if (error) throwVersionReadError(error);
   const rows = (data ?? []) as unknown as DocumentVersionRow[];
   if (rows.length === 0) {
@@ -238,13 +251,28 @@ export async function deleteDocumentVersion(
 
 export async function createDocumentVersion(
   client: SupabaseClient,
-  input: { documentId: string; name: string }
+  input: { documentId: string; name: string; idempotencyKey?: string }
 ): Promise<DocumentVersionSummary> {
   assertDocumentId(input.documentId);
+  if (input.idempotencyKey) assertVersionId(input.idempotencyKey);
   const name = normalizeVersionName(input.name);
-  const versionId = globalThis.crypto.randomUUID();
+  const versionId = input.idempotencyKey ?? globalThis.crypto.randomUUID();
+
+  async function replay(): Promise<DocumentVersionSummary | null> {
+    if (!input.idempotencyKey) return null;
+    const { data, error } = await client.rpc('get_document_version_create_request', {
+      p_version_id: versionId, p_document_id: input.documentId, p_name: name,
+    });
+    if (error) throwMutationError(error);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    const profiles = await loadProfiles(client, [row as DocumentVersionRow]);
+    return mapVersionRow(row as DocumentVersionRow, profiles);
+  }
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt += 1) {
+    const previous = await replay();
+    if (previous) return previous;
     const state = await readDocumentState(client, input.documentId);
     if (state.mode !== 'collaborative' || !state.yjsStateBase64) {
       throw new DocumentCollaborationUnavailableError(
@@ -268,6 +296,10 @@ export async function createDocumentVersion(
     });
 
     if (error) {
+      if (input.idempotencyKey && (isConflictError(error) || error.code === '22023' || error.code === '23505')) {
+        const committed = await replay();
+        if (committed) return committed;
+      }
       if (isConflictError(error) && attempt + 1 < MAX_CREATE_ATTEMPTS) continue;
       throwMutationError(error, state.token);
     }

@@ -93,7 +93,7 @@ describe('getToolsForLlm dynamic schema injection', () => {
   it('filters workspace Tools before injecting a library schema', () => {
     const projects = getToolsForLlm({ workspace: 'projects', currentLibraryId: 'lib-1' }, properties);
     expect(projects.map((tool) => tool.function.name)).toEqual([
-      'list_projects', 'create_project', 'select_project', 'set_conversation_option',
+      'list_projects', 'create_project', 'select_project', 'update_project', 'delete_project', 'set_conversation_option',
     ]);
     expect(projects.find((tool) => tool.function.name === 'create_asset')).toBeUndefined();
   });

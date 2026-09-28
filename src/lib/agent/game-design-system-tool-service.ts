@@ -3,10 +3,10 @@ import 'server-only';
 import { z } from 'zod';
 import type { ToolContext, ToolResult } from './types';
 import {
-  copyGameDesignSystem, createGameDesignSystemGenerationJob,
+  createGameDesignSystemGenerationJob,
   findGameDesignSystemGenerationJobByIdempotencyKey, getGameDesignSystem,
   getGameDesignSystemDetail, getGameDesignSystemVersion, IdempotencyConflictError,
-  listGameDesignSystemsPage, setProjectGameDesignSystem,
+  listGameDesignSystemsPage,
   type GameDesignSystem, type GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
@@ -19,10 +19,17 @@ import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } f
 import { createGddGenerationJob } from '@/lib/services/gddGenerationService';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import { inferGddOutputLanguage, type GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
+import { wakeQueuedGameDesignSystemJob } from './gds-job-wake';
+import { CopyOutputDeletedError, copyAgentGameDesignSystem } from './agent-gds-copy-service';
 
 export const GDD_GENERATION_WARNING = 'Professional GDD generation may automatically submit up to three paid map images. Quick mode does not automatically submit paid map images.';
 const keySchema = z.string().trim().regex(/^[A-Za-z0-9._:-]{8,128}$/);
 export const applySystemSchema = z.object({ projectId: z.string().uuid(), designSystemId: z.string().uuid(), versionId: z.string().uuid() }).strict();
+const sealedApplySystemSchema = applySystemSchema.extend({
+  expectedDesignSystemId: z.string().uuid().nullable(),
+  expectedVersionId: z.string().uuid().nullable(),
+  expectedUpdatedAt: z.string().nullable(),
+}).strict();
 export const generateGddSchema = z.object({ projectId: z.string().uuid(), mode: z.enum(['quick', 'professional']), idempotencyKey: keySchema }).strict();
 export const sealedGddSchema = generateGddSchema.extend({ designSystemId: z.string().uuid(), versionId: z.string().uuid(), warning: z.literal(GDD_GENERATION_WARNING) }).strict();
 export const generateSystemSchema = z.object({ input: gameDesignGenerationRequestSchema, idempotencyKey: keySchema }).strict();
@@ -36,7 +43,7 @@ export async function designToolResult(operation: () => Promise<unknown>, displa
   catch (error) {
     // Never expose provider, database, source, or private job payloads in errors.
     return { success: false, error: error instanceof z.ZodError ? 'Invalid game design parameters.'
-      : error instanceof DesignToolError || error instanceof IdempotencyConflictError ? error.message
+      : error instanceof DesignToolError || error instanceof IdempotencyConflictError || error instanceof CopyOutputDeletedError ? error.message
         : 'Game design operation failed. Check access and request parameters.' };
   }
 }
@@ -110,10 +117,10 @@ function versionSummary(version: GameDesignSystemVersion) {
 }
 
 export async function copyDesignSystem(ctx: ToolContext, params: unknown) {
-  const input = z.object({ designSystemId: z.string().uuid() }).strict().parse(params);
+  const input = z.object({ designSystemId: z.string().uuid(), idempotencyKey: z.string().uuid() }).strict().parse(params);
   const system = await visibleSystem(ctx, input.designSystemId);
   if (system.source !== 'official' && system.owner_id !== ctx.userId) throw new DesignToolError('Only official or owned Game Design Systems can be copied.');
-  return summary(await copyGameDesignSystem(getSupabaseServiceRoleClient(), system, ctx.userId));
+  return summary(await copyAgentGameDesignSystem(getSupabaseServiceRoleClient(), system, ctx.userId, input.idempotencyKey));
 }
 
 function canonicalJson(value: unknown): string {
@@ -155,17 +162,40 @@ export async function generateDesignSystem(ctx: ToolContext, params: unknown) {
     artStyle, baseSystemId: base?.id, baseVersionId: version?.id, baseDocument: version?.document,
     baseRules: version?.rules, pastedMarkdown: body.pastedMarkdown };
   const job = await createGameDesignSystemGenerationJob(service, ctx.userId, input as never, { idempotencyKey, inputHash: hashResolvedGenerationInput(input) });
+  wakeQueuedGameDesignSystemJob(job.status);
   return { jobType: 'game-design-system', jobId: job.id, status: job.status };
 }
 
-export async function applyDesignSystem(ctx: ToolContext, params: unknown) {
+export async function prepareApplyDesignSystem(ctx: ToolContext, params: unknown) {
   const input = applySystemSchema.parse(params);
   await projectAccess(ctx, input.projectId, 'apply');
   await visibleSystem(ctx, input.designSystemId);
   const version = await visibleVersion(ctx, input.designSystemId, input.versionId);
   if (version.conflicts.length) throw new DesignToolError('Resolve version conflicts before applying it.');
-  await setProjectGameDesignSystem(ctx.supabase, input.projectId, input.designSystemId, input.versionId, ctx.userId);
-  return input;
+  const { data: current, error } = await ctx.supabase.from('project_game_design_systems')
+    .select('design_system_id,version_id,updated_at').eq('project_id', input.projectId).maybeSingle();
+  if (error) throw error;
+  const sealed = { ...input, expectedDesignSystemId: current?.design_system_id ?? null,
+    expectedVersionId: current?.version_id ?? null, expectedUpdatedAt: current?.updated_at ?? null };
+  return { args: sealed, preview: { action: 'apply_game_design_system', projectId: input.projectId,
+    designSystemId: input.designSystemId, versionId: input.versionId,
+    replacesDesignSystemId: sealed.expectedDesignSystemId,
+    replacesVersionId: sealed.expectedVersionId } };
+}
+
+export async function applyDesignSystem(ctx: ToolContext, params: unknown) {
+  const input = sealedApplySystemSchema.parse(params);
+  await projectAccess(ctx, input.projectId, 'apply');
+  await visibleSystem(ctx, input.designSystemId);
+  const version = await visibleVersion(ctx, input.designSystemId, input.versionId);
+  if (version.conflicts.length) throw new DesignToolError('Resolve version conflicts before applying it.');
+  const { data, error } = await ctx.supabase.rpc('agent_apply_game_design_system_if_current', {
+    p_project_id: input.projectId, p_design_system_id: input.designSystemId,
+    p_version_id: input.versionId, p_expected_design_system_id: input.expectedDesignSystemId,
+    p_expected_version_id: input.expectedVersionId, p_expected_updated_at: input.expectedUpdatedAt,
+  });
+  if (error || data !== true) throw new DesignToolError('The project Game Design System binding changed. Confirm again.');
+  return { projectId: input.projectId, designSystemId: input.designSystemId, versionId: input.versionId };
 }
 
 async function pinnedSystem(ctx: ToolContext, projectId: string) {

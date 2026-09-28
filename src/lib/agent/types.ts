@@ -11,6 +11,8 @@ import type { AccessVerificationCache } from '@/lib/services/authorizationServic
 import type { AgentSelectionContext } from './selection-context';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
+import type { GameMediaAttachment, GameMediaAttachmentRecord } from './game-media-attachment';
+import type { MapReferenceAttachment } from './map-reference-attachment';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 export type AgentWorkspace = 'projects' | 'studio' | 'script' | 'create-map' | 'game-design-systems';
@@ -58,11 +60,21 @@ export interface ToolContext {
     messageId: string;
     content: string;
   };
+  /** Server-validated file carried by this authenticated user turn only. */
+  authoritativeGameMedia?: GameMediaAttachment & { messageId: string; submissionId: string };
+  /** Exact current multipart Map image; never sourced from Tool parameters. */
+  authoritativeMapReference?: MapReferenceAttachment & { messageId: string; submissionId: string };
   /** Usage binding retained by Agent-originated tools and deferred indexing. */
   usageBinding?: AiUsageBinding;
 }
 
 export type AgentInvalidation =
+  | { type: 'projects'; projectId?: string }
+  | { type: 'project-structure'; projectId: string }
+  | { type: 'script-workspace'; projectId: string; documentId?: string }
+  | { type: 'project-collaborators'; projectId: string }
+  | { type: 'game-media'; projectId: string }
+  | { type: 'game-design-systems'; designSystemId?: string; projectId?: string }
   | {
       type: 'library';
       id: string;
@@ -205,6 +217,8 @@ export interface ChatMessage {
   name?: string;
   /** Server-validated model declaration for the pinned Game Design System policy. */
   game_design_evidence?: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence;
+  game_media_attachment?: GameMediaAttachmentRecord;
+  game_media_submission_id?: string;
 }
 
 export interface ToolCall {
@@ -273,6 +287,11 @@ export interface AgentTurnInput {
   signal?: AbortSignal;
   /** Public image URLs (Supabase storage) attached to this user turn, if any. */
   imageUrls?: string[];
+  /** Actual multipart file validated by the route, never an LLM or URL argument. */
+  gameMediaAttachment?: GameMediaAttachment;
+  gameMediaSubmissionId?: string;
+  mapReferenceAttachment?: MapReferenceAttachment;
+  mapReferenceSubmissionId?: string;
   /** Explicit selected table data attached to this user turn only. */
   selectionContext?: AgentSelectionContext;
   toolContext: ToolContext;

@@ -195,7 +195,7 @@ test.describe('Agent chat', () => {
     });
 
     const agent = await openProject(page);
-    await agent.panel.locator('input[type="file"]').setInputFiles({
+    await agent.panel.getByTestId('agent-chat-attachment-input').setInputFiles({
       name: 'visible.docx',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       buffer: docx,

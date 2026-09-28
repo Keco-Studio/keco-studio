@@ -73,6 +73,8 @@ import {
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
 import { normalizeToolCallForReplay } from './tool-call-recovery';
 import { requireProjectContext } from './workspace';
+import { gameMediaAttachmentRecord } from './game-media-attachment';
+import { mapReferenceAttachmentRecord } from './map-reference-attachment';
 import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import {
@@ -883,6 +885,51 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
   });
 
   try {
+    if (input.gameMediaAttachment && input.mapReferenceAttachment) {
+      yield { type: 'error', message: 'Only one upload attachment is allowed per message.' };
+      yield { type: 'done' };
+      return;
+    }
+    if (input.gameMediaAttachment) {
+      if (!input.gameMediaSubmissionId || !toolContext.projectId) {
+        yield { type: 'error', message: 'Game-media submission is missing its project binding.' };
+        yield { type: 'done' };
+        return;
+      }
+      const { data: claimed, error: claimError } = await toolContext.supabase.rpc(
+        'claim_agent_game_media_submission', {
+          p_submission_id: input.gameMediaSubmissionId,
+          p_project_id: toolContext.projectId,
+          p_conversation_id: conversationId,
+        }
+      );
+      if (claimError || claimed !== true) {
+        yield { type: 'error', message: 'This game-media submission was already received or could not be claimed.' };
+        yield { type: 'done' };
+        return;
+      }
+    }
+    if (input.mapReferenceAttachment) {
+      if (!input.mapReferenceSubmissionId || !toolContext.projectId
+        || toolContext.workspace !== 'create-map') {
+        yield { type: 'error', message: 'Map reference submission is missing its project binding.' };
+        yield { type: 'done' };
+        return;
+      }
+      const { data: claimed, error: claimError } = await toolContext.supabase.rpc(
+        'claim_agent_map_reference_submission', {
+          p_submission_id: input.mapReferenceSubmissionId,
+          p_project_id: toolContext.projectId,
+          p_conversation_id: conversationId,
+          p_sha256: input.mapReferenceAttachment.sha256,
+        }
+      );
+      if (claimError || claimed !== true) {
+        yield { type: 'error', message: 'This Map reference submission was already received or could not be claimed.' };
+        yield { type: 'done' };
+        return;
+      }
+    }
     const retrievedContextBlock = await loadRetrievedContextBlock(
       toolContext,
       conversationId,
@@ -908,10 +955,42 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const savedUserMessage = await saveMessage(
       toolContext.supabase,
       conversationId,
-      { role: 'user', content: userContentForDb },
+      {
+        role: 'user', content: userContentForDb,
+        ...(input.gameMediaAttachment
+          ? { game_media_attachment: gameMediaAttachmentRecord(input.gameMediaAttachment) }
+          : {}),
+        ...(input.gameMediaSubmissionId
+          ? { game_media_submission_id: input.gameMediaSubmissionId }
+          : {}),
+        ...(input.mapReferenceAttachment
+          ? { map_reference_attachment: mapReferenceAttachmentRecord(input.mapReferenceAttachment) }
+          : {}),
+        ...(input.mapReferenceSubmissionId
+          ? { map_reference_submission_id: input.mapReferenceSubmissionId }
+          : {}),
+      },
       indexingContext(toolContext, input.usageBinding)
     );
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
+    if (input.gameMediaSubmissionId) {
+      const { data: bound, error: bindError } = await toolContext.supabase.rpc(
+        'bind_agent_game_media_submission', {
+          p_submission_id: input.gameMediaSubmissionId,
+          p_message_id: savedUserMessage.id,
+        }
+      );
+      if (bindError || bound !== true) throw new Error('Failed to bind the game-media submission to its user message.');
+    }
+    if (input.mapReferenceSubmissionId) {
+      const { data: bound, error: bindError } = await toolContext.supabase.rpc(
+        'bind_agent_map_reference_submission', {
+          p_submission_id: input.mapReferenceSubmissionId,
+          p_message_id: savedUserMessage.id,
+        }
+      );
+      if (bindError || bound !== true) throw new Error('Failed to bind the Map reference submission to its user message.');
+    }
     const conversationForTitle = await getConversation(toolContext.supabase, conversationId);
     if (conversationForTitle && !conversationForTitle.title) {
       await touchConversation(toolContext.supabase, conversationId, {
@@ -926,6 +1005,18 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
         messageId: savedUserMessage.id,
         content: input.userMessage,
       },
+      ...(input.gameMediaAttachment
+        ? { authoritativeGameMedia: {
+          ...input.gameMediaAttachment, messageId: savedUserMessage.id,
+          submissionId: input.gameMediaSubmissionId!,
+        } }
+        : {}),
+      ...(input.mapReferenceAttachment
+        ? { authoritativeMapReference: {
+          ...input.mapReferenceAttachment, messageId: savedUserMessage.id,
+          submissionId: input.mapReferenceSubmissionId!,
+        } }
+        : {}),
     };
 
     yield* continueLoop(

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
+import { invalidateFolderData, invalidateLibraryAssetsData, invalidateLibraryData, invalidateProjectData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
 import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
@@ -86,6 +86,50 @@ export async function invalidateAgentCaches(
   invalidations: AgentInvalidation[]
 ): Promise<void> {
   for (const invalidation of invalidations) {
+    if (invalidation.type === 'projects') {
+      await invalidateProjectData(queryClient, {
+        projectId: invalidation.projectId,
+        userProjectList: true,
+        refetchActiveProjects: true,
+      });
+      continue;
+    }
+    if (invalidation.type === 'project-structure') {
+      await invalidateFolderData(queryClient, {
+        projectId: invalidation.projectId,
+        refetchActiveFoldersLibraries: true,
+      });
+      await invalidateLibraryData(queryClient, {
+        projectId: invalidation.projectId,
+        refetchActiveFoldersLibraries: true,
+      });
+      continue;
+    }
+    if (invalidation.type === 'script-workspace') {
+      await queryClient.invalidateQueries({ queryKey: ['script-workspace', invalidation.projectId] });
+      if (invalidation.documentId) {
+        await queryClient.invalidateQueries({ queryKey: ['script-workspace-document', invalidation.projectId, invalidation.documentId] });
+      }
+      continue;
+    }
+    if (invalidation.type === 'project-collaborators') {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projectCollaborators(invalidation.projectId) });
+      continue;
+    }
+    if (invalidation.type === 'game-media') {
+      await queryClient.invalidateQueries({ queryKey: ['project-game-assets', invalidation.projectId] });
+      continue;
+    }
+    if (invalidation.type === 'game-design-systems') {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystems() });
+      if (invalidation.projectId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.projectGameDesignSystem(invalidation.projectId) });
+      }
+      if (invalidation.designSystemId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystem(invalidation.designSystemId) });
+      }
+      continue;
+    }
     if (invalidation.type === 'create-map') {
       if (typeof invalidation.projectId !== 'string' || (invalidation.mapId !== undefined && typeof invalidation.mapId !== 'string')) continue;
       await queryClient.invalidateQueries({ queryKey: ['create-map'] });
@@ -578,7 +622,8 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
         !message.trim()
       ) return;
       let requestRuntimeKey = selectedRuntime.key;
-      const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext);
+      const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext,
+        opts?.gameMediaFile?.name ?? opts?.mapReferenceFile?.name);
       const userItemId = nextId();
       appendItem(requestRuntimeKey, {
         id: userItemId,
@@ -612,12 +657,16 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
         // its bound scope (server-side), so we send only the message — the live
         // navigation must not re-target it.
         const isNew = !selectedRuntime.conversationId;
+        const gameMediaSubmissionId = opts?.gameMediaFile ? crypto.randomUUID() : undefined;
+        const mapReferenceSubmissionId = opts?.mapReferenceFile ? crypto.randomUUID() : undefined;
         const requestBody = isNew
           ? {
               projectId: ctx.projectId,
               currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
+              gameMediaSubmissionId,
+              mapReferenceSubmissionId,
               selectionContext: opts?.selectionContext,
               documentExport: opts?.documentExport,
               autoExecute: selectedRuntime.autoExecute,
@@ -633,16 +682,24 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
               workspace: ctx.workspace,
               message,
               imageUrls: opts?.imageUrls,
+              gameMediaSubmissionId,
+              mapReferenceSubmissionId,
               selectionContext: opts?.selectionContext,
             };
+        const form = opts?.gameMediaFile || opts?.mapReferenceFile ? new FormData() : null;
+        if (form) {
+          form.set('payload', JSON.stringify(requestBody));
+          if (opts?.gameMediaFile) form.set('gameMedia', opts.gameMediaFile);
+          else form.set('mapReference', opts!.mapReferenceFile!);
+        }
         const response = await fetch('/api/agent-chat', {
           method: 'POST',
           credentials: 'include',
           headers: {
-            'Content-Type': 'application/json',
+            ...(form ? {} : { 'Content-Type': 'application/json' }),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify(requestBody),
+          body: form ?? JSON.stringify(requestBody),
           signal: abortController.signal,
         });
         if (!response.ok) {
