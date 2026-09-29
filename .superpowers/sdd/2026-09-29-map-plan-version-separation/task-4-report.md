@@ -15,3 +15,16 @@
   - exited successfully.
 - `git diff --check`
   - exited successfully.
+
+## Follow-up Review Fixes
+
+- Centralized history invalidation increments the selection epoch before clearing or replacing a historical workspace, so a late `loadMapVersionV3` result cannot reopen it.
+- `MapSourcePanel` now receives effective historical read-only state.
+- Collision analysis invalidates its request epoch whenever analysis is disabled or re-enabled, and resets its attempted key so the restored active Draft starts a fresh analysis.
+
+### Follow-up Verification
+
+- `npx jest --runInBand tests/unit/create-map/map-chat-panel.test.tsx tests/unit/create-map/workbench-wiring.test.tsx tests/unit/create-map/direct-map-collision-history-cancellation.test.tsx`
+  - 3 suites passed, 18 tests passed.
+- `npx tsc --noEmit --pretty false`
+  - exited successfully.

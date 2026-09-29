@@ -85,12 +85,11 @@ export function useDirectMapCollisionGrid({
   }, [analysisKey, canAnalyze, identity, image, matches, projectId, service, setScene]);
 
   useEffect(() => {
-    if (!analysisKey) {
-      requestEpoch.current += 1;
+    requestEpoch.current += 1;
+    if (!analysisKey || !canAnalyze) {
       attemptedKey.current = null;
-      return;
-    }
-    if (!canAnalyze) {
+      setPhase('idle');
+      setError(null);
       return;
     }
     if (matches) {

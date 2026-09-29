@@ -299,8 +299,13 @@ describe('Create Map V3 direct workbench', () => {
     expect(workbench).toContain('service.loadMapVersionV3(');
     expect(workbench).toContain('onSelectMapVersion={selectMapVersion}');
     expect(workbench).toContain('const historicalReadOnly = Boolean(historicalWorkspace);');
+    expect(workbench).toContain('const invalidateHistoricalSelection = useCallback(() => {');
+    expect(workbench).toContain('historicalSelectionEpoch.current += 1;');
+    expect(workbench).toContain('invalidateHistoricalSelection();');
     expect(workbench).toContain('disabled={busy || workspaceReadOnly}');
     expect(workbench).toContain('readOnly={workspaceReadOnly}');
     expect(workbench).toContain('onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}');
+    expect(workbench).toContain('<MapSourcePanel');
+    expect(workbench).toContain('readOnly={workspaceReadOnly}');
   });
 });

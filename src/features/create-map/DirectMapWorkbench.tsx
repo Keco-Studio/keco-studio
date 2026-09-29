@@ -124,6 +124,10 @@ export function DirectMapWorkbench() {
   const previousGenerationPhase = useRef<string>('idle');
   const planSaveEpoch = useRef(0);
   const planSaveActive = useRef(false);
+  const invalidateHistoricalSelection = useCallback(() => {
+    historicalSelectionEpoch.current += 1;
+    setHistoricalWorkspace(null);
+  }, []);
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -150,6 +154,8 @@ export function DirectMapWorkbench() {
     || generation.phase === 'preparing' || generation.phase === 'submitting';
   const canGenerate = !readOnly && !historicalWorkspace && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && hasCurrentSavedPlan && !busy;
+  const historicalReadOnly = Boolean(historicalWorkspace);
+  const workspaceReadOnly = readOnly || historicalReadOnly;
 
   useEffect(() => {
     if (!savedPlanSelection) return;
@@ -270,7 +276,7 @@ export function DirectMapWorkbench() {
     setOpeningMapId(null);
     setError(null);
     setChatMessages([]);
-    setHistoricalWorkspace(null);
+    invalidateHistoricalSelection();
     setViewMode('browse');
   };
 
@@ -288,12 +294,12 @@ export function DirectMapWorkbench() {
     setDescription('');
     clearAttachedDocument();
     setChatMessages([]);
-    setHistoricalWorkspace(null);
+    invalidateHistoricalSelection();
     setError(null);
     setViewMode('detail');
     setPlanDetailsOpen(true);
     setRightOpen(true);
-  }, [clearAttachedDocument, draft, generation, readOnly]);
+  }, [clearAttachedDocument, draft, generation, invalidateHistoricalSelection, readOnly]);
 
   useEffect(() => {
     const onToolbarCreate = () => {
@@ -332,7 +338,7 @@ export function DirectMapWorkbench() {
       const nextScene = createEmptyMapSceneV3(created.plan);
       draft.reset();
       generation.reset();
-      setHistoricalWorkspace(null);
+      invalidateHistoricalSelection();
       setPlan(created.plan);
       setScene(nextScene);
       await draft.create(projectId, created.sourceToken, created.plan, nextScene);
@@ -377,6 +383,7 @@ export function DirectMapWorkbench() {
   const openSavedMap = useCallback(async (map: SavedMapSummary) => {
     if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
+    invalidateHistoricalSelection();
     setOperation('opening');
     setOpeningMapId(map.id);
     setError(null);
@@ -387,7 +394,6 @@ export function DirectMapWorkbench() {
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId ?? '');
       setDocumentName('');
-      setHistoricalWorkspace(null);
       setPlan(prepared.plan);
       setScene(prepared.scene);
       draft.install(loaded);
@@ -417,15 +423,16 @@ export function DirectMapWorkbench() {
         setOpeningMapId(null);
       }
     }
-  }, [draft, generation, service]);
+  }, [draft, generation, invalidateHistoricalSelection, service]);
 
   const selectMapVersion = async (mapRevisionId: string) => {
     const mapId = draft.identity?.mapId;
     if (!mapId || busy) return;
     if (historicalWorkspace?.mapVersion.mapRevisionId === mapRevisionId) {
-      setHistoricalWorkspace(null);
+      invalidateHistoricalSelection();
       return;
     }
+    invalidateHistoricalSelection();
     const requestEpoch = ++historicalSelectionEpoch.current;
     setError(null);
     try {
@@ -510,8 +517,6 @@ export function DirectMapWorkbench() {
   const workspacePlan = historicalWorkspace?.mapPlan ?? plan;
   const workspaceScene = historicalWorkspace?.mapScene ?? scene;
   const workspaceImage = historicalWorkspace ? historicalImage : image;
-  const historicalReadOnly = Boolean(historicalWorkspace);
-  const workspaceReadOnly = readOnly || historicalReadOnly;
   const workspaceValidation = useMemo(() => validateMapPlanV3(workspacePlan), [workspacePlan]);
   const workspaceIssues = workspaceValidation.success === false ? workspaceValidation.issues : [];
   const actionError = error ?? draft.error ?? generation.error;
@@ -545,7 +550,7 @@ export function DirectMapWorkbench() {
           projects={sources.projects}
           projectId={projectId}
           onProjectChange={handleProjectChange}
-          readOnly={readOnly}
+          readOnly={workspaceReadOnly}
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
         />
@@ -568,7 +573,7 @@ export function DirectMapWorkbench() {
             mapTitle={workspacePlan.name}
             messages={chatMessages}
             onBack={() => {
-              setHistoricalWorkspace(null);
+              invalidateHistoricalSelection();
               setViewMode('browse');
               setPlanDetailsOpen(false);
             }}
