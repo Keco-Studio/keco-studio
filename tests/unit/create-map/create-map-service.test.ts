@@ -262,6 +262,49 @@ describe('Create Map browser service', () => {
     expect(planV2.name).toBe('Plan V2');
   });
 
+  it.each([
+    ['missing generation ID', { generation_id: null }],
+    ['malformed generation ID', { generation_id: 'not-a-uuid' }],
+    ['missing Plan fingerprint', { plan_fingerprint: null }],
+    ['malformed Plan fingerprint', { plan_fingerprint: 'not-a-sha256' }],
+    ['non-string provider job ID', { provider_job_id: 42 }],
+  ])('rejects a ready historical image with a %s', async (_case, overrides) => {
+    const plan = makeValidMapPlanV3();
+    const image = makeMapAssetRecord({
+      id: 'image-v1',
+      map_revision_id: 'map-revision-v1',
+      asset_key: 'map-image',
+      kind: 'map_image',
+      status: 'ready',
+      requested_capability: 'direct_map_image',
+      generation_id: '10000000-0000-4000-8000-000000000001',
+      plan_fingerprint: 'a'.repeat(64),
+      provider_operation: 'create_image_pro',
+      provider_job_id: 'job-v1',
+      storage_path: `project-1/map-1/map-revision-v1/map-image/${'b'.repeat(64)}.png`,
+      sha256: 'b'.repeat(64),
+      width: plan.map.width,
+      height: plan.map.height,
+      has_transparency: false,
+      ...overrides,
+    } as Partial<MapAssetRecord>);
+    const { from } = createMapVersionLoadMock({
+      revision: {
+        id: 'map-revision-v1', map_project_id: 'map-1', map_version_number: 1, plan_version_id: 'plan-v1',
+        scene: makeEmptyMapSceneV3(), map_projects: { project_id: 'project-1' },
+        map_plan_versions: {
+          id: 'plan-v1', map_project_id: 'map-1', plan_version_number: 1,
+          draft_revision_id: 'draft-v1', draft_save_version: 2, plan,
+        },
+      },
+      assets: [image],
+    });
+
+    const storage = { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.example/map-v1' }, error: null }) }) };
+    await expect(createMapService({ from, storage } as never).loadMapVersionV3('map-1', 'map-revision-v1'))
+      .rejects.toMatchObject({ code: 'invalid_saved_map' });
+  });
+
   it('lists ready Map versions with their independently bound Plan version numbers', async () => {
     const order = jest.fn(async () => ({
       data: [{

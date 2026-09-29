@@ -557,8 +557,13 @@ export function createMapService(supabase: SupabaseClient) {
       const imageAsset = images[0];
       if (
         imageAsset.requested_capability !== 'direct_map_image'
+        || typeof imageAsset.generation_id !== 'string'
+        || !UUID_PATTERN.test(imageAsset.generation_id)
+        || typeof imageAsset.plan_fingerprint !== 'string'
+        || !SHA256_PATTERN.test(imageAsset.plan_fingerprint)
         || imageAsset.provider_operation !== 'create_image_pro'
-        || !imageAsset.provider_job_id
+        || typeof imageAsset.provider_job_id !== 'string'
+        || imageAsset.provider_job_id.length === 0
         || !imageAsset.storage_path
         || !imageAsset.sha256
         || !SHA256_PATTERN.test(imageAsset.sha256)
