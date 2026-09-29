@@ -46,6 +46,15 @@ describe('folder/recent cards and project modal visual contracts', () => {
     }
   });
 
+  it('uses the same 2rem action button on table and document cards', () => {
+    const tableCard = read('src/components/folders/LibraryCard.module.css');
+    const documentCard = read('src/components/admin/DocumentRecentCard.module.css');
+
+    for (const source of [tableCard, documentCard]) {
+      expect(source).toMatch(/\.actionButton\s*\{[^}]*width:\s*2rem;[^}]*height:\s*2rem;/s);
+    }
+  });
+
   it('matches the Create Project dialog size and disabled helper text color', () => {
     const dialog = read('src/components/shared/FormDialog.module.css');
     expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*616px;[^}]*height:\s*370px;/s);
