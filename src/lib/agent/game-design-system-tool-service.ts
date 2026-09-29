@@ -20,6 +20,7 @@ import { createGddGenerationJob } from '@/lib/services/gddGenerationService';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import { inferGddOutputLanguage, type GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { wakeQueuedGameDesignSystemJob } from './gds-job-wake';
+import { wakeQueuedGddJob } from './gdd-job-wake';
 import { CopyOutputDeletedError, copyAgentGameDesignSystem } from './agent-gds-copy-service';
 
 export const GDD_GENERATION_WARNING = 'Professional GDD generation may automatically submit up to three paid map images. Quick mode does not automatically submit paid map images.';
@@ -230,7 +231,18 @@ export async function generateGdd(ctx: ToolContext, params: unknown) {
   const job = await createGddGenerationJob(getSupabaseServiceRoleClient(), { ownerId: ctx.userId,
     projectId: sealed.projectId, designSystemId: system.id, versionId: version.id, input,
     idempotencyKey: sealed.idempotencyKey, inputHash: hashGddGenerationInput(input) });
-  return { jobType: 'gdd', jobId: job.id, status: job.status };
+  const workerWake = await wakeQueuedGddJob({ status: job.status, availableAt: job.available_at });
+  return { jobType: 'gdd', jobId: job.id, status: job.status, workerWake };
+}
+
+function safeGddFailure(error: string | null | undefined): string {
+  if (error?.startsWith('Generation worker lease expired after final attempt.')) {
+    return 'Worker lease expired after the final attempt.';
+  }
+  if (error && /^Professional GDD stage [a-z_]+ exceeded its \d+-second deadline\./.test(error)) {
+    return 'Generation stage timed out.';
+  }
+  return 'Generation failed.';
 }
 
 export async function generationStatus(ctx: ToolContext, params: unknown) {
@@ -238,16 +250,64 @@ export async function generationStatus(ctx: ToolContext, params: unknown) {
   const input = z.object({ jobType: z.enum(['game-design-system', 'gdd']), jobId: z.string().uuid() }).strict().parse(params);
   const table = input.jobType === 'gdd' ? 'gdd_generation_jobs' : 'game_design_system_generation_jobs';
   // One bounded read, filtered by owner before private data leaves the database.
-  const columns: string = input.jobType === 'gdd' ? 'id,owner_id,project_id,status,phase' : 'id,owner_id,status,phase';
+  const columns: string = input.jobType === 'gdd'
+    ? 'id,owner_id,project_id,status,phase,available_at,output_document_id,output_document_name,error'
+    : 'id,owner_id,status,phase';
   const { data: raw, error } = await getSupabaseServiceRoleClient().from(table)
     .select(columns)
     .eq('id', input.jobId).eq('owner_id', ctx.userId).maybeSingle();
   if (error || !raw) throw new DesignToolError('Generation job not found.');
-  const data = z.object({ id: z.string().uuid(), owner_id: z.string(), project_id: z.string().uuid().optional(), status: z.string().max(80), phase: z.string().max(80) }).parse(raw);
+  const data = z.object({ id: z.string().uuid(), owner_id: z.string(), project_id: z.string().uuid().optional(),
+    status: z.string().max(80), phase: z.string().max(80), available_at: z.string().optional(),
+    output_document_id: z.string().uuid().nullable().optional(), output_document_name: z.string().nullable().optional(),
+    error: z.string().nullable().optional() }).parse(raw);
   if (data.owner_id !== ctx.userId) throw new DesignToolError('Generation job not found.');
+  let workerWake;
   if (input.jobType === 'gdd') {
     if (!data.project_id) throw new DesignToolError('Generation job not found.');
     await projectAccess(ctx, data.project_id, 'gdd');
+    if (data.status === 'queued') workerWake = await wakeQueuedGddJob({ status: data.status, availableAt: data.available_at });
   }
-  return { jobType: input.jobType, jobId: data.id, status: data.status, phase: data.phase };
+  let children: { resources: Array<{ kind: string; status: string }> | null;
+    maps: Array<{ title: string; status: string }> | null } | null = null;
+  let resourceWake: Awaited<ReturnType<typeof wakeQueuedGddJob>> | undefined;
+  let mapWake: Awaited<ReturnType<typeof wakeQueuedGddJob>> | undefined;
+  if (input.jobType === 'gdd' && data.output_document_id) {
+    try {
+      const serviceClient = getSupabaseServiceRoleClient();
+      const [resourceResult, mapResult] = await Promise.all([
+        serviceClient.from('gdd_resource_jobs').select('kind,status,available_at').eq('gdd_generation_job_id', data.id).limit(10),
+        serviceClient.from('gdd_map_artifacts').select('title,status,available_at').eq('gdd_generation_job_id', data.id).limit(3),
+      ]);
+      const resources = z.array(z.object({ kind: z.string().max(40), status: z.string().max(40), available_at: z.string().optional() }))
+        .safeParse(resourceResult.error ? null : resourceResult.data);
+      const maps = z.array(z.object({ title: z.string().max(160), status: z.string().max(40), available_at: z.string().optional() }))
+        .safeParse(mapResult.error ? null : mapResult.data);
+      children = { resources: resources.success
+        ? resources.data.map((item) => ({ kind: item.kind, status: item.status })) : null,
+      maps: maps.success
+        ? maps.data.map((item) => ({ title: item.title, status: item.status })) : null };
+      const queuedResource = resources.success ? resources.data.find((item) => item.status === 'queued') : undefined;
+      const queuedMap = maps.success ? maps.data.find((item) => item.status === 'queued') : undefined;
+      if (queuedResource) resourceWake = await wakeQueuedGddJob({ status: queuedResource.status, availableAt: queuedResource.available_at }, 'resource');
+      if (queuedMap) mapWake = await wakeQueuedGddJob({ status: queuedMap.status, availableAt: queuedMap.available_at }, 'map');
+    } catch {
+      children = { resources: null, maps: null };
+    }
+  }
+  return { jobType: input.jobType, jobId: data.id, status: data.status, phase: data.phase,
+    ...(input.jobType === 'gdd' && data.status === 'queued' ? {
+      statusHint: 'Queued means awaiting a worker invocation. Collecting is an initial phase label, not evidence that source collection is in progress or stalled.',
+      workerWake,
+    } : {}),
+    ...(input.jobType === 'gdd' && data.project_id && data.output_document_id ? {
+      document: { id: data.output_document_id, name: (data.output_document_name || 'GDD').slice(0, 160),
+        url: `/${data.project_id}/doc/${data.output_document_id}` },
+      ...children,
+      ...(resourceWake ? { resourceWake } : {}),
+      ...(mapWake ? { mapWake } : {}),
+    } : {}),
+    ...(input.jobType === 'gdd' && data.status === 'failed' ? {
+      error: safeGddFailure(data.error),
+    } : {}) };
 }

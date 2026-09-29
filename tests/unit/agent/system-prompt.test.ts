@@ -3,6 +3,16 @@ import { buildDesignMessage } from '../../../src/lib/design-message';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+it('does not treat repeated queued GDD snapshots as evidence to cancel or resubmit', () => {
+  const prompt = buildSystemPrompt({ workspace: 'game-design-systems' });
+  expect(prompt).toContain('queued means awaiting the next worker invocation');
+  expect(prompt).toContain('Repeated unchanged status snapshots alone do not prove a job is stuck');
+  expect(prompt).toContain('Do not recommend cancellation or resubmission solely because status is unchanged');
+  expect(prompt).toContain('Do not ask the user to manage the worker or choose a replacement mode');
+  expect(prompt).toContain('A completed GDD document can still have queued, running, or failed resources');
+  expect(prompt).toContain('resourceWake and mapWake');
+});
+
 describe('buildSystemPrompt design-document table rules', () => {
   it('keeps Art Style declarative context separate from rule evidence', () => {
     const prompt = buildSystemPrompt({
