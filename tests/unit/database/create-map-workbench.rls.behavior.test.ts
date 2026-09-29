@@ -218,6 +218,105 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect(invalidSave.error?.code).toBe('22023');
   });
 
+  it('saves immutable V3 Plans independently and binds generated Maps to the exact Plan', async () => {
+    const createV3 = (name: string) => fx.owner.client.rpc('create_map_project_v3', {
+      p_project_id: fx.projectId,
+      p_name: name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV3,
+      p_scene: sceneV3,
+    });
+
+    const first = await createV3('Plan snapshot map');
+    expect(first.error).toBeNull();
+    const firstMap = (first.data as CreatedMap[])[0];
+    const saved = await fx.owner.client.rpc('save_map_plan_v3', {
+      p_map_id: firstMap.map_id,
+      p_draft_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: firstMap.save_version,
+    });
+    expect(saved.error).toBeNull();
+    const savedPlan = (saved.data as Array<{
+      status: string;
+      plan_version_id: string | null;
+      plan_version_number: number | null;
+      draft_save_version: number | null;
+    }>)[0];
+    expect(savedPlan).toMatchObject({
+      status: 'saved',
+      plan_version_id: expect.any(String),
+      plan_version_number: 1,
+      draft_save_version: firstMap.save_version,
+    });
+
+    const staleSave = await fx.owner.client.rpc('save_map_plan_v3', {
+      p_map_id: firstMap.map_id,
+      p_draft_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: firstMap.save_version + 1,
+    });
+    expect(staleSave.error).toBeNull();
+    expect(staleSave.data).toEqual([{
+      status: 'conflict', plan_version_id: null, plan_version_number: null, draft_save_version: null,
+    }]);
+
+    const visiblePlan = await fx.viewer.client.from('map_plan_versions')
+      .select('id, map_project_id, plan_version_number, draft_revision_id, draft_save_version, plan')
+      .eq('id', savedPlan.plan_version_id!)
+      .single();
+    expect(visiblePlan.error).toBeNull();
+    expect(visiblePlan.data).toMatchObject({
+      id: savedPlan.plan_version_id,
+      map_project_id: firstMap.map_id,
+      plan_version_number: 1,
+      draft_revision_id: firstMap.draft_revision_id,
+      draft_save_version: firstMap.save_version,
+      plan: planV3,
+    });
+    const hiddenPlan = await fx.outsider.client.from('map_plan_versions')
+      .select('id').eq('id', savedPlan.plan_version_id!);
+    expect(hiddenPlan.error).toBeNull();
+    expect(hiddenPlan.data).toEqual([]);
+    expect((await fx.svc.from('map_plan_versions').update({ plan: { changed: true } })
+      .eq('id', savedPlan.plan_version_id!)).error?.code).toBe('23514');
+
+    const published = await fx.owner.client.rpc('publish_map_revision_v3', {
+      p_map_id: firstMap.map_id,
+      p_draft_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: firstMap.save_version,
+      p_plan_version_id: savedPlan.plan_version_id,
+    });
+    expect(published.error).toBeNull();
+    expect(published.data).toEqual([{
+      status: 'published',
+      published_revision_id: firstMap.draft_revision_id,
+      next_draft_revision_id: expect.any(String),
+      map_version_number: 1,
+    }]);
+    const generated = await fx.svc.from('map_revisions')
+      .select('map_version_number, plan_version_id')
+      .eq('id', firstMap.draft_revision_id)
+      .single();
+    expect(generated.error).toBeNull();
+    expect(generated.data).toEqual({ map_version_number: 1, plan_version_id: savedPlan.plan_version_id });
+
+    const second = await createV3('Other map');
+    expect(second.error).toBeNull();
+    const secondMap = (second.data as CreatedMap[])[0];
+    const crossMapBinding = await fx.owner.client.rpc('publish_map_revision_v3', {
+      p_map_id: secondMap.map_id,
+      p_draft_revision_id: secondMap.draft_revision_id,
+      p_expected_save_version: secondMap.save_version,
+      p_plan_version_id: savedPlan.plan_version_id,
+    });
+    expect(crossMapBinding.error).toBeNull();
+    expect(crossMapBinding.data).toEqual([{
+      status: 'conflict', published_revision_id: null, next_draft_revision_id: null, map_version_number: null,
+    }]);
+  });
+
   it('claims and completes V3 maps idempotently per actor and rejects changed replays or viewers', async () => {
     const key = crypto.randomUUID();
     const claimCreation = (

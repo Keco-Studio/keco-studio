@@ -11,6 +11,10 @@ const repairMigrationPath = path.join(process.cwd(), 'supabase/migrations/202608
 const repairSql = fs.readFileSync(repairMigrationPath, 'utf8');
 const nativeSizesMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260829010000_expand_create_map_v3_native_sizes.sql');
 const nativeSizesSql = fs.readFileSync(nativeSizesMigrationPath, 'utf8');
+const mapPlanVersionsMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260929100000_map_plan_versions.sql');
+const mapPlanVersionsSql = fs.existsSync(mapPlanVersionsMigrationPath)
+  ? fs.readFileSync(mapPlanVersionsMigrationPath, 'utf8')
+  : '';
 const edgeFunctionPath = path.join(process.cwd(), 'supabase/functions/pixellab-map/direct-map.ts');
 const edgeFunctionSource = fs.readFileSync(edgeFunctionPath, 'utf8');
 
@@ -62,6 +66,19 @@ describe('Create Map V3 direct-image migration', () => {
     expect(sql).toMatch(/schema_version in \(1, 2, 3\)/i);
     expect(sql).toMatch(/schema_version in \(2, 3\)[\s\S]+source_document_id is null[\s\S]+source_revision is null/i);
     expect(sql).toMatch(/map_assets_kind_check[\s\S]+terrain[\s\S]+road[\s\S]+object[\s\S]+inpaint[\s\S]+path[\s\S]+obstacle[\s\S]+background[\s\S]+map_image/i);
+  });
+
+  it('persists immutable Plan snapshots separately from generated Map versions', () => {
+    expect(mapPlanVersionsSql).toMatch(/create table public\.map_plan_versions/i);
+    expect(mapPlanVersionsSql).toMatch(/unique \(map_project_id, plan_version_number\)/i);
+    expect(mapPlanVersionsSql).toMatch(/add column if not exists map_version_number bigint/i);
+    expect(mapPlanVersionsSql).toMatch(/add column if not exists plan_version_id uuid/i);
+    expect(mapPlanVersionsSql).toMatch(/create function public\.save_map_plan_v3\(/i);
+    expect(mapPlanVersionsSql).toMatch(/publish_map_revision_v3\([\s\S]*p_plan_version_id uuid/i);
+    expect(mapPlanVersionsSql).toMatch(/create trigger map_plan_versions_immutable/i);
+    expect(mapPlanVersionsSql).toMatch(/alter table public\.map_plan_versions enable row level security/i);
+    expect(mapPlanVersionsSql).toMatch(/grant select on public\.map_plan_versions to authenticated/i);
+    expect(mapPlanVersionsSql).toMatch(/map_version_number is not null[\s\S]*plan_version_id is not null/i);
   });
 
   it('defines a private project-scoped reference registry', () => {
