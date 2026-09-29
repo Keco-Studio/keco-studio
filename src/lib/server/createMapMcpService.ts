@@ -121,6 +121,7 @@ export type CreateMapMcpBackend = {
     saveVersion: number;
     generationId: string;
     planFingerprint: string;
+    planVersionId?: string;
   }): Promise<{
     publishedRevisionId: string;
     nextDraftRevisionId: string;
@@ -657,6 +658,7 @@ function defaultBackend(
         saveVersion: input.saveVersion,
         generationId: input.generationId,
         planFingerprint: input.planFingerprint,
+        planVersionId: input.planVersionId,
       });
       return {
         publishedRevisionId: row.published_revision_id,
@@ -801,6 +803,7 @@ export function createMapMcpService(
       mapId: string;
       revisionId: string;
       saveVersion: number;
+      planVersionId?: string;
     }) {
       try {
         await requireWriter(input.projectId);

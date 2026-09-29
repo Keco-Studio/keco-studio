@@ -1190,13 +1190,18 @@ export function createMapService(supabase: SupabaseClient) {
       saveVersion: number;
       generationId: string;
       planFingerprint: string;
+      planVersionId?: string;
     }) {
-      const { data, error } = await supabase.rpc('prepare_map_generation_v3', {
+      const params = {
         p_map_id: input.mapId,
         p_revision_id: input.revisionId,
         p_expected_save_version: input.saveVersion,
         p_generation_id: input.generationId,
         p_plan_fingerprint: input.planFingerprint,
+        ...(input.planVersionId ? { p_plan_version_id: input.planVersionId } : {}),
+      };
+      const { data, error } = await supabase.rpc('prepare_map_generation_v3', {
+        ...params,
       });
       if (error) throw new CreateMapServiceError(error.code ?? 'prepare_generation_failed', error.message);
       return firstRow<{
@@ -1218,6 +1223,7 @@ export function createMapService(supabase: SupabaseClient) {
       mapId: string;
       revisionId: string;
       saveVersion: number;
+      planVersionId?: string;
     }) {
       return responseJson(await fetch('/api/mcp/create-map', {
         method: 'POST',

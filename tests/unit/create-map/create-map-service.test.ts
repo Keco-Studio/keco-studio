@@ -211,6 +211,53 @@ describe('Create Map browser service', () => {
     }));
   });
 
+  it('sends the selected Plan version when preparing direct map generation', async () => {
+    global.fetch = jest.fn(async () => Response.json({ status: 'planned' })) as typeof fetch;
+    const service = createMapService({} as never);
+
+    await service.prepareMapGeneration({
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '10000000-0000-4000-8000-000000000004',
+    });
+
+    expect((global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1]?.body).toBe(JSON.stringify({
+      action: 'prepare_map_generation',
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '10000000-0000-4000-8000-000000000004',
+    }));
+  });
+
+  it('calls the selection-aware preparation RPC with the exact Plan ID', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{
+        published_revision_id: '10000000-0000-4000-8000-000000000001',
+        next_draft_revision_id: '10000000-0000-4000-8000-000000000002',
+        asset_id: '10000000-0000-4000-8000-000000000003',
+        asset_status: 'planned',
+      }],
+      error: null,
+    }));
+
+    await createMapService({ rpc } as never).prepareGenerationV3({
+      mapId: '10000000-0000-4000-8000-000000000004',
+      revisionId: '10000000-0000-4000-8000-000000000005',
+      saveVersion: 4,
+      generationId: '10000000-0000-4000-8000-000000000006',
+      planFingerprint: 'a'.repeat(64),
+      planVersionId: '10000000-0000-4000-8000-000000000007',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('prepare_map_generation_v3', expect.objectContaining({
+      p_plan_version_id: '10000000-0000-4000-8000-000000000007',
+    }));
+  });
+
   it('loads Map V1 with its bound Plan V1 when a later Plan V2 exists', async () => {
     const planV1 = makeValidMapPlanV3({ name: 'Plan V1' });
     const planV2 = makeValidMapPlanV3({ name: 'Plan V2' });

@@ -129,6 +129,22 @@ describe('POST /api/mcp/create-map', () => {
     expect(service.startGeneration).toHaveBeenCalledWith(input);
   });
 
+  it('requires and forwards the selected Plan version for generation preparation', async () => {
+    const input = {
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      planVersionId: '10000000-0000-4000-8000-000000000007',
+    };
+    service.prepareGeneration.mockResolvedValueOnce({ status: 'planned' });
+
+    const response = await post({ action: 'prepare_map_generation', ...input });
+
+    expect(response.status).toBe(200);
+    expect(service.prepareGeneration).toHaveBeenCalledWith(input);
+  });
+
   it.each([
     ['PROJECT_WRITE_FORBIDDEN', 403],
     ['MAP_NOT_FOUND', 404],

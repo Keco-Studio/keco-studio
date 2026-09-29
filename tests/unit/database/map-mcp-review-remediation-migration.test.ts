@@ -7,6 +7,13 @@ const migrationPath = path.join(
   'supabase/migrations/20260821130000_map_mcp_review_remediation.sql',
 );
 const sql = fs.existsSync(migrationPath) ? fs.readFileSync(migrationPath, 'utf8') : '';
+const selectedPlanMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260929110000_prepare_map_generation_selected_plan.sql',
+);
+const selectedPlanSql = fs.existsSync(selectedPlanMigrationPath)
+  ? fs.readFileSync(selectedPlanMigrationPath, 'utf8')
+  : '';
 
 describe('Create Map MCP review remediation migration', () => {
   it('claims normalized intent before planning and completes it atomically', () => {
@@ -39,6 +46,11 @@ describe('Create Map MCP review remediation migration', () => {
     expect(sql).toMatch(/v_revision\.status = 'generating'/i);
     expect(sql).toMatch(/parent_revision_id = p_revision_id/i);
     expect(sql).toMatch(/not exists[\s\S]+from public\.map_assets/i);
+  });
+
+  it('binds a selected Plan version when preparation freezes a Draft', () => {
+    expect(selectedPlanSql).toMatch(/prepare_map_generation_v3\([\s\S]*p_plan_version_id uuid/i);
+    expect(selectedPlanSql).toMatch(/publish_map_revision_v3\([\s\S]*p_plan_version_id/i);
   });
 
   it('keeps tables private and grants only RPC execution to authenticated users', () => {

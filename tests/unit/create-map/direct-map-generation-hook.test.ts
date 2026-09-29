@@ -225,7 +225,9 @@ describe('useDirectMapGeneration preparation guards', () => {
 
     await state.latest.generate();
 
-    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      planVersionId: 'plan-v1',
+    }));
     expect(mockService.startMapGeneration).toHaveBeenCalledTimes(1);
     expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
       confirmationToken: 'signed-confirmation',

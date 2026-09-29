@@ -61,6 +61,7 @@ const PrepareGeneration = z.object({
   mapId: Uuid,
   revisionId: Uuid,
   saveVersion: z.number().int().nonnegative(),
+  planVersionId: Uuid.optional(),
 }).strict();
 const StartGeneration = z.object({
   action: z.literal('start_map_generation'),

@@ -579,6 +579,7 @@ export function useDirectMapGeneration({
         mapId: draftIdentity.mapId,
         revisionId: draftIdentity.revisionId,
         saveVersion: draftIdentity.saveVersion,
+        planVersionId: savedPlanSelection.id,
       });
       const nextTarget: DirectMapGenerationTarget = {
         projectId,

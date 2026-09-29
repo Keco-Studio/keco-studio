@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CreateMapWorkbench } from '@/features/create-map/CreateMapWorkbench';
+import { savedPlanResponseIsCurrent } from '@/features/create-map/DirectMapWorkbench';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   __esModule: true,
@@ -83,6 +84,34 @@ jest.mock('@/features/create-map/services/createMapService', () => ({
 }));
 
 describe('Create Map V3 direct workbench', () => {
+  it('discards an older Save plan response after the Draft changes', () => {
+    const identity = {
+      mapId: '10000000-0000-4000-8000-000000000001',
+      revisionId: '10000000-0000-4000-8000-000000000002',
+      revisionNumber: 1,
+      saveVersion: 3,
+    };
+    const saved = {
+      id: '10000000-0000-4000-8000-000000000003',
+      versionNumber: 1,
+      draftRevisionId: identity.revisionId,
+      draftSaveVersion: identity.saveVersion,
+    };
+
+    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
+      identity,
+      payloadKey: 'draft-a',
+    })).toBe(true);
+    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
+      identity,
+      payloadKey: 'draft-b',
+    })).toBe(false);
+    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
+      identity: { ...identity, saveVersion: 4 },
+      payloadKey: 'draft-a',
+    })).toBe(false);
+  });
+
   it('renders the Map Generator shell with browse and plan controls', () => {
     const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
