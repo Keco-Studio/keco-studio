@@ -218,7 +218,7 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect(invalidSave.error?.code).toBe('22023');
   });
 
-  it('saves immutable V3 Plans independently and binds generated Maps to the exact Plan', async () => {
+  it('binds Plan snapshots during preparation and assigns Map V1 only when its image is ready', async () => {
     const createV3 = (name: string) => fx.owner.client.rpc('create_map_project_v3', {
       p_project_id: fx.projectId,
       p_name: name,
@@ -233,6 +233,16 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     const first = await createV3('Plan snapshot map');
     expect(first.error).toBeNull();
     const firstMap = (first.data as CreatedMap[])[0];
+    const nullSave = await fx.owner.client.rpc('save_map_plan_v3', {
+      p_map_id: firstMap.map_id,
+      p_draft_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: null,
+    });
+    expect(nullSave.error).toBeNull();
+    expect(nullSave.data).toEqual([{
+      status: 'conflict', plan_version_id: null, plan_version_number: null, draft_save_version: null,
+    }]);
+
     const saved = await fx.owner.client.rpc('save_map_plan_v3', {
       p_map_id: firstMap.map_id,
       p_draft_revision_id: firstMap.draft_revision_id,
@@ -251,6 +261,14 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
       plan_version_number: 1,
       draft_save_version: firstMap.save_version,
     });
+
+    const repeatedSave = await fx.owner.client.rpc('save_map_plan_v3', {
+      p_map_id: firstMap.map_id,
+      p_draft_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: firstMap.save_version,
+    });
+    expect(repeatedSave.error).toBeNull();
+    expect(repeatedSave.data).toEqual([savedPlan]);
 
     const staleSave = await fx.owner.client.rpc('save_map_plan_v3', {
       p_map_id: firstMap.map_id,
@@ -282,25 +300,16 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect((await fx.svc.from('map_plan_versions').update({ plan: { changed: true } })
       .eq('id', savedPlan.plan_version_id!)).error?.code).toBe('23514');
 
-    const published = await fx.owner.client.rpc('publish_map_revision_v3', {
+    const nullPublish = await fx.owner.client.rpc('publish_map_revision_v3', {
       p_map_id: firstMap.map_id,
       p_draft_revision_id: firstMap.draft_revision_id,
-      p_expected_save_version: firstMap.save_version,
+      p_expected_save_version: null,
       p_plan_version_id: savedPlan.plan_version_id,
     });
-    expect(published.error).toBeNull();
-    expect(published.data).toEqual([{
-      status: 'published',
-      published_revision_id: firstMap.draft_revision_id,
-      next_draft_revision_id: expect.any(String),
-      map_version_number: 1,
+    expect(nullPublish.error).toBeNull();
+    expect(nullPublish.data).toEqual([{
+      status: 'conflict', published_revision_id: null, next_draft_revision_id: null, map_version_number: null,
     }]);
-    const generated = await fx.svc.from('map_revisions')
-      .select('map_version_number, plan_version_id')
-      .eq('id', firstMap.draft_revision_id)
-      .single();
-    expect(generated.error).toBeNull();
-    expect(generated.data).toEqual({ map_version_number: 1, plan_version_id: savedPlan.plan_version_id });
 
     const second = await createV3('Other map');
     expect(second.error).toBeNull();
@@ -315,6 +324,101 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect(crossMapBinding.data).toEqual([{
       status: 'conflict', published_revision_id: null, next_draft_revision_id: null, map_version_number: null,
     }]);
+
+    const prepared = await fx.owner.client.rpc('prepare_map_generation_v3', {
+      p_map_id: firstMap.map_id,
+      p_revision_id: firstMap.draft_revision_id,
+      p_expected_save_version: firstMap.save_version,
+      p_generation_id: crypto.randomUUID(),
+      p_plan_fingerprint: 'a'.repeat(64),
+    });
+    expect(prepared.error).toBeNull();
+    const preparedRow = (prepared.data as Array<{
+      published_revision_id: string;
+      next_draft_revision_id: string;
+      asset_id: string;
+      asset_status: string;
+    }>)[0];
+    expect(preparedRow).toMatchObject({
+      published_revision_id: firstMap.draft_revision_id,
+      next_draft_revision_id: expect.any(String),
+      asset_id: expect.any(String),
+      asset_status: 'planned',
+    });
+
+    const generated = () => fx.svc.from('map_revisions')
+      .select('status, map_version_number, plan_version_id')
+      .eq('id', firstMap.draft_revision_id)
+      .single();
+    expect((await generated()).data).toEqual({
+      status: 'generating', map_version_number: null, plan_version_id: savedPlan.plan_version_id,
+    });
+
+    const transition = (from: string, to: string, ready = false) => fx.svc.rpc('transition_map_asset', {
+      p_asset_id: preparedRow.asset_id,
+      p_expected_status: from,
+      p_next_status: to,
+      p_provider_operation: 'test',
+      p_provider_transport: 'rest',
+      p_provider_job_id: 'compatibility-path',
+      p_last_error_code: to === 'failed' ? 'provider_failed' : null,
+      p_storage_path: ready
+        ? `${fx.projectId}/${firstMap.map_id}/${firstMap.draft_revision_id}/map-image/${'b'.repeat(64)}.png`
+        : null,
+      p_sha256: ready ? 'b'.repeat(64) : null,
+      p_width: ready ? 512 : null,
+      p_height: ready ? 512 : null,
+      p_has_transparency: ready ? false : null,
+      p_metadata: {},
+    });
+    expect((await transition('planned', 'queued')).error).toBeNull();
+    expect((await transition('queued', 'generating')).error).toBeNull();
+    expect((await transition('generating', 'failed')).error).toBeNull();
+    expect((await generated()).data).toEqual({
+      status: 'failed', map_version_number: null, plan_version_id: savedPlan.plan_version_id,
+    });
+    expect((await transition('failed', 'queued')).error).toBeNull();
+    expect((await transition('queued', 'generating')).error).toBeNull();
+    expect((await transition('generating', 'ready', true)).error).toBeNull();
+    expect((await generated()).data).toEqual({
+      status: 'ready', map_version_number: 1, plan_version_id: savedPlan.plan_version_id,
+    });
+
+    const producerMapResult = await createV3('Generated producer map');
+    expect(producerMapResult.error).toBeNull();
+    const producerMap = (producerMapResult.data as CreatedMap[])[0];
+    const producerRevisionId = crypto.randomUUID();
+    const producerInsert = await fx.svc.from('map_revisions').insert({
+      id: producerRevisionId,
+      map_project_id: producerMap.map_id,
+      revision_number: 2,
+      save_version: 0,
+      parent_revision_id: producerMap.draft_revision_id,
+      source_document_id: null,
+      source_document_updated_at: null,
+      source_epoch: null,
+      source_revision: null,
+      schema_version: 3,
+      plan: planV3,
+      scene: sceneV3,
+      status: 'generating',
+      created_by: fx.owner.id,
+    });
+    expect(producerInsert.error).toBeNull();
+    const producerRevision = await fx.svc.from('map_revisions')
+      .select('map_version_number, plan_version_id')
+      .eq('id', producerRevisionId)
+      .single();
+    expect(producerRevision.data).toEqual({ map_version_number: null, plan_version_id: expect.any(String) });
+    const producerPlan = await fx.svc.from('map_plan_versions')
+      .select('draft_revision_id, draft_save_version, plan')
+      .eq('id', producerRevision.data!.plan_version_id)
+      .single();
+    expect(producerPlan.data).toEqual({
+      draft_revision_id: producerRevisionId,
+      draft_save_version: 0,
+      plan: planV3,
+    });
   });
 
   it('claims and completes V3 maps idempotently per actor and rejects changed replays or viewers', async () => {

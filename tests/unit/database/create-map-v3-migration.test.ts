@@ -75,10 +75,15 @@ describe('Create Map V3 direct-image migration', () => {
     expect(mapPlanVersionsSql).toMatch(/add column if not exists plan_version_id uuid/i);
     expect(mapPlanVersionsSql).toMatch(/create function public\.save_map_plan_v3\(/i);
     expect(mapPlanVersionsSql).toMatch(/publish_map_revision_v3\([\s\S]*p_plan_version_id uuid/i);
+    expect(mapPlanVersionsSql).toMatch(/unique \(map_project_id, draft_revision_id, draft_save_version\)/i);
+    expect(mapPlanVersionsSql).toMatch(/revision\.status = 'ready'/i);
+    expect(mapPlanVersionsSql).toMatch(/create or replace function public\.transition_map_asset\(/i);
+    expect(mapPlanVersionsSql).toMatch(/create trigger map_revisions_bind_generated_v3_plan/i);
     expect(mapPlanVersionsSql).toMatch(/create trigger map_plan_versions_immutable/i);
     expect(mapPlanVersionsSql).toMatch(/alter table public\.map_plan_versions enable row level security/i);
     expect(mapPlanVersionsSql).toMatch(/grant select on public\.map_plan_versions to authenticated/i);
-    expect(mapPlanVersionsSql).toMatch(/map_version_number is not null[\s\S]*plan_version_id is not null/i);
+    expect(mapPlanVersionsSql).toMatch(/status = 'ready'[\s\S]*map_version_number is not null/i);
+    expect(mapPlanVersionsSql).toMatch(/p_expected_save_version is null/i);
   });
 
   it('defines a private project-scoped reference registry', () => {
