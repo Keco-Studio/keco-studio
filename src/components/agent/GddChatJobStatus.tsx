@@ -64,6 +64,7 @@ export function GddChatJobStatus({ initial }: { initial: GddChatJob }) {
   const pending = gddChatJobHasPendingWork(job);
   return <div className={`${styles.bubble} ${styles.assistant}`} data-testid="generation-job-status" aria-live="polite">
     <div>GDD generation: {job.status}{job.phase && job.phase !== job.status ? ` (${job.phase})` : ''}</div>
+    <div>Job: {job.jobId}</div>
     {job.document && <a href={job.document.url}>{job.document.name}</a>}
     {job.resources?.map((resource, index) => <div key={`resource-${index}`}>{resource.kind}: {resource.status}</div>)}
     {job.maps?.map((map, index) => <div key={`map-${index}`}>{map.title}: {map.status}</div>)}
