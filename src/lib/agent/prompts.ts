@@ -2,7 +2,7 @@
  * System prompt template for the Keco Assistant agent.
  */
 
-import type { UserRole } from './types';
+import type { AgentWorkspace, UserRole } from './types';
 
 export interface SystemPromptContext {
   projectName?: string;
@@ -13,6 +13,7 @@ export interface SystemPromptContext {
   currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
+  workspace?: AgentWorkspace;
   userRole?: UserRole;
   gameDesignSystem?: {
     title?: string;
@@ -187,12 +188,15 @@ DOCUMENT ATTACHMENT ROUTING:
     tools. Prefer resolving by fresh name lookup; do not reuse a deleted documentId
     from earlier turns.
 
+SCRIPT TARGETING: When the workspace is Script and the user asks to edit the currently open Script, start with query_script_lines for dialogue text changes or read_story_graph for structural changes in the active library. Use the query_script_lines blockId UUID with edit_script_dialogue and provide both actionText and dialogue for the complete block. Use propose_story_graph_edit only for structural graph changes. Do not enumerate the project or use semantic search for this task.
+
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}
 - Project ID: ${ctx.projectId ?? '(none)'}
 - Current folder: ${ctx.currentFolderName ? `${ctx.currentFolderName} (${ctx.currentFolderId})` : ctx.currentFolderId ?? '(none)'}
 - Current document: ${ctx.currentDocumentName ? `${ctx.currentDocumentName} (id: ${ctx.currentDocumentId})` : ctx.currentDocumentId ? `(id: ${ctx.currentDocumentId})` : '(none)'}
 - Active library: ${ctx.currentLibraryName ? `${ctx.currentLibraryName}${ctx.currentLibraryId ? ` (id: ${ctx.currentLibraryId})` : ''}` : '(none — ask user which library)'}
+- Workspace: ${ctx.workspace ?? 'studio'}
 - User role: ${ctx.userRole ?? '(none)'}`;
 
   const sections = [prompt];

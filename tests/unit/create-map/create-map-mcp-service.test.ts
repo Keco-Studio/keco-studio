@@ -173,6 +173,51 @@ describe('Create Map MCP service', () => {
     expect(order).toEqual(['claim', 'plan']);
   });
 
+  it('rejects an in-place map resize because image and collision bindings are immutable', async () => {
+    const domain = backend();
+    const resizedPlan = structuredClone(plan);
+    resizedPlan.map = { width: 384, height: 384 };
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+    });
+
+    await expect(service.updateDraft({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      plan: resizedPlan,
+      scene: { ...scene, size: { width: 384, height: 384 } },
+    })).rejects.toMatchObject({
+      code: 'MAP_RESIZE_REQUIRES_NEW_DRAFT',
+      message: expect.stringMatching(/new map draft|resize/i),
+    });
+    expect(domain.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('rejects managed reference changes through the MCP update path', async () => {
+    const domain = backend();
+    const changedPlan = structuredClone(plan);
+    changedPlan.styleReference = {
+      assetId: IDS.assetId,
+      sha256: 'b'.repeat(64),
+      copy: ['outline'],
+    };
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+    });
+
+    await expect(service.updateDraft({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      plan: changedPlan,
+      scene,
+    })).rejects.toMatchObject({ code: 'MAP_MANAGED_FIELDS_LOCKED' });
+    expect(domain.updateDraft).not.toHaveBeenCalled();
+  });
+
   it('returns actionable validation guidance and releases an unsafe draft claim', async () => {
     const domain = backend();
     domain.createDraft.mockRejectedValueOnce({ code: 'map_description_unsafe' });

@@ -82,6 +82,31 @@ it('preserves omitted scene and plan fields for a partial edit', async () => {
   }));
 });
 
+it('updates only the generation seed while retaining provider settings', async () => {
+  const { workspace, updateDraft, input } = setup();
+  const prepared = await updateMapDraftTool.prepareConfirmation!({
+    mapId: input.mapId, revisionId: input.revisionId,
+    saveVersion: input.saveVersion, expectedFingerprint: input.expectedFingerprint,
+    plan: { generation: { seed: 123 } },
+  }, ctx);
+  if (!prepared.success) throw new Error(prepared.error);
+  expect((await updateMapDraftTool.execute(prepared.args, ctx)).success).toBe(true);
+  expect(updateDraft).toHaveBeenCalledWith(expect.objectContaining({
+    plan: { ...workspace.plan, generation: { ...workspace.plan.generation, seed: 123 } },
+  }));
+});
+
+it('explains that resizing needs a new draft before scene validation', async () => {
+  const { input, updateDraft } = setup();
+  const prepared = await updateMapDraftTool.prepareConfirmation!({
+    mapId: input.mapId, revisionId: input.revisionId,
+    saveVersion: input.saveVersion, expectedFingerprint: input.expectedFingerprint,
+    plan: { map: { width: 384, height: 384 } },
+  }, ctx);
+  expect(prepared).toMatchObject({ success: false, error: expect.stringMatching(/new map draft/i) });
+  expect(updateDraft).not.toHaveBeenCalled();
+});
+
 it('rejects unapproved calls, foreign maps, and viewer preparation', async () => {
   const { readMap, updateDraft, input } = setup();
   expect((await updateMapDraftTool.execute(input, ctx)).success).toBe(false);

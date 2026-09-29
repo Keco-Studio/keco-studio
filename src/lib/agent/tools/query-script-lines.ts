@@ -8,6 +8,8 @@
 import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { getLibraryAssets } from '../data-access';
+import { buildScriptDialogueBlocks } from '@/lib/script-system/scriptDialogueBlocks';
+import { sortAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import {
   errorFromLookupResult,
@@ -77,9 +79,17 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     return v == null ? '' : String(v);
   };
 
-  const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
+  const assets = sortAssetsForUiRow(await getLibraryAssets(ctx.supabase, library.id, ctx));
+  const blocks = buildScriptDialogueBlocks(assets, {
+    typeKey: fieldIdByColumn.get('Type'),
+    nameKey: fieldIdByColumn.get('Name'),
+    contentKey: fieldIdByColumn.get('Content'),
+  });
+  const blockByRowIndex = new Map(blocks.flatMap((block) => (
+    block.rowIndexes.map((index) => [index, block] as const)
+  )));
 
-  const lines = assets.map((asset) => {
+  const lines = assets.map((asset, index) => {
     const values = asset.propertyValues ?? {};
     const options: Array<{ text: string; jump: string; commands: string }> = [];
     for (const i of getScriptOptionIndexes(Array.from(fieldIdByColumn.keys()))) {
@@ -89,7 +99,14 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       if (text || jump || commands) options.push({ text, jump, commands });
     }
     const typeRaw = get(values, 'Type');
+    const block = blockByRowIndex.get(index);
     return {
+      // Persisted asset UUIDs let a follow-up write target the exact Script row
+      // without relying on semantic search or an ambiguous label.
+      id: asset.id,
+      assetId: asset.id,
+      nodeId: asset.id,
+      ...(block ? { blockId: block.id, actionText: block.action, dialogue: block.dialogue } : {}),
       label: get(values, 'Label'),
       type: typeRaw === '' ? 0 : Number(typeRaw),
       name: get(values, 'Name'),
@@ -115,7 +132,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const queryScriptLines: AgentTool = {
   name: 'query_script_lines',
   description:
-    'Query the script lines and branch structure of a script library. Returns structured lines with label, type, speaker name, content, and options. libraryName defaults to the active library from page context when omitted.',
+    'Query the script lines and branch structure of a script library. Returns persisted nodeId UUIDs and real merged dialogue blockId UUIDs where editable. Use blockId plus the complete actionText and dialogue values with edit_script_dialogue; preserve whichever field the user did not change. libraryName defaults to the active library from page context when omitted.',
   category: 'read',
   confirmationMode: 'pre_execute', // unused for read tools
   parameters: {

@@ -10,16 +10,16 @@ import { requireProjectContext } from '../workspace';
 import { mapResult, mapService, mapToolError } from './map-tool-support';
 
 const fingerprintSchema = z.string().regex(/^[a-f0-9]{64}$/);
-const inputFields = z.object({
+const identitySchema = z.object({
   mapId: z.string().uuid(), revisionId: z.string().uuid(),
   saveVersion: z.number().int().nonnegative(),
   expectedFingerprint: fingerprintSchema,
-  plan: z.record(z.unknown()).optional(), scene: z.record(z.unknown()).optional(),
+});
+const inputSchema = identitySchema.extend({ plan: z.record(z.unknown()), scene: z.record(z.unknown()).optional() }).strict()
+  .refine((input) => Object.keys(input.plan).length > 0, 'Plan changes are required.');
+const sealedSchema = identitySchema.extend({
+  plan: z.unknown(), scene: z.unknown(), projectId: z.string().uuid(), confirmedOverwrite: z.literal(true),
 }).strict();
-const inputSchema = inputFields.refine((input) => input.plan !== undefined || input.scene !== undefined, 'Plan or scene changes are required.');
-const sealedSchema = inputFields.extend({
-  projectId: z.string().uuid(), confirmedOverwrite: z.literal(true),
-}).strict().refine((input) => input.plan !== undefined && input.scene !== undefined, 'Confirmed map content is incomplete.');
 
 export function mapContentFingerprint(plan: MapPlanV3, scene: MapSceneV3): string {
   return createHash('sha256').update(JSON.stringify({ plan, scene })).digest('hex');
@@ -33,16 +33,37 @@ function validatedContent(planInput: unknown, sceneInput: unknown) {
   return { plan: plan.data, scene: scene.data };
 }
 
-function managedFieldsChanged(current: { plan: MapPlanV3; scene: MapSceneV3 }, next: { plan: MapPlanV3; scene: MapSceneV3 }) {
+function mergeMapContent(current: { plan: MapPlanV3; scene: MapSceneV3 }, planPatch: Record<string, unknown>, scenePatch?: Record<string, unknown>) {
+  const requestedMap = planPatch.map;
+  if (requestedMap && typeof requestedMap === 'object' && !Array.isArray(requestedMap)) {
+    const dimensions = requestedMap as { width?: unknown; height?: unknown };
+    if (dimensions.width !== undefined && dimensions.width !== current.plan.map.width
+      || dimensions.height !== undefined && dimensions.height !== current.plan.map.height) {
+      throw Object.assign(new Error('Map size changes require a new map draft.'), { code: 'MAP_RESIZE_REQUIRES_NEW_DRAFT' });
+    }
+  }
+  const { generation, map: _map, ...planFields } = planPatch;
+  const generationPatch = generation && typeof generation === 'object' && !Array.isArray(generation)
+    ? generation as Record<string, unknown>
+    : undefined;
+  return validatedContent({ ...current.plan, ...planFields,
+    generation: generationPatch ? { ...current.plan.generation, ...generationPatch } : current.plan.generation,
+    map: current.plan.map,
+  }, { ...current.scene, ...(scenePatch ?? {}) });
+}
+
+function unsupportedContentChanged(current: { plan: MapPlanV3; scene: MapSceneV3 }, next: { plan: MapPlanV3; scene: MapSceneV3 }): boolean {
   return JSON.stringify(next.plan.references) !== JSON.stringify(current.plan.references)
     || JSON.stringify(next.plan.styleReference) !== JSON.stringify(current.plan.styleReference)
-    || JSON.stringify(next.scene.mapImage) !== JSON.stringify(current.scene.mapImage)
-    || JSON.stringify(next.scene.collisionGrid) !== JSON.stringify(current.scene.collisionGrid);
+    || JSON.stringify(next.plan.map) !== JSON.stringify(current.plan.map)
+    || JSON.stringify(next.scene) !== JSON.stringify(current.scene)
+    || next.plan.schemaVersion !== current.plan.schemaVersion
+    || JSON.stringify({ ...next.plan.generation, seed: null }) !== JSON.stringify({ ...current.plan.generation, seed: null });
 }
 
 export const updateMapDraftTool: AgentTool = {
   name: 'update_map_draft',
-  description: 'Update fields in a saved V3 map plan or scene after reviewing read_map_detail. Omitted fields retain their saved values. Requires confirmation even in Auto mode. Reference assets, generated images, and collision grids use their dedicated workflows.',
+  description: 'Update the name, summary, description, or generation seed in a saved V3 map plan after read_map_detail. Omitted fields retain their saved values. Dimensions require a new map draft. Requires confirmation even in Auto mode.',
   category: 'write', confirmationMode: 'pre_execute', confirmationPolicy: 'always', requiredPermission: 'editor',
   parameters: {
     type: 'object', properties: {
@@ -50,11 +71,19 @@ export const updateMapDraftTool: AgentTool = {
       revisionId: { type: 'string', format: 'uuid' },
       saveVersion: { type: 'integer', minimum: 0 },
       expectedFingerprint: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-      plan: { type: 'object', description: 'Plan fields to replace, such as name, summary, or description.' },
-      scene: { type: 'object', description: 'Scene fields to replace; omitted collision grid and image remain saved.' },
+      plan: { type: 'object', additionalProperties: false, properties: {
+        name: { type: 'string', minLength: 1, maxLength: 160 },
+        summary: { type: 'string', minLength: 1, maxLength: 500 },
+        description: { type: 'string', minLength: 1, maxLength: 2000 },
+        generation: { type: 'object', additionalProperties: false, properties: {
+          seed: { type: ['integer', 'null'], minimum: 0 },
+        }, required: ['seed'] },
+        map: { type: 'object', additionalProperties: false, description: 'Only use to request a size change; this returns instructions to create a new draft.', properties: {
+          width: { type: 'integer' }, height: { type: 'integer' },
+        } },
+      } },
     },
-    required: ['mapId', 'revisionId', 'saveVersion', 'expectedFingerprint'],
-    anyOf: [{ required: ['plan'] }, { required: ['scene'] }],
+    required: ['mapId', 'revisionId', 'saveVersion', 'expectedFingerprint', 'plan'],
     additionalProperties: false,
   },
   async prepareConfirmation(params, ctx) {
@@ -68,9 +97,9 @@ export const updateMapDraftTool: AgentTool = {
         || mapContentFingerprint(map.plan, map.scene) !== input.expectedFingerprint) {
         return { success: false, error: 'The map changed. Read its latest detail before requesting approval.' };
       }
-      const content = validatedContent({ ...map.plan, ...input.plan }, { ...map.scene, ...input.scene });
-      if (managedFieldsChanged(map, content)) {
-        return { success: false, error: 'References, generated images, and collision grids require their dedicated map workflows.' };
+      const content = mergeMapContent(map, input.plan, input.scene);
+      if (unsupportedContentChanged(map, content)) {
+        return { success: false, error: 'References, generated images, collision grids, and other managed map fields require their dedicated workflows.' };
       }
       return {
         success: true,
@@ -98,8 +127,8 @@ export const updateMapDraftTool: AgentTool = {
         return { success: false, error: 'The map changed after approval. Read its latest detail and confirm again.' };
       }
       const content = validatedContent(input.plan, input.scene);
-      if (managedFieldsChanged(map, content)) {
-        return { success: false, error: 'References, generated images, and collision grids require their dedicated map workflows.' };
+      if (unsupportedContentChanged(map, content)) {
+        return { success: false, error: 'Confirmed map content contains unsupported changes. Read its latest detail and confirm again.' };
       }
       const saved = await service.updateDraft({
         projectId, mapId: input.mapId, revisionId: input.revisionId,

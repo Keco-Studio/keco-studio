@@ -329,7 +329,7 @@ export function registerMapTools(
     }).strict();
     register(
       "update_map_draft",
-      "Update a V3 map draft using optimistic saveVersion concurrency.",
+      "Update text and other non-dimensional V3 map draft fields using optimistic saveVersion concurrency. Map dimensions are bound to the generated image and collision grid; a size change cannot be applied in place and must start a new map draft with create_map_draft.",
       updateSchema,
       { ...writeAnnotations, idempotentHint: true },
     );

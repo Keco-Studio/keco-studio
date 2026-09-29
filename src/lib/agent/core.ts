@@ -255,6 +255,7 @@ export async function buildAgentSystemContext(
       currentDocumentName: ctx.currentDocumentName,
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
+      workspace: ctx.workspace,
       userRole: ctx.userRole,
       gameDesignSystem,
       artStyleContext,
