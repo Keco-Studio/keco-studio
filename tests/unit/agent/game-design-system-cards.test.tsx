@@ -3,8 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { mapHistoryMessagesToChatItems } from '@/components/agent/historyMessageMapper';
 import type { ChatItem } from '@/components/agent/types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 jest.mock('@/components/agent/AssistantMarkdown', () => ({ AssistantMarkdown: () => null }));
+jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({ auth: { getSession: jest.fn() } }) }));
 
 const warning = 'Professional GDD generation may automatically submit up to three paid map images.';
 
@@ -35,6 +37,19 @@ describe('GDS generation cards', () => {
     const history = mapHistoryMessagesToChatItems([{ id: 'old', role: 'tool', content: { name: 'get_generation_status', content: JSON.stringify({ success: true, displayHint: 'text', data }) } }]);
     expect(renderToStaticMarkup(<ChatMessage item={history[0]} streaming={false} onDecision={jest.fn()} />)).toContain('generation-job-status');
     expect(renderToStaticMarkup(<ChatMessage item={{ ...item, toolCall: { ...item.toolCall!, status: 'failure' } }} streaming={false} onDecision={jest.fn()} />)).toBe('');
+  });
+
+  it('restores a GDD job from history as an automatically updating card', () => {
+    const data = { jobType: 'gdd', jobId: '10000000-0000-4000-8000-000000000005', status: 'queued' };
+    const history = mapHistoryMessagesToChatItems([{ id: 'old', role: 'tool', content: {
+      name: 'generate_gdd', content: JSON.stringify({ success: true, data }),
+    } }]);
+    const client = new QueryClient();
+    const markup = renderToStaticMarkup(<QueryClientProvider client={client}>
+      <ChatMessage item={history[0]} streaming={false} onDecision={jest.fn()} />
+    </QueryClientProvider>);
+    expect(markup).toContain('Updating automatically');
+    expect(markup).toContain('generation-job-status');
   });
 
   it.each([null, {}, { jobType: 'gdd', jobId: {}, status: 'queued' }, { jobType: 'other', jobId: 'a', status: 'queued' }])('does not render malformed generation status %#', (data) => {

@@ -382,12 +382,11 @@ describe('one-shot job status', () => {
     expect(wakeQueuedGddJob).not.toHaveBeenCalled();
   });
 
-  it('passes the queued GDD retry time to the background wake guard', async () => {
+  it('waits for a queued GDD retry instead of dispatching it on every poll', async () => {
     tables.gdd_generation_jobs[0].available_at = '2999-01-01T00:00:00.000Z';
-    await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
-    expect(wakeQueuedGddJob).toHaveBeenCalledWith({
-      status: 'queued', availableAt: '2999-01-01T00:00:00.000Z',
-    });
+    const result = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(result.data).toMatchObject({ workerWake: 'waiting_for_retry' });
+    expect(wakeQueuedGddJob).not.toHaveBeenCalled();
   });
 
   it('reports a failed worker dispatch and does not call a resumed phase unstarted', async () => {
@@ -434,6 +433,16 @@ describe('one-shot job status', () => {
     const result = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
     expect(result.data).toMatchObject({ resourceWake: 'failed', mapWake: 'scheduled' });
     expect(wakeQueuedGddJob).toHaveBeenCalledWith({ status: 'queued', availableAt: tables.gdd_map_artifacts[0].available_at }, 'map');
+  });
+
+  it('does not repeatedly schedule a child retry before its available time', async () => {
+    tables.gdd_generation_jobs[0] = { ...tables.gdd_generation_jobs[0], status: 'completed', phase: 'completed',
+      output_document_id: id(90), output_document_name: 'Tactics GDD' };
+    tables.gdd_resource_jobs = [{ id: id(91), gdd_generation_job_id: jobId, kind: 'tables', status: 'queued',
+      available_at: '2999-01-01T00:00:00.000Z' }];
+    const result = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(result.data).toMatchObject({ resourceWake: 'waiting_for_retry' });
+    expect(wakeQueuedGddJob).not.toHaveBeenCalled();
   });
 });
 

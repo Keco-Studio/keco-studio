@@ -2,7 +2,7 @@ import type { AgentTool } from '../types';
 
 export const generateGddTool: AgentTool = {
   name: 'generate_gdd',
-  description: 'Enqueue a GDD for an explicit project ID using its currently pinned Game Design System version and dispatch the background worker. Requires target editor/admin and always confirms, including Auto. Professional mode may automatically submit up to three paid map images. Returns the job and workerWake result immediately; use get_generation_status for a later status check.',
+  description: 'Enqueue a GDD for an explicit project ID using its currently pinned Game Design System version and dispatch the background worker. Requires target editor/admin and always confirms, including Auto. Professional mode may automatically submit up to three paid map images. Returns the job and workerWake result immediately. The chat job card polls automatically until the GDD and child resources finish; do not ask the user to request another status check.',
   category: 'write', permissionScope: 'explicit-project', requiredPermission: 'editor',
   confirmationMode: 'pre_execute', confirmationPolicy: 'always',
   parameters: { type: 'object', additionalProperties: false, properties: {
