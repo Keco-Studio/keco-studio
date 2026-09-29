@@ -39,6 +39,7 @@ import {
   createMapService,
   type MapDraftIdentity,
   type MapReferenceRecord,
+  type MapVersionWorkspaceV3,
   type SavedMapSummary,
 } from './services/createMapService';
 import {
@@ -115,7 +116,9 @@ export function DirectMapWorkbench() {
   const [planDetailsOpen, setPlanDetailsOpen] = useState(false);
   const [savedPlanSelection, setSavedPlanSelection] = useState<SavedPlanSelection | null>(null);
   const [planSavePending, setPlanSavePending] = useState(false);
+  const [historicalWorkspace, setHistoricalWorkspace] = useState<MapVersionWorkspaceV3 | null>(null);
   const openRequestEpoch = useRef(0);
+  const historicalSelectionEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
   const openedRequestedMapId = useRef<string | null>(null);
   const previousGenerationPhase = useRef<string>('idle');
@@ -143,10 +146,9 @@ export function DirectMapWorkbench() {
     onSceneMaterialized: setScene,
   });
   const validation = useMemo(() => validateMapPlanV3(plan), [plan]);
-  const issues = validation.success === false ? validation.issues : [];
   const busy = operation !== 'idle' || planSavePending || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
-  const canGenerate = !readOnly && Boolean(draft.identity) && validation.success && draft.isValid
+  const canGenerate = !readOnly && !historicalWorkspace && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && hasCurrentSavedPlan && !busy;
 
   useEffect(() => {
@@ -215,15 +217,16 @@ export function DirectMapWorkbench() {
   }, [toggleSourcePanel]);
 
   const changePlan = useCallback((nextPlan: MapPlanV3) => {
+    if (historicalWorkspace) return;
     if (scene.size.width !== nextPlan.map.width || scene.size.height !== nextPlan.map.height) {
       setScene(createEmptyMapSceneV3(nextPlan));
       generation.reset();
     }
     setPlan(nextPlan);
-  }, [generation, scene.size.height, scene.size.width]);
+  }, [generation, historicalWorkspace, scene.size.height, scene.size.width]);
 
   const savePlan = useCallback(async () => {
-    if (readOnly || busy || planSaveActive.current) return;
+    if (readOnly || historicalWorkspace || busy || planSaveActive.current) return;
     planSaveActive.current = true;
     const requestEpoch = ++planSaveEpoch.current;
     const requestPayloadKey = draftPayloadKey;
@@ -253,7 +256,7 @@ export function DirectMapWorkbench() {
         setPlanSavePending(false);
       }
     }
-  }, [busy, draft, draftPayloadKey, plan, readOnly, service]);
+  }, [busy, draft, draftPayloadKey, historicalWorkspace, plan, readOnly, service]);
 
   const handleProjectChange = (nextProjectId: string) => {
     if (nextProjectId === projectId) return;
@@ -267,6 +270,7 @@ export function DirectMapWorkbench() {
     setOpeningMapId(null);
     setError(null);
     setChatMessages([]);
+    setHistoricalWorkspace(null);
     setViewMode('browse');
   };
 
@@ -276,7 +280,7 @@ export function DirectMapWorkbench() {
   }, []);
 
   const enterCreateDetail = useCallback(() => {
-    if (readOnly) return;
+    if (readOnly || historicalWorkspace) return;
     draft.reset();
     generation.reset();
     setPlan(INITIAL_DIRECT_PLAN);
@@ -284,6 +288,7 @@ export function DirectMapWorkbench() {
     setDescription('');
     clearAttachedDocument();
     setChatMessages([]);
+    setHistoricalWorkspace(null);
     setError(null);
     setViewMode('detail');
     setPlanDetailsOpen(true);
@@ -299,7 +304,7 @@ export function DirectMapWorkbench() {
   }, [enterCreateDetail]);
 
   const createPlan = async (prompt?: string) => {
-    if (readOnly) return;
+    if (readOnly || historicalWorkspace) return;
     const request = (prompt ?? description).trim();
     if (!projectId || (!request && !documentId) || busy) return;
     if (request && containsUnsafeDescriptionContent(request)) {
@@ -327,6 +332,7 @@ export function DirectMapWorkbench() {
       const nextScene = createEmptyMapSceneV3(created.plan);
       draft.reset();
       generation.reset();
+      setHistoricalWorkspace(null);
       setPlan(created.plan);
       setScene(nextScene);
       await draft.create(projectId, created.sourceToken, created.plan, nextScene);
@@ -347,7 +353,7 @@ export function DirectMapWorkbench() {
   };
 
   const attachDesignFile = async (file: File) => {
-    if (readOnly || busy) return;
+    if (readOnly || historicalWorkspace || busy) return;
     const validation = validateDesignFile(file);
     if (!validation.ok) {
       setError(validation.error ?? 'Unsupported file.');
@@ -381,6 +387,7 @@ export function DirectMapWorkbench() {
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId ?? '');
       setDocumentName('');
+      setHistoricalWorkspace(null);
       setPlan(prepared.plan);
       setScene(prepared.scene);
       draft.install(loaded);
@@ -412,6 +419,28 @@ export function DirectMapWorkbench() {
     }
   }, [draft, generation, service]);
 
+  const selectMapVersion = async (mapRevisionId: string) => {
+    const mapId = draft.identity?.mapId;
+    if (!mapId || busy) return;
+    if (historicalWorkspace?.mapVersion.mapRevisionId === mapRevisionId) {
+      setHistoricalWorkspace(null);
+      return;
+    }
+    const requestEpoch = ++historicalSelectionEpoch.current;
+    setError(null);
+    try {
+      const loaded = await service.loadMapVersionV3(mapId, mapRevisionId);
+      if (historicalSelectionEpoch.current !== requestEpoch || draft.identity?.mapId !== mapId) return;
+      setHistoricalWorkspace(loaded);
+      setPlanDetailsOpen(true);
+      setRightOpen(true);
+    } catch (cause) {
+      if (historicalSelectionEpoch.current === requestEpoch) {
+        setError(cause instanceof Error ? cause.message : 'Could not open the selected Map version.');
+      }
+    }
+  };
+
   useEffect(() => {
     if (!requestedMapId) {
       openedRequestedMapId.current = null;
@@ -431,7 +460,7 @@ export function DirectMapWorkbench() {
   }, [openSavedMap, requestedMapId, savedMaps.isLoading, savedMaps.maps]);
 
   const uploadReference = async (file: File) => {
-    if (readOnly || !projectId || referenceBusy) return;
+    if (readOnly || historicalWorkspace || !projectId || referenceBusy) return;
     setReferenceBusy(true);
     setReferenceError(null);
     try {
@@ -459,19 +488,39 @@ export function DirectMapWorkbench() {
   const collision = useDirectMapCollisionGrid({
     projectId,
     identity: draft.identity,
-    canAnalyze: !readOnly && draft.status === 'saved' && !draft.isDirty,
+    canAnalyze: !readOnly && !historicalWorkspace && draft.status === 'saved' && !draft.isDirty,
     scene,
     image,
     service,
     setScene,
   });
 
+  const historicalImage = useMemo((): DirectMapCanvasImage | null => {
+    const workspaceImage = historicalWorkspace?.image;
+    if (!historicalWorkspace || !workspaceImage?.signedUrl || !workspaceImage.sha256
+      || !workspaceImage.width || !workspaceImage.height) return null;
+    return {
+      sourceRevisionId: historicalWorkspace.mapVersion.mapRevisionId,
+      sha256: workspaceImage.sha256,
+      signedUrl: workspaceImage.signedUrl,
+      width: workspaceImage.width,
+      height: workspaceImage.height,
+    };
+  }, [historicalWorkspace]);
+  const workspacePlan = historicalWorkspace?.mapPlan ?? plan;
+  const workspaceScene = historicalWorkspace?.mapScene ?? scene;
+  const workspaceImage = historicalWorkspace ? historicalImage : image;
+  const historicalReadOnly = Boolean(historicalWorkspace);
+  const workspaceReadOnly = readOnly || historicalReadOnly;
+  const workspaceValidation = useMemo(() => validateMapPlanV3(workspacePlan), [workspacePlan]);
+  const workspaceIssues = workspaceValidation.success === false ? workspaceValidation.issues : [];
   const actionError = error ?? draft.error ?? generation.error;
-  const mapVersionLabel = draft.identity ? `Version${draft.identity.revisionNumber}` : null;
+  const mapVersionLabel = historicalWorkspace ? `MAP V${historicalWorkspace.mapVersion.mapVersionNumber}` : null;
   const generationHistory: MapGenerationHistoryEntry[] = mapGenerationHistory.revisions.map((revision) => ({
-    revisionId: revision.revisionId,
-    label: `V${revision.revisionNumber}`,
-    isCurrent: revision.revisionId === image?.sourceRevisionId,
+    mapRevisionId: revision.mapRevisionId,
+    mapVersionNumber: revision.mapVersionNumber,
+    planVersionNumber: revision.planVersionNumber,
+    isCurrent: revision.mapRevisionId === (historicalWorkspace?.mapVersion.mapRevisionId ?? image?.sourceRevisionId),
   }));
 
   const showRightPanel = viewMode === 'detail' && planDetailsOpen;
@@ -516,34 +565,38 @@ export function DirectMapWorkbench() {
           />
         ) : (
           <MapChatPanel
-            mapTitle={plan.name}
+            mapTitle={workspacePlan.name}
             messages={chatMessages}
             onBack={() => {
+              setHistoricalWorkspace(null);
               setViewMode('browse');
               setPlanDetailsOpen(false);
             }}
             onCreate={enterCreateDetail}
             onAsk={(prompt) => void createPlan(prompt)}
-            canAsk={Boolean(projectId) && !readOnly}
+            canAsk={Boolean(projectId) && !workspaceReadOnly}
             busy={busy}
-            readOnly={readOnly}
+            readOnly={workspaceReadOnly}
             error={actionError}
             attachedDocument={documentId ? { id: documentId, name: documentName || 'Keco Document' } : null}
             onClearAttachedDocument={clearAttachedDocument}
             onAttachFile={(file) => void attachDesignFile(file)}
             onAttachKecoDocument={() => {
-              if (!projectId || readOnly || busy) return;
+              if (!projectId || workspaceReadOnly || busy) return;
               setDocumentPickerOpen(true);
             }}
             generationHistory={generationHistory}
+            onSelectMapVersion={selectMapVersion}
             mapPlan={draft.identity ? {
-              title: plan.name,
-              versionLabel: `Version${draft.identity.revisionNumber}`,
+              title: workspacePlan.name,
+              versionLabel: historicalWorkspace
+                ? `Plan V${historicalWorkspace.mapVersion.planVersionNumber}`
+                : hasCurrentSavedPlan && savedPlanSelection ? `Plan V${savedPlanSelection.versionNumber}` : 'Draft',
             } : null}
-            mapImage={image ? {
-              title: plan.name,
-              versionLabel: `Version${draft.identity?.revisionNumber ?? ''}`,
-              downloadUrl: image.signedUrl,
+            mapImage={workspaceImage ? {
+              title: workspacePlan.name,
+              versionLabel: historicalWorkspace ? `MAP V${historicalWorkspace.mapVersion.mapVersionNumber}` : 'Current map',
+              downloadUrl: workspaceImage.signedUrl,
             } : null}
             onViewMapPlan={() => {
               setPlanDetailsOpen(true);
@@ -574,13 +627,13 @@ export function DirectMapWorkbench() {
           </div>
         ) : null}
         <DirectMapCanvas
-          plan={plan}
-          scene={scene}
-          image={image}
-          collisionGrid={scene.collisionGrid}
+          plan={workspacePlan}
+          scene={workspaceScene}
+          image={workspaceImage}
+          collisionGrid={workspaceScene.collisionGrid}
           collisionVisible={collision.overlayVisible}
           paintMode={collision.paintMode}
-          onPaintCell={readOnly ? undefined : collision.paintCell}
+          onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}
         />
       </section>
 
@@ -595,18 +648,21 @@ export function DirectMapWorkbench() {
             <CloseOutlined />
           </button>
           <DirectMapPlanInspector
-            plan={plan}
-            issues={issues}
+            plan={workspacePlan}
+            issues={workspaceIssues}
             onChange={changePlan}
             onSavePlan={() => void savePlan()}
-            disabled={busy || readOnly}
+            disabled={busy || workspaceReadOnly}
             onClose={() => {
               setPlanDetailsOpen(false);
               setRightOpen(false);
             }}
-            versionLabel={hasCurrentSavedPlan && savedPlanSelection ? `Plan V${savedPlanSelection.versionNumber}` : 'Draft'}
+            versionLabel={historicalWorkspace
+              ? `Plan V${historicalWorkspace.mapVersion.planVersionNumber}`
+              : hasCurrentSavedPlan && savedPlanSelection ? `Plan V${savedPlanSelection.versionNumber}` : 'Draft'}
           />
           <DirectMapGenerationPanel
+            key={historicalWorkspace?.mapVersion.mapRevisionId ?? 'draft'}
             phase={generation.phase}
             asset={generation.asset}
             error={generation.error}
@@ -616,11 +672,11 @@ export function DirectMapWorkbench() {
             onGenerate={() => void generation.generate()}
             onRetry={() => void generation.retry()}
             onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
-            readOnly={readOnly}
+            readOnly={workspaceReadOnly}
           />
-          {image ? (
+          {workspaceImage ? (
             <DirectMapCollisionPanel
-              grid={scene.collisionGrid}
+              grid={workspaceScene.collisionGrid}
               phase={collision.phase}
               error={collision.error}
               overlayVisible={collision.overlayVisible}
@@ -629,15 +685,15 @@ export function DirectMapWorkbench() {
               onPaintModeChange={collision.setPaintMode}
               onRetry={() => void collision.retry()}
               onClear={collision.clearGrid}
-              readOnly={readOnly}
+              readOnly={workspaceReadOnly}
             />
           ) : null}
           <MapReferencePanel
             projectId={projectId}
             records={references}
-            references={plan.references}
-            styleReference={plan.styleReference}
-            busy={busy || referenceBusy || readOnly}
+            references={workspacePlan.references}
+            styleReference={workspacePlan.styleReference}
+            busy={busy || referenceBusy || workspaceReadOnly}
             error={referenceError}
             onReferencesChange={(next) => changePlan({ ...plan, references: next })}
             onStyleReferenceChange={(next) => changePlan({ ...plan, styleReference: next })}

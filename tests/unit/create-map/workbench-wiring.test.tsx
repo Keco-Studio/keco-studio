@@ -286,7 +286,21 @@ describe('Create Map V3 direct workbench', () => {
     expect(workbench).toContain("searchParams?.get('viewer') === '1'");
     expect(workbench).toContain('openedRequestedMapId');
     expect(workbench).toContain('void openSavedMap(requestedMap)');
-    expect(workbench).toContain('onPaintCell={readOnly ? undefined : collision.paintCell}');
+    expect(workbench).toContain('onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}');
     expect(workbench).toContain('readOnly={readOnly}');
+  });
+
+  it('loads selected map versions with their bound Plans as a read-only workspace', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
+      'utf8',
+    );
+
+    expect(workbench).toContain('service.loadMapVersionV3(');
+    expect(workbench).toContain('onSelectMapVersion={selectMapVersion}');
+    expect(workbench).toContain('const historicalReadOnly = Boolean(historicalWorkspace);');
+    expect(workbench).toContain('disabled={busy || workspaceReadOnly}');
+    expect(workbench).toContain('readOnly={workspaceReadOnly}');
+    expect(workbench).toContain('onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}');
   });
 });

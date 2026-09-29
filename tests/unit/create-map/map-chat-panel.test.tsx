@@ -36,9 +36,10 @@ describe('MapChatPanel', () => {
       mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: 'https://example.test/map.png' },
       onViewMapPlan: jest.fn(),
       generationHistory: [
-        { revisionId: 'revision-2', label: 'V2', isCurrent: true },
-        { revisionId: 'revision-1', label: 'V1', isCurrent: false },
+        { mapRevisionId: 'revision-2', mapVersionNumber: 2, planVersionNumber: 4, isCurrent: true },
+        { mapRevisionId: 'revision-1', mapVersionNumber: 1, planVersionNumber: 1, isCurrent: false },
       ],
+      onSelectMapVersion: jest.fn(),
     } as never));
 
     expect(markup).toContain('Village map');
@@ -51,8 +52,12 @@ describe('MapChatPanel', () => {
     expect(markup).not.toContain('Generate Map');
     expect(markup).toContain('Village map plan');
     expect(markup).toContain('aria-label="View map plan"');
-    expect(markup).toContain('data-history-version="V1"');
-    expect(markup).toContain('data-history-version="V2"');
+    expect(markup).toContain('MAP V1');
+    expect(markup).toContain('MAP V2');
+    expect(markup).toContain('Plan V1');
+    expect(markup).toContain('Plan V4');
+    expect(markup).toContain('aria-label="Open Map V1 with Plan V1"');
+    expect(markup).toContain('aria-label="Open Map V2 with Plan V4"');
     expect(markup).toContain('aria-label="Download map"');
     expect(markup).toContain('Ask AI to help...');
     expect(markup).toMatch(/aria-label="Send"[^>]*>[\s\S]*?anticon-arrow-up/);
