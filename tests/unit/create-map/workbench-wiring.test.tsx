@@ -37,6 +37,11 @@ jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
   }),
 }));
 jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
+  savedPlanSelectionIsCurrent: (selection: { draftRevisionId: string; draftSaveVersion: number } | null, identity: { revisionId: string; saveVersion: number } | null) => Boolean(
+    selection && identity
+    && selection.draftRevisionId === identity.revisionId
+    && selection.draftSaveVersion === identity.saveVersion,
+  ),
   useDirectMapGeneration: () => ({
     phase: 'idle',
     asset: null,

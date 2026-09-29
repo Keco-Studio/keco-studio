@@ -52,6 +52,23 @@ export type DirectMapGenerationTarget = {
   planFingerprint: string;
 };
 
+export type SavedPlanSelection = {
+  id: string;
+  versionNumber: number;
+  draftRevisionId: string;
+  draftSaveVersion: number;
+};
+
+export function savedPlanSelectionIsCurrent(
+  selection: SavedPlanSelection | null,
+  identity: MapDraftIdentity | null,
+): selection is SavedPlanSelection {
+  return Boolean(selection
+    && identity
+    && selection.draftRevisionId === identity.revisionId
+    && selection.draftSaveVersion === identity.saveVersion);
+}
+
 export type DirectMapBoundImage = {
   sourceRevisionId: string;
   sha256: string;
@@ -467,6 +484,7 @@ type UseDirectMapGenerationInput = {
   scene: MapSceneV3;
   canPrepare: boolean;
   draftIdentity: MapDraftIdentity | null;
+  savedPlanSelection: SavedPlanSelection | null;
   reloadDraftAfterPreparation: () => Promise<SavedMapWorkspaceV3 | null>;
   onSceneMaterialized: (scene: MapSceneV3) => void;
 };
@@ -477,6 +495,7 @@ export function useDirectMapGeneration({
   scene,
   canPrepare,
   draftIdentity,
+  savedPlanSelection,
   reloadDraftAfterPreparation,
   onSceneMaterialized,
 }: UseDirectMapGenerationInput) {
@@ -534,6 +553,11 @@ export function useDirectMapGeneration({
 
   const startPreparation = useCallback(async (): Promise<PreparedDirectMapGeneration | null> => {
     if (preparationActive.current) return null;
+    if (!savedPlanSelectionIsCurrent(savedPlanSelection, draftIdentity)) {
+      const cause = new Error('Save the current Plan version before generating.');
+      setError(cause.message);
+      throw cause;
+    }
     const validation = validateMapPlanV3(plan);
     if (validation.success === false) {
       setError('Resolve the direct map Plan issues before preparing generation.');
@@ -609,7 +633,7 @@ export function useDirectMapGeneration({
     } finally {
       preparationActive.current = false;
     }
-  }, [canPrepare, draftIdentity, plan, projectId, reloadDraftAfterPreparation, service]);
+  }, [canPrepare, draftIdentity, plan, projectId, reloadDraftAfterPreparation, savedPlanSelection, service]);
 
   const submitPrepared = useCallback(async (prepared: PreparedDirectMapGeneration) => {
     const expected = prepared.target;
@@ -695,8 +719,12 @@ export function useDirectMapGeneration({
       await confirm();
       return;
     }
-    const prepared = await startPreparation();
-    if (prepared) await submitPrepared(prepared);
+    try {
+      const prepared = await startPreparation();
+      if (prepared) await submitPrepared(prepared);
+    } catch {
+      // The preparation guard has already set a user-facing error.
+    }
   }, [asset, confirm, generationPlan, startPreparation, submitPrepared]);
 
   const retry = useCallback(async () => {

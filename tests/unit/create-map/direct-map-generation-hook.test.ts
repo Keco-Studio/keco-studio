@@ -135,7 +135,15 @@ function plannedRecord(generationId: string, fingerprint: string): MapAssetRecor
   };
 }
 
-function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string; saveVersion: number }>) {
+function setup(
+  publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string; saveVersion: number }>,
+  savedPlanSelection: unknown = {
+    id: 'plan-v1',
+    versionNumber: 1,
+    draftRevisionId: '10000000-0000-4000-8000-000000000030',
+    draftSaveVersion: 0,
+  },
+) {
   runtime = new HookRuntime();
   let generationId = '';
   let fingerprint = '';
@@ -182,7 +190,8 @@ function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRev
       },
       reloadDraftAfterPreparation: async () => null,
       onSceneMaterialized: jest.fn(),
-    });
+      savedPlanSelection,
+    } as never);
   });
   return { get latest() { return latest; }, render };
 }
@@ -193,6 +202,18 @@ beforeEach(() => {
 });
 
 describe('useDirectMapGeneration preparation guards', () => {
+  it('requires a saved current Plan version before preparation', async () => {
+    const state = setup(jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
+    })), null);
+    state.render();
+
+    await expect(state.latest.prepare()).rejects.toThrow('Save the current Plan version before generating.');
+    expect(mockService.prepareMapGeneration).not.toHaveBeenCalled();
+  });
+
   it('prepares and submits exactly once through the confirmed App route', async () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',

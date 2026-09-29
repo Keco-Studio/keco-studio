@@ -18,7 +18,11 @@ import {
   createMapDraftAdapterV3,
   useMapDraft,
 } from './hooks/useMapDraft';
-import { useDirectMapGeneration } from './hooks/useDirectMapGeneration';
+import {
+  savedPlanSelectionIsCurrent,
+  useDirectMapGeneration,
+  type SavedPlanSelection,
+} from './hooks/useDirectMapGeneration';
 import { useDirectMapCollisionGrid } from './hooks/useDirectMapCollisionGrid';
 import { useMapSources } from './hooks/useMapSources';
 import { useMapGenerationHistory } from './hooks/useMapGenerationHistory';
@@ -89,6 +93,7 @@ export function DirectMapWorkbench() {
   const [viewMode, setViewMode] = useState<'browse' | 'detail'>('browse');
   const [chatMessages, setChatMessages] = useState<MapChatMessage[]>([]);
   const [planDetailsOpen, setPlanDetailsOpen] = useState(false);
+  const [savedPlanSelection, setSavedPlanSelection] = useState<SavedPlanSelection | null>(null);
   const openRequestEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
   const openedRequestedMapId = useRef<string | null>(null);
@@ -97,13 +102,18 @@ export function DirectMapWorkbench() {
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
   const draft = useMapDraft(plan, scene, adapter);
+  const draftPayloadKey = useMemo(() => JSON.stringify({ plan, scene }), [plan, scene]);
+  const savedPlanPayloadKey = useRef<string | null>(null);
+  const hasCurrentSavedPlan = savedPlanSelectionIsCurrent(savedPlanSelection, draft.identity)
+    && savedPlanPayloadKey.current === draftPayloadKey;
   const mapGenerationHistory = useMapGenerationHistory(draft.identity?.mapId ?? null);
   const generation = useDirectMapGeneration({
     projectId,
     plan,
     scene,
-    canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty && draft.isValid,
+    canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty && draft.isValid && hasCurrentSavedPlan,
     draftIdentity: draft.identity,
+    savedPlanSelection: hasCurrentSavedPlan ? savedPlanSelection : null,
     reloadDraftAfterPreparation: draft.reload,
     onSceneMaterialized: setScene,
   });
@@ -112,7 +122,15 @@ export function DirectMapWorkbench() {
   const busy = operation !== 'idle' || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
   const canGenerate = !readOnly && Boolean(draft.identity) && validation.success && draft.isValid
-    && !draft.isDirty && draft.status === 'saved' && !busy;
+    && !draft.isDirty && draft.status === 'saved' && hasCurrentSavedPlan && !busy;
+
+  useEffect(() => {
+    if (!savedPlanSelection) return;
+    if (!hasCurrentSavedPlan) {
+      savedPlanPayloadKey.current = null;
+      setSavedPlanSelection(null);
+    }
+  }, [hasCurrentSavedPlan, savedPlanSelection]);
 
   useEffect(() => {
     const preferred = readCreateMapProjectPreference();
@@ -178,6 +196,25 @@ export function DirectMapWorkbench() {
     }
     setPlan(nextPlan);
   }, [generation, scene.size.height, scene.size.width]);
+
+  const savePlan = useCallback(async () => {
+    if (readOnly || busy) return;
+    setError(null);
+    try {
+      const settledDraft = await draft.saveNow();
+      if (!settledDraft) return;
+      const saved = await service.savePlanV3(settledDraft, plan);
+      savedPlanPayloadKey.current = draftPayloadKey;
+      setSavedPlanSelection({
+        id: saved.id,
+        versionNumber: saved.versionNumber,
+        draftRevisionId: saved.draftRevisionId,
+        draftSaveVersion: saved.draftSaveVersion,
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save the map Plan.');
+    }
+  }, [busy, draft, draftPayloadKey, plan, readOnly, service]);
 
   const handleProjectChange = (nextProjectId: string) => {
     if (nextProjectId === projectId) return;
@@ -522,12 +559,13 @@ export function DirectMapWorkbench() {
             plan={plan}
             issues={issues}
             onChange={changePlan}
+            onSavePlan={() => void savePlan()}
             disabled={busy || readOnly}
             onClose={() => {
               setPlanDetailsOpen(false);
               setRightOpen(false);
             }}
-            versionLabel={draft.identity ? `Version${draft.identity.revisionNumber}` : undefined}
+            versionLabel={hasCurrentSavedPlan && savedPlanSelection ? `Plan V${savedPlanSelection.versionNumber}` : 'Draft'}
           />
           <DirectMapGenerationPanel
             phase={generation.phase}
