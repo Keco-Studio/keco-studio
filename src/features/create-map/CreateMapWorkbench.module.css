@@ -341,12 +341,50 @@
   align-items: center;
   gap: 8px;
   padding: 0 12px;
+  border: 0;
   color: #21272a;
+  background: transparent;
+  font: inherit;
   font-size: 16px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .mapHistoryItemCurrent {
   background: #e8f5fd;
+}
+
+.mapHistoryItem:hover:not(:disabled),
+.mapHistoryItem:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+.mapHistoryItemCurrent:hover:not(:disabled),
+.mapHistoryItemCurrent:focus-visible {
+  background: #d8edf9;
+}
+
+.mapHistoryItem:disabled,
+.mapHistoryItemCurrent:disabled {
+  cursor: default;
+}
+
+.mapHistoryItemCopy {
+  display: grid;
+  gap: 1px;
+}
+
+.mapHistoryItemCopy strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.mapHistoryItemCopy small {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.1;
 }
 
 .mapHistoryEmpty {

@@ -31,8 +31,9 @@ export type MapChatAttachedDocument = {
 };
 
 export type MapGenerationHistoryEntry = {
-  revisionId: string;
-  label: string;
+  mapRevisionId: string;
+  mapVersionNumber: number;
+  planVersionNumber: number;
   isCurrent: boolean;
 };
 
@@ -62,6 +63,7 @@ type MapChatPanelProps = {
   onAttachFile?: (file: File) => void;
   onAttachKecoDocument?: () => void;
   generationHistory?: MapGenerationHistoryEntry[];
+  onSelectMapVersion?: (mapRevisionId: string) => void;
   mapPlan?: MapPlanCard | null;
   mapImage?: MapImageCard | null;
   onViewMapPlan?: () => void;
@@ -97,6 +99,7 @@ export function MapChatPanel({
   onAttachFile,
   onAttachKecoDocument,
   generationHistory = [],
+  onSelectMapVersion,
   mapPlan = null,
   mapImage = null,
   onViewMapPlan,
@@ -230,15 +233,21 @@ export function MapChatPanel({
             <div id="map-generation-history" className={styles.mapHistoryMenu} hidden={!historyOpen}>
               <p className={styles.mapHistoryLabel}>Map</p>
               {generationHistory.map((entry) => (
-                <div
-                  key={entry.revisionId}
+                <button
+                  key={entry.mapRevisionId}
+                  type="button"
                   className={entry.isCurrent ? styles.mapHistoryItemCurrent : styles.mapHistoryItem}
                   aria-current={entry.isCurrent || undefined}
-                  data-history-version={entry.label}
+                  aria-label={`Open Map V${entry.mapVersionNumber} with Plan V${entry.planVersionNumber}`}
+                  disabled={!onSelectMapVersion}
+                  onClick={() => onSelectMapVersion?.(entry.mapRevisionId)}
                 >
                   <Image src={mapPlanIcon} width={21} height={21} alt="" aria-hidden="true" />
-                  <span>{entry.label}</span>
-                </div>
+                  <span className={styles.mapHistoryItemCopy}>
+                    <strong>{`MAP V${entry.mapVersionNumber}`}</strong>
+                    <small>{`Plan V${entry.planVersionNumber}`}</small>
+                  </span>
+                </button>
               ))}
             </div>
           </div>
