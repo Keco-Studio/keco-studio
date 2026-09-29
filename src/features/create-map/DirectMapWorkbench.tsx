@@ -35,6 +35,7 @@ import {
   type MapPlanV3,
   type MapSceneV3,
 } from './model/directMapSchema';
+import { mapVersionLabelForRevision } from './model/mapVersionLabel';
 import {
   createMapService,
   type MapDraftIdentity,
@@ -520,7 +521,9 @@ export function DirectMapWorkbench() {
   const workspaceValidation = useMemo(() => validateMapPlanV3(workspacePlan), [workspacePlan]);
   const workspaceIssues = workspaceValidation.success === false ? workspaceValidation.issues : [];
   const actionError = error ?? draft.error ?? generation.error;
-  const mapVersionLabel = historicalWorkspace ? `MAP V${historicalWorkspace.mapVersion.mapVersionNumber}` : null;
+  const mapVersionLabel = historicalWorkspace
+    ? `Map V${historicalWorkspace.mapVersion.mapVersionNumber}`
+    : mapVersionLabelForRevision(mapGenerationHistory.revisions, workspaceImage?.sourceRevisionId ?? null);
   const generationHistory: MapGenerationHistoryEntry[] = mapGenerationHistory.revisions.map((revision) => ({
     mapRevisionId: revision.mapRevisionId,
     mapVersionNumber: revision.mapVersionNumber,
@@ -600,7 +603,7 @@ export function DirectMapWorkbench() {
             } : null}
             mapImage={workspaceImage ? {
               title: workspacePlan.name,
-              versionLabel: historicalWorkspace ? `MAP V${historicalWorkspace.mapVersion.mapVersionNumber}` : 'Current map',
+              versionLabel: mapVersionLabel ?? 'Current map',
               downloadUrl: workspaceImage.signedUrl,
             } : null}
             onViewMapPlan={() => {

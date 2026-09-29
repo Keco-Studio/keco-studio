@@ -460,6 +460,7 @@ class CreateMapV3MockBackend {
             p_expected_save_version: body.saveVersion,
             p_generation_id: generationId,
             p_plan_fingerprint: planFingerprint,
+            p_plan_version_id: body.planVersionId,
           },
         };
       }
@@ -838,18 +839,22 @@ async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
   await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
-  await savePlan(page);
+  await savePlan(page, 1);
 }
 
-async function savePlan(page: Page): Promise<void> {
+async function savePlan(page: Page, expectedVersion?: number): Promise<void> {
   await page.getByRole('button', { name: 'Save plan', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..'))
-    .not.toContainText('Draft');
+  const inspector = page.getByRole('heading', { name: 'Map plan details' }).locator('..');
+  if (expectedVersion == null) {
+    await expect(inspector).not.toContainText('Draft');
+  } else {
+    await expect(inspector).toContainText(`Plan V${expectedVersion}`);
+  }
 }
 
-async function editAndSavePlan(page: Page, version: string): Promise<void> {
+async function editAndSavePlan(page: Page, version: number): Promise<void> {
   await page.getByLabel('PixelLab description').fill(`An opaque map Plan ${version}.`);
-  await savePlan(page);
+  await savePlan(page, version);
 }
 
 async function openMapHistory(page: Page, mapVersion: string): Promise<void> {
@@ -869,9 +874,6 @@ async function generateReadyMap(page: Page): Promise<void> {
   // complete before a visibility assertion observes it. The durable ready state
   // is the meaningful contract for this helper.
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
-  // Materializing the image and collision state updates the draft asynchronously.
-  // Wait until the next generation can be started from the durable saved state.
-  await expect(generateButton).toBeEnabled({ timeout: 10_000 });
 }
 
 async function expectWithin(locator: Locator, container: Locator): Promise<void> {
@@ -1017,13 +1019,15 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     await askForMapPlan(page, 'A quiet top-down village market with open paths.');
-    await savePlan(page); // Plan V1
+    await savePlan(page, 1); // Plan V1
     await generateReadyMap(page); // Map V1 -> Plan V1
-    await editAndSavePlan(page, 'V2');
-    await editAndSavePlan(page, 'V3');
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
+    await editAndSavePlan(page, 2);
+    await editAndSavePlan(page, 3);
 
     await openMapHistory(page, 'MAP V1');
-    await expect(page.getByLabel('Map canvas').getByText('MAP V1')).toBeVisible();
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Plan V1');
 
     expect(backend.readyAssets()).toHaveLength(1);
@@ -1109,10 +1113,11 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible({ timeout: 5_000 });
     await page.reload();
     await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
 
     backend.seedReadyV3Map(SLOW_MAP_ID, 'Slow Marsh', 600);

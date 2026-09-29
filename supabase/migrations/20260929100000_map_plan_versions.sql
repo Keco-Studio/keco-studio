@@ -176,12 +176,12 @@ begin
   if old.status <> 'draft' and (
     new.plan is distinct from old.plan
     or new.scene is distinct from old.scene
-    or new.save_version <> old.save_version
-    or new.source_document_id <> old.source_document_id
-    or new.source_document_updated_at <> old.source_document_updated_at
-    or new.source_epoch <> old.source_epoch
-    or new.source_revision <> old.source_revision
-    or new.schema_version <> old.schema_version
+    or new.save_version is distinct from old.save_version
+    or new.source_document_id is distinct from old.source_document_id
+    or new.source_document_updated_at is distinct from old.source_document_updated_at
+    or new.source_epoch is distinct from old.source_epoch
+    or new.source_revision is distinct from old.source_revision
+    or new.schema_version is distinct from old.schema_version
     or (
       new.map_version_number is distinct from old.map_version_number
       and not (
@@ -202,63 +202,6 @@ begin
   return new;
 end;
 $$;
-
-create function public.bind_generated_v3_plan_version()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-declare
-  v_plan_version_id uuid;
-  v_next_plan_version bigint;
-begin
-  if new.schema_version <> 3
-    or new.status = 'draft'
-    or new.plan_version_id is not null then
-    return new;
-  end if;
-
-  perform 1
-  from public.map_projects as map
-  where map.id = new.map_project_id
-  for update;
-  if not found then
-    raise exception 'map not found' using errcode = 'P0002';
-  end if;
-
-  select version.id into v_plan_version_id
-  from public.map_plan_versions as version
-  where version.map_project_id = new.map_project_id
-    and version.draft_revision_id = new.id
-    and version.draft_save_version = new.save_version;
-  if v_plan_version_id is not null then
-    new.plan_version_id := v_plan_version_id;
-    return new;
-  end if;
-
-  select coalesce(max(version.plan_version_number), 0) + 1
-  into v_next_plan_version
-  from public.map_plan_versions as version
-  where version.map_project_id = new.map_project_id;
-
-  insert into public.map_plan_versions (
-    map_project_id, plan_version_number, draft_revision_id, draft_save_version,
-    plan, source_document_id, source_document_updated_at, source_epoch,
-    source_revision, created_by
-  ) values (
-    new.map_project_id, v_next_plan_version, new.id, new.save_version,
-    new.plan, new.source_document_id, new.source_document_updated_at,
-    new.source_epoch, new.source_revision, new.created_by
-  ) returning id into v_plan_version_id;
-
-  new.plan_version_id := v_plan_version_id;
-  return new;
-end;
-$$;
-
-create trigger map_revisions_bind_generated_v3_plan
-  before insert or update of status, plan_version_id on public.map_revisions
-  for each row execute function public.bind_generated_v3_plan_version();
 
 create function public.save_map_plan_v3(
   p_map_id uuid,
@@ -350,8 +293,8 @@ begin
 end;
 $$;
 
--- Preserve legacy callers by atomically creating/reusing the Plan snapshot
--- needed to bind their generated revision before preparation proceeds.
+-- Retained callers may reuse an exact explicitly saved snapshot, but only the
+-- Save plan RPC is allowed to create one.
 create or replace function public.publish_map_revision_v3(
   p_map_id uuid,
   p_draft_revision_id uuid,
@@ -363,15 +306,47 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_plan record;
+  v_map public.map_projects%rowtype;
+  v_draft public.map_revisions%rowtype;
+  v_plan_version_id uuid;
 begin
-  select * into v_plan
-  from public.save_map_plan_v3(
-    p_map_id,
-    p_draft_revision_id,
-    p_expected_save_version
-  );
-  if v_plan.status <> 'saved' or v_plan.plan_version_id is null then
+  select * into v_map
+  from public.map_projects
+  where id = p_map_id
+  for update;
+  if not found then raise exception 'map not found' using errcode = 'P0002'; end if;
+  perform public.map_require_writer(v_map.project_id);
+
+  if p_expected_save_version is null
+    or v_map.current_revision_id is distinct from p_draft_revision_id then
+    return query select 'conflict'::text, null::uuid, null::uuid;
+    return;
+  end if;
+
+  select * into v_draft
+  from public.map_revisions
+  where id = p_draft_revision_id
+    and map_project_id = p_map_id
+    and schema_version = 3
+  for update;
+  if not found or v_draft.status <> 'draft'
+    or v_draft.save_version is distinct from p_expected_save_version then
+    return query select 'conflict'::text, null::uuid, null::uuid;
+    return;
+  end if;
+
+  select version.id into v_plan_version_id
+  from public.map_plan_versions as version
+  where version.map_project_id = p_map_id
+    and version.draft_revision_id = v_draft.id
+    and version.draft_save_version = v_draft.save_version
+    and version.plan is not distinct from v_draft.plan
+    and version.source_document_id is not distinct from v_draft.source_document_id
+    and version.source_document_updated_at is not distinct from v_draft.source_document_updated_at
+    and version.source_epoch is not distinct from v_draft.source_epoch
+    and version.source_revision is not distinct from v_draft.source_revision
+  for update;
+  if v_plan_version_id is null then
     return query select 'conflict'::text, null::uuid, null::uuid;
     return;
   end if;
@@ -382,7 +357,7 @@ begin
     p_map_id,
     p_draft_revision_id,
     p_expected_save_version,
-    v_plan.plan_version_id
+    v_plan_version_id
   ) as published;
 end;
 $$;
@@ -447,7 +422,11 @@ begin
     or v_plan_version.map_project_id <> p_map_id
     or v_plan_version.draft_revision_id <> v_draft.id
     or v_plan_version.draft_save_version <> v_draft.save_version
-    or v_plan_version.plan is distinct from v_draft.plan then
+    or v_plan_version.plan is distinct from v_draft.plan
+    or v_plan_version.source_document_id is distinct from v_draft.source_document_id
+    or v_plan_version.source_document_updated_at is distinct from v_draft.source_document_updated_at
+    or v_plan_version.source_epoch is distinct from v_draft.source_epoch
+    or v_plan_version.source_revision is distinct from v_draft.source_revision then
     return query select 'conflict'::text, null::uuid, null::uuid, null::bigint;
     return;
   end if;
