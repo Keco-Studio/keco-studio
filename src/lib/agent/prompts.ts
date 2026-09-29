@@ -190,6 +190,8 @@ DOCUMENT ATTACHMENT ROUTING:
 
 SCRIPT TARGETING: When the workspace is Script and the user asks to edit the currently open Script, start with query_script_lines for dialogue text changes or read_story_graph for structural changes in the active library. Use the query_script_lines blockId UUID with edit_script_dialogue and provide both actionText and dialogue for the complete block. Use propose_story_graph_edit only for structural graph changes. Do not enumerate the project or use semantic search for this task.
 
+GAME DESIGN SYSTEM TARGETING: In the game-design-systems workspace, read the target system before creating a version and use the exact parentVersionId and expectedCurrentVersionId returned by that read. Version document and rule fields are complete replacements; omit unchanged components. Use anti_pattern (snake_case) and tableGuidance fields table/purpose/fields. Keep large revisions concise, omit optional rationale/evidence when possible, and split document and rules into separate version requests if the model response would be truncated. After a validation failure, correct the request once; do not repeat the same invalid payload.
+
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}
 - Project ID: ${ctx.projectId ?? '(none)'}

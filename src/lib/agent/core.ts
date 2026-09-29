@@ -83,6 +83,7 @@ import {
 } from '@/lib/game-design-system/agentEvidence';
 
 const MAX_ITERATIONS = 50;
+const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
@@ -98,6 +99,10 @@ function publicToolResult(result: ToolResult): ToolResult {
   const { internalData: _internalData, navigation: _navigation, ...publicResult } = result;
   const event = navigationEvent(result);
   return event ? { ...publicResult, navigation: event.destination } : publicResult;
+}
+
+function repeatedToolFailureMessage(toolName: string): string {
+  return `Agent stopped after ${MAX_CONSECUTIVE_TOOL_FAILURES} consecutive failures from ${toolName}. The request was not applied; send a narrower request or provide the exact fields required by the tool.`;
 }
 
 function cacheInvalidatedEvent(
@@ -445,6 +450,22 @@ async function* continueLoop(
   let messages = initialMessages;
   const toolSchema = createTurnToolSchema(ctx);
   let llmTools = await toolSchema.get();
+  let lastFailedTool: string | undefined;
+  let consecutiveToolFailures = 0;
+
+  const noteToolFailure = (toolName: string): boolean => {
+    if (lastFailedTool === toolName) consecutiveToolFailures += 1;
+    else {
+      lastFailedTool = toolName;
+      consecutiveToolFailures = 1;
+    }
+    return consecutiveToolFailures >= MAX_CONSECUTIVE_TOOL_FAILURES;
+  };
+
+  const clearToolFailure = (): void => {
+    lastFailedTool = undefined;
+    consecutiveToolFailures = 0;
+  };
 
   while (iterations++ < MAX_ITERATIONS) {
     throwIfAborted(signal);
@@ -582,6 +603,11 @@ async function* continueLoop(
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      if (noteToolFailure(call.function.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(call.function.name) };
+        yield { type: 'done' };
+        return;
+      }
       continue;
     }
 
@@ -603,6 +629,11 @@ async function* continueLoop(
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      if (noteToolFailure(call.function.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(call.function.name) };
+        yield { type: 'done' };
+        return;
+      }
       continue;
     }
 
@@ -622,6 +653,11 @@ async function* continueLoop(
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
       yield { type: 'tool_result', tool: tool.name, data: undefined, displayHint: 'text', success: false, error: permError.error };
+      if (noteToolFailure(tool.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+        yield { type: 'done' };
+        return;
+      }
       continue;
     }
 
@@ -667,6 +703,11 @@ async function* continueLoop(
               success: false,
               error: preparation.error,
             };
+            if (noteToolFailure(tool.name)) {
+              yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+              yield { type: 'done' };
+              return;
+            }
             continue;
           }
           confirmationArgs = preparation.args;
@@ -735,9 +776,15 @@ async function* continueLoop(
           messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           await persistMessage(ctx, conversationId, assistantMessage);
           await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
-          yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
+          yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint, success: false, error: result.error };
+          if (noteToolFailure(tool.name)) {
+            yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+            yield { type: 'done' };
+            return;
+          }
           continue;
         }
+        clearToolFailure();
         const actionId = crypto.randomUUID();
         if (assistantContent || assistantReasoning) {
           await persistMessage(ctx, conversationId, {
@@ -829,6 +876,12 @@ async function* continueLoop(
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+      if (finalResult.success) clearToolFailure();
+      else if (noteToolFailure(tool.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+        yield { type: 'done' };
+        return;
+      }
       if (finalResult.success && finalResult.schemaChanged === true) {
         toolSchema.invalidate();
         llmTools = await toolSchema.get();
@@ -866,6 +919,12 @@ async function* continueLoop(
     messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
     await persistMessage(ctx, conversationId, assistantMessage);
     await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+    if (result.success) clearToolFailure();
+    else if (noteToolFailure(tool.name)) {
+      yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+      yield { type: 'done' };
+      return;
+    }
     if (result.success && result.schemaChanged === true) {
       toolSchema.invalidate();
       llmTools = await toolSchema.get();

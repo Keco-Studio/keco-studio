@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AgentTurnInput, SSEEvent, ToolResult } from '@/lib/agent/types';
 
+jest.mock('server-only', () => ({}));
+
 const getLibraryProperties = jest.fn();
 const streamLlm = jest.fn();
 const executeAgentTool = jest.fn();
@@ -143,5 +145,21 @@ describe('agent workspace execution and turn schema', () => {
     const firstTools = streamLlm.mock.calls[0][1].tools;
     const nextTools = streamLlm.mock.calls[1][1].tools;
     expect(nextTools === firstTools).toBe(expectedLoads === 1);
+  });
+
+  it('stops a repeated GDS validation failure before the turn burns the token budget', async () => {
+    streamLlm.mockImplementationOnce(llmToolCall('create_game_design_system_version'))
+      .mockImplementationOnce(llmToolCall('create_game_design_system_version'))
+      .mockImplementationOnce(llmToolCall('create_game_design_system_version'))
+      .mockImplementationOnce(llmFinal);
+
+    const events = await collect(input('game-design-systems'));
+
+    expect(streamLlm).toHaveBeenCalledTimes(3);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'error',
+      message: expect.stringContaining('3 consecutive failures'),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'done' }));
   });
 });
