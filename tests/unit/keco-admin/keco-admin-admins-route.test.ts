@@ -22,6 +22,7 @@ jest.mock('@/lib/server/kecoAdminAuthorization', () => ({
 }));
 
 import { POST } from '@/app/api/keco-admin/admins/route';
+import * as administratorsRoute from '@/app/api/keco-admin/admins/route';
 
 const ADMIN_ID = 'aae0969f-0cb2-4632-8624-b9f40f2f4543';
 const TARGET_ID = '11111111-1111-4111-8111-111111111111';
@@ -98,5 +99,50 @@ describe('Keco Admin administrator grants API', () => {
       email: 'target@example.com',
     });
     expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists administrator display details only for an authorized administrator', async () => {
+    const order = jest.fn().mockResolvedValue({
+      data: [{
+        user_id: TARGET_ID,
+        created_at: '2026-09-28T12:00:00.000Z',
+      }],
+      error: null,
+    });
+    const grantsSelect = jest.fn(() => ({ order }));
+    const profilesIn = jest.fn().mockResolvedValue({
+      data: [{
+        id: TARGET_ID,
+        email: 'target@example.com',
+        username: 'target',
+        full_name: 'Target User',
+        avatar_url: 'https://cdn.example/target.png',
+      }],
+      error: null,
+    });
+    const profilesSelect = jest.fn(() => ({ in: profilesIn }));
+    getSupabaseServiceRoleClient.mockReturnValue({
+      from: jest.fn((table: string) => table === 'keco_admin_users'
+        ? { select: grantsSelect }
+        : { select: profilesSelect }),
+    });
+
+    expect(typeof administratorsRoute.GET).toBe('function');
+    const response = await administratorsRoute.GET!(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      administrators: [{
+        id: TARGET_ID,
+        displayName: 'Target User',
+        email: 'target@example.com',
+        avatarUrl: 'https://cdn.example/target.png',
+        grantedAt: '2026-09-28T12:00:00.000Z',
+      }],
+    });
+    expect(grantsSelect).toHaveBeenCalledWith('user_id, created_at');
+    expect(order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(profilesSelect).toHaveBeenCalledWith('id, email, username, full_name, avatar_url');
+    expect(profilesIn).toHaveBeenCalledWith('id', [TARGET_ID]);
   });
 });

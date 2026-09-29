@@ -86,6 +86,24 @@
   background: #1677ff;
 }
 
+.administratorsButton {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  color: #334155;
+  background: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.administratorsButton:hover {
+  border-color: #91caff;
+  color: #096dd9;
+  background: #e6f4ff;
+}
+
 .refreshedAt {
   color: #64748b;
   font-size: 12px;
@@ -644,6 +662,7 @@
 
 .refreshButton:focus-visible,
 .inviteAdminButton:focus-visible,
+.administratorsButton:focus-visible,
 .errorState button:focus-visible,
 .tableScroller:focus-visible {
   outline: 2px solid var(--keco-blue);

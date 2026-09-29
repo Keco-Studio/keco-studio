@@ -10,12 +10,14 @@ import {
   ReloadOutlined,
   RightOutlined,
   SearchOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
   UserAddOutlined,
   UserOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { InviteAdminModal } from './InviteAdminModal';
+import { AdministratorsModal } from './AdministratorsModal';
 import type {
   KecoAdminOverview,
   KecoAdminUser,
@@ -159,6 +161,8 @@ export function KecoAdminDashboard() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [isInviteAdminOpen, setIsInviteAdminOpen] = useState(false);
+  const [isAdministratorsOpen, setIsAdministratorsOpen] = useState(false);
+  const [administratorsRefreshKey, setAdministratorsRefreshKey] = useState(0);
   const [adminInviteNotice, setAdminInviteNotice] = useState<string | null>(null);
   const overviewQuery = useQuery({
     queryKey: ['keco-admin-overview'],
@@ -204,6 +208,15 @@ export function KecoAdminDashboard() {
             <p>Account resource overview</p>
           </div>
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.administratorsButton}
+              aria-label="View administrators"
+              title="View administrators"
+              onClick={() => setIsAdministratorsOpen(true)}
+            >
+              <TeamOutlined aria-hidden />
+            </button>
             <button
               type="button"
               className={styles.inviteAdminButton}
@@ -555,8 +568,14 @@ export function KecoAdminDashboard() {
                 ? `Admin access granted to ${email}.`
                 : `${email} already has Admin access.`,
             );
+            setAdministratorsRefreshKey((value) => value + 1);
             void refetch();
           }}
+        />
+        <AdministratorsModal
+          open={isAdministratorsOpen}
+          onClose={() => setIsAdministratorsOpen(false)}
+          refreshKey={administratorsRefreshKey}
         />
       </div>
     </main>
