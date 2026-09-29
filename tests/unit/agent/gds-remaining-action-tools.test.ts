@@ -101,6 +101,22 @@ it('confirms version replacement and calls the atomic idempotent writer', async 
     .toMatchObject({ success: false, error: 'VERSION_STALE' });
 });
 
+it('exposes the complete version schema so the model does not guess rule field names', () => {
+  const request = (createGameDesignSystemVersionTool.parameters.properties as Record<string, any>).request;
+  const rules = request.properties.rules;
+  const rule = rules.properties.rules.items;
+  const tableGuidance = rules.properties.tableGuidance.items;
+
+  expect(rule.properties.kind.enum).toEqual(['principle', 'constraint', 'pattern', 'anti_pattern', 'check']);
+  expect(tableGuidance.required).toEqual(['table', 'purpose', 'fields']);
+  expect(tableGuidance.properties.name).toBeUndefined();
+  expect(request.anyOf).toEqual(expect.arrayContaining([
+    { required: ['document'] },
+    { required: ['rules'] },
+    { required: ['artStyle'] },
+  ]));
+});
+
 it('seals and conditionally removes an exact binding after role recheck', async () => {
   const prepared = await unbindGameDesignSystemTool.prepareConfirmation!({ projectId }, ctx);
   expect(prepared).toMatchObject({ success: true, args: { expectedDesignSystemId: systemId,
