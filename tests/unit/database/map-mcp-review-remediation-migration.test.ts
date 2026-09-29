@@ -51,6 +51,7 @@ describe('Create Map MCP review remediation migration', () => {
   it('binds a selected Plan version when preparation freezes a Draft', () => {
     expect(selectedPlanSql).toMatch(/prepare_map_generation_v3\([\s\S]*p_plan_version_id uuid/i);
     expect(selectedPlanSql).toMatch(/publish_map_revision_v3\([\s\S]*p_plan_version_id/i);
+    expect(selectedPlanSql).toMatch(/notify pgrst, 'reload schema'/i);
   });
 
   it('keeps tables private and grants only RPC execution to authenticated users', () => {

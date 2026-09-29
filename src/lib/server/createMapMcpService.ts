@@ -121,7 +121,7 @@ export type CreateMapMcpBackend = {
     saveVersion: number;
     generationId: string;
     planFingerprint: string;
-    planVersionId?: string;
+    planVersionId: string;
   }): Promise<{
     publishedRevisionId: string;
     nextDraftRevisionId: string;
@@ -803,9 +803,10 @@ export function createMapMcpService(
       mapId: string;
       revisionId: string;
       saveVersion: number;
-      planVersionId?: string;
+      planVersionId: string;
     }) {
       try {
+        if (!input.planVersionId.trim()) throw new CreateMapMcpError('FIELD_VALIDATION_FAILED');
         await requireWriter(input.projectId);
         const existing = await backend.findGeneration(input);
         if (existing) {
@@ -872,6 +873,36 @@ export function createMapMcpService(
         }, fingerprintPlan);
         if (state.asset.status !== 'planned') throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
         return prepareResponse(state, created.nextDraftRevisionId);
+      } catch (error) {
+        mapProviderError(error);
+      }
+    },
+
+    async prepareExistingGeneration(input: {
+      projectId: string;
+      mapId: string;
+      revisionId: string;
+      saveVersion: number;
+    }) {
+      try {
+        await requireWriter(input.projectId);
+        const existing = await backend.findGeneration(input);
+        if (!existing || existing.saveVersion !== input.saveVersion
+          || existing.asset.planFingerprint !== fingerprintPlan(existing.plan)) {
+          throw new CreateMapMcpError('MAP_REVISION_STALE');
+        }
+        if (existing.asset.status === 'planned') return prepareResponse(existing, null);
+        if (
+          (existing.asset.status === 'failed' && Boolean(existing.asset.providerJobId))
+          || (existing.asset.status === 'blocked'
+            && existing.asset.lastErrorCode !== null
+            && CONFIRMED_RETRY_BLOCKS.has(existing.asset.lastErrorCode))
+        ) return prepareResponse(existing, null, 'retry');
+        if (existing.asset.status === 'blocked'
+          && existing.asset.lastErrorCode === 'pixellab_submit_outcome_unknown') {
+          return prepareResponse(existing, null, 'replace-unknown');
+        }
+        throw new CreateMapMcpError('MAP_REVISION_STALE');
       } catch (error) {
         mapProviderError(error);
       }

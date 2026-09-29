@@ -107,3 +107,5 @@ revoke all on function public.prepare_map_generation_v3(uuid, uuid, bigint, uuid
   from public, anon, authenticated, service_role;
 grant execute on function public.prepare_map_generation_v3(uuid, uuid, bigint, uuid, text, uuid)
   to authenticated;
+
+notify pgrst, 'reload schema';

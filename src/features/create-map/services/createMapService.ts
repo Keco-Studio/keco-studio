@@ -1190,15 +1190,18 @@ export function createMapService(supabase: SupabaseClient) {
       saveVersion: number;
       generationId: string;
       planFingerprint: string;
-      planVersionId?: string;
+      planVersionId: string;
     }) {
+      if (!input.planVersionId.trim()) {
+        throw new CreateMapServiceError('invalid_plan_version', 'A saved Plan version is required for generation.');
+      }
       const params = {
         p_map_id: input.mapId,
         p_revision_id: input.revisionId,
         p_expected_save_version: input.saveVersion,
         p_generation_id: input.generationId,
         p_plan_fingerprint: input.planFingerprint,
-        ...(input.planVersionId ? { p_plan_version_id: input.planVersionId } : {}),
+        p_plan_version_id: input.planVersionId,
       };
       const { data, error } = await supabase.rpc('prepare_map_generation_v3', {
         ...params,
@@ -1223,12 +1226,39 @@ export function createMapService(supabase: SupabaseClient) {
       mapId: string;
       revisionId: string;
       saveVersion: number;
-      planVersionId?: string;
+      planVersionId: string;
     }) {
+      if (!input.planVersionId.trim()) {
+        throw new CreateMapServiceError('invalid_plan_version', 'A saved Plan version is required for generation.');
+      }
       return responseJson(await fetch('/api/mcp/create-map', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'prepare_map_generation', ...input }),
+      })) as Promise<{
+        mapId: string;
+        revisionId: string;
+        assetId: string;
+        status: MapAssetRecord['status'];
+        generationId: string;
+        planFingerprint: string;
+        saveVersion: number;
+        confirmationPurpose: 'submit' | 'retry' | 'replace-unknown';
+        confirmationToken: string;
+        feeNotice: string;
+      }>;
+    },
+
+    async prepareExistingMapGeneration(input: {
+      projectId: string;
+      mapId: string;
+      revisionId: string;
+      saveVersion: number;
+    }) {
+      return responseJson(await fetch('/api/mcp/create-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'prepare_existing_map_generation', ...input }),
       })) as Promise<{
         mapId: string;
         revisionId: string;

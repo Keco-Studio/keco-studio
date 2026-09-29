@@ -674,7 +674,7 @@ export function useDirectMapGeneration({
     if (!expected || !asset || asset.status !== 'planned') return;
     const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
     try {
-      const confirmation = await service.prepareMapGeneration({
+      const confirmation = await service.prepareExistingMapGeneration({
         projectId: expected.projectId,
         mapId: expected.mapId,
         revisionId: expected.revisionId,
@@ -736,7 +736,7 @@ export function useDirectMapGeneration({
     setPhase('submitting');
     setError(null);
     try {
-      const confirmation = await service.prepareMapGeneration({
+      const confirmation = await service.prepareExistingMapGeneration({
         projectId: expected.projectId,
         mapId: expected.mapId,
         revisionId: expected.revisionId,

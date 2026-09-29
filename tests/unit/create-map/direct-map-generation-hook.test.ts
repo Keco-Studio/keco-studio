@@ -173,6 +173,22 @@ function setup(
       feeNotice: 'Paid generation consumes credits.',
       };
     }),
+    prepareExistingMapGeneration: jest.fn(async (input: { mapId: string; revisionId: string; saveVersion: number }) => {
+      generationId = '10000000-0000-4000-8000-000000000032';
+      fingerprint = await directMapPlanFingerprint(makeValidMapPlanV3());
+      return {
+        mapId: input.mapId,
+        revisionId: input.revisionId,
+        assetId: '10000000-0000-4000-8000-000000000031',
+        status: 'planned',
+        generationId,
+        planFingerprint: fingerprint,
+        saveVersion: input.saveVersion,
+        confirmationToken: 'signed-confirmation',
+        confirmationPurpose: 'submit',
+        feeNotice: 'Paid generation consumes credits.',
+      };
+    }),
     startMapGeneration: jest.fn(async () => ({ status: 'generating' })),
   };
   let latest!: HookResult;
@@ -345,7 +361,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     await state.latest.prepare();
     state.render(plan);
     mockService.startMapGeneration.mockClear();
-    mockService.prepareMapGeneration.mockRejectedValueOnce(new Error('Confirmation unavailable'));
+    mockService.prepareExistingMapGeneration.mockRejectedValueOnce(new Error('Confirmation unavailable'));
 
     await expect(state.latest.confirm()).resolves.toBeUndefined();
     state.render(plan);
@@ -432,7 +448,7 @@ describe('useDirectMapGeneration preparation guards', () => {
       hasTransparency: null,
       signedUrl: null,
     };
-    mockService.prepareMapGeneration.mockResolvedValueOnce({
+    mockService.prepareExistingMapGeneration.mockResolvedValueOnce({
       mapId,
       revisionId,
       assetId: failedAsset.id,
@@ -462,7 +478,7 @@ describe('useDirectMapGeneration preparation guards', () => {
 
     await state.latest.retry();
 
-    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareExistingMapGeneration).toHaveBeenCalledTimes(1);
     expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
       confirmationToken: 'retry-confirmation',
       confirmPaidGeneration: true,

@@ -7,6 +7,7 @@ const service = {
   createDraft: jest.fn(),
   updateDraft: jest.fn(),
   prepareGeneration: jest.fn(),
+  prepareExistingGeneration: jest.fn(),
   startGeneration: jest.fn(),
   getGeneration: jest.fn(),
   advanceGeneration: jest.fn(),
@@ -143,6 +144,29 @@ describe('POST /api/mcp/create-map', () => {
 
     expect(response.status).toBe(200);
     expect(service.prepareGeneration).toHaveBeenCalledWith(input);
+    expect((await post({
+      action: 'prepare_map_generation',
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+    })).status).toBe(400);
+  });
+
+  it('uses the explicit existing-generation action for confirmation and retry recovery', async () => {
+    const input = {
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+    };
+    service.prepareExistingGeneration.mockResolvedValueOnce({ status: 'planned' });
+
+    const response = await post({ action: 'prepare_existing_map_generation', ...input });
+
+    expect(response.status).toBe(200);
+    expect(service.prepareExistingGeneration).toHaveBeenCalledWith(input);
+    expect(service.prepareGeneration).not.toHaveBeenCalled();
   });
 
   it.each([

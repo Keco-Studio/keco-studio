@@ -233,6 +233,19 @@ describe('Create Map browser service', () => {
     }));
   });
 
+  it('rejects a missing selected Plan version before the browser requests generation', async () => {
+    global.fetch = jest.fn() as typeof fetch;
+
+    await expect(createMapService({} as never).prepareMapGeneration({
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '',
+    })).rejects.toMatchObject({ code: 'invalid_plan_version' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('calls the selection-aware preparation RPC with the exact Plan ID', async () => {
     const rpc = jest.fn(async () => ({
       data: [{
