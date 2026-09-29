@@ -68,4 +68,14 @@ describe('semantic_search usage attribution', () => {
     });
     expect(semanticSearchChunks).not.toHaveBeenCalled();
   });
+
+  it('degrades cleanly on embedding transport failures', async () => {
+    embedQuery.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const result = await semanticSearch.execute({ query: 'dialogue line' }, {
+      projectId: 'project-1', userId: 'user-1', conversationId: 'conversation-1',
+      userRole: 'editor', supabase: {} as SupabaseClient, usageBinding,
+    } as ToolContext);
+    expect(result).toMatchObject({ success: true, data: { degradationReason: 'embedding_unavailable' } });
+    expect(semanticSearchChunks).not.toHaveBeenCalled();
+  });
 });

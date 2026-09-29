@@ -30,9 +30,9 @@ const studioTools: ReadonlySet<string> = new Set([
 
 const scriptTools: ReadonlySet<string> = new Set([
   ...discoveryAndSettings,
-  'list_project_structure', 'list_documents', 'read_document',
+  'list_documents', 'read_document',
   'rename_document',
-  'semantic_search', 'query_script_lines', 'import_script',
+  'query_script_lines', 'import_script',
   'read_story_graph', 'propose_story_graph_edit', 'generate_from_document',
   'add_script_document', 'remove_script_document', 'rename_script', 'delete_script',
   'reorder_script_dialogue', 'edit_script_dialogue', 'change_script_dialogue_speaker',

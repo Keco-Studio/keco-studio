@@ -10,6 +10,7 @@ const publicMapErrors: Record<CreateMapMcpErrorCode, string> = {
   MAP_NOT_FOUND: 'The requested V3 map was not found.',
   MAP_REVISION_STALE: 'The map revision or save version is stale.',
   MAP_RESIZE_REQUIRES_NEW_DRAFT: 'Map size changes require a new map draft because the generated image and collision grid are bound to the current dimensions.',
+  MAP_MANAGED_FIELDS_LOCKED: 'References, generated images, and collision grids require their dedicated map workflows.',
   MAP_CONFIRMATION_REQUIRED: 'Explicit paid map generation confirmation is required.',
   MAP_CONFIRMATION_EXPIRED: 'The map generation confirmation has expired.',
   MAP_CONFIRMATION_MISMATCH: 'The map generation confirmation does not match the current map state.',

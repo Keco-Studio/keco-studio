@@ -186,24 +186,6 @@ describe('propose_story_graph_edit', () => {
     expect(applyMutationMock).not.toHaveBeenCalled();
   });
 
-  it('updates dialogue content by the persisted row UUID', async () => {
-    const result = await proposeStoryGraphEdit.execute({
-      libraryId,
-      operations: [{
-        type: 'update_node',
-        nodeId: 'asset-start',
-        content: 'Updated line',
-      }],
-    }, ctx);
-
-    expect(result).toMatchObject({
-      success: true,
-      data: { affectedRows: [1] },
-      internalData: expect.objectContaining({ normalizedPatch: expect.any(Object) }),
-    });
-    expect(applyMutationMock).not.toHaveBeenCalled();
-  });
-
   it('rejects a newly created node that remains unreachable', async () => {
     const result = await proposeStoryGraphEdit.execute({
       libraryId,

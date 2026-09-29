@@ -192,6 +192,17 @@ describe('structured Game Design System generation', () => {
     expect(complete).toHaveBeenCalledTimes(2);
   });
 
+  it('bounds the repair request after a large first response', async () => {
+    const complete = jest.fn(async () => complete.mock.calls.length === 1
+      ? 'X'.repeat(30_000)
+      : JSON.stringify(validOutput));
+    await generateGameDesignSystemOutput({ ...input, pastedMarkdown: 'P'.repeat(30_000) }, complete);
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const repair = (calls[1][0] as ChatMessage[])[1];
+    expect(String(repair.content).length).toBeLessThanOrEqual(40_000);
+    expect(String(repair.content)).toContain('Invalid response:');
+  });
+
   it('retains a rules-only compatibility wrapper', async () => {
     const complete = jest.fn(async () => JSON.stringify(validOutput));
     const result = await generateGameDesignRuleSet(input, complete);

@@ -57,6 +57,9 @@ describe('workspace Tool policy', () => {
     expect(getAllowedToolNames('script').has('import_script')).toBe(true);
     expect(getAllowedToolNames('script').has('propose_story_graph_edit')).toBe(true);
     expect(getAllowedToolNames('script').has('rename_document')).toBe(true);
+    for (const name of ['list_project_structure', 'query_assets', 'semantic_search']) {
+      expect(getAllowedToolNames('script').has(name)).toBe(false);
+    }
     expect(getAllowedToolNames('script').has('add_script_document')).toBe(true);
     for (const name of ['create_asset', 'update_asset', 'delete_asset', 'add_field', 'create_library']) {
       expect(getAllowedToolNames('script').has(name)).toBe(false);

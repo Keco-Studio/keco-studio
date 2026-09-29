@@ -195,6 +195,29 @@ describe('Create Map MCP service', () => {
     expect(domain.updateDraft).not.toHaveBeenCalled();
   });
 
+  it('rejects managed reference changes through the MCP update path', async () => {
+    const domain = backend();
+    const changedPlan = structuredClone(plan);
+    changedPlan.styleReference = {
+      assetId: IDS.assetId,
+      sha256: 'b'.repeat(64),
+      copy: ['outline'],
+    };
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+    });
+
+    await expect(service.updateDraft({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      plan: changedPlan,
+      scene,
+    })).rejects.toMatchObject({ code: 'MAP_MANAGED_FIELDS_LOCKED' });
+    expect(domain.updateDraft).not.toHaveBeenCalled();
+  });
+
   it('returns actionable validation guidance and releases an unsafe draft claim', async () => {
     const domain = backend();
     domain.createDraft.mockRejectedValueOnce({ code: 'map_description_unsafe' });

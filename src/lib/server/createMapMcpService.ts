@@ -161,6 +161,7 @@ export type CreateMapMcpErrorCode =
   | 'MAP_NOT_FOUND'
   | 'MAP_REVISION_STALE'
   | 'MAP_RESIZE_REQUIRES_NEW_DRAFT'
+  | 'MAP_MANAGED_FIELDS_LOCKED'
   | 'MAP_CONFIRMATION_REQUIRED'
   | 'MAP_CONFIRMATION_EXPIRED'
   | 'MAP_CONFIRMATION_MISMATCH'
@@ -178,6 +179,7 @@ const PUBLIC_MESSAGES: Record<CreateMapMcpErrorCode, string> = {
   MAP_NOT_FOUND: 'The requested V3 map was not found.',
   MAP_REVISION_STALE: 'The map revision or save version is stale.',
   MAP_RESIZE_REQUIRES_NEW_DRAFT: 'Map size changes require a new map draft because the generated image and collision grid are bound to the current dimensions.',
+  MAP_MANAGED_FIELDS_LOCKED: 'References, generated images, and collision grids require their dedicated map workflows.',
   MAP_CONFIRMATION_REQUIRED: 'Explicit paid map generation confirmation is required.',
   MAP_CONFIRMATION_EXPIRED: 'The map generation confirmation has expired.',
   MAP_CONFIRMATION_MISMATCH: 'The map generation confirmation does not match the current map state.',
@@ -805,6 +807,14 @@ export function createMapMcpService(
           || workspace.plan.map.height !== input.plan.map.height
         ) {
           throw new CreateMapMcpError('MAP_RESIZE_REQUIRES_NEW_DRAFT');
+        }
+        if (
+          JSON.stringify(workspace.plan.references) !== JSON.stringify(input.plan.references)
+          || JSON.stringify(workspace.plan.styleReference) !== JSON.stringify(input.plan.styleReference)
+          || JSON.stringify(workspace.scene.mapImage) !== JSON.stringify(input.scene.mapImage)
+          || JSON.stringify(workspace.scene.collisionGrid) !== JSON.stringify(input.scene.collisionGrid)
+        ) {
+          throw new CreateMapMcpError('MAP_MANAGED_FIELDS_LOCKED');
         }
         const saveVersion = await backend.updateDraft(input);
         return { mapId: input.mapId, revisionId: input.revisionId, saveVersion };

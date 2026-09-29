@@ -76,4 +76,27 @@ describe('query_script_lines dynamic options', () => {
       },
     });
   });
+
+  it('maps an action row to its merged speech block ID', async () => {
+    resolveLibraryForToolMock.mockResolvedValue({ ok: true, library: { id: 'library-1', name: 'Story' } });
+    getLibraryPropertiesMock.mockResolvedValue([
+      { id: 'field-type', key: 'type', name: 'Type', valueType: 'string', orderIndex: 0 },
+      { id: 'field-name', key: 'name', name: 'Name', valueType: 'string', orderIndex: 1 },
+      { id: 'field-content', key: 'content', name: 'Content', valueType: 'string', orderIndex: 2 },
+    ]);
+    getLibraryAssetsMock.mockResolvedValue([
+      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', libraryId: 'library-1', name: 'Action',
+        propertyValues: { type: '3', name: 'Hero', content: 'waves' } },
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', libraryId: 'library-1', name: 'Speech',
+        propertyValues: { type: '1', name: 'Hero', content: 'Hello' } },
+    ]);
+
+    const result = await queryScriptLines.execute({}, {
+      supabase: {}, projectId: 'project-1', userId: 'user-1', userRole: 'editor', currentLibraryName: 'Story',
+    } as ToolContext);
+    expect(result).toMatchObject({ success: true, data: { lines: [
+      { nodeId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', blockId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', actionText: 'waves', dialogue: 'Hello' },
+      { nodeId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', blockId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', actionText: 'waves', dialogue: 'Hello' },
+    ] } });
+  });
 });

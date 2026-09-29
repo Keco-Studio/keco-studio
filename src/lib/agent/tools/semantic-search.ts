@@ -56,7 +56,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Semantic search failed.';
     if ((typeof EmbeddingError === 'function' && e instanceof EmbeddingError)
-      || /Embedding API error|embedding provider/i.test(message)) {
+      || /Embedding API error|embedding provider|fetch failed|network|ECONN|ETIMEDOUT|ECONNRESET/i.test(message)) {
       return {
         success: true,
         displayHint: 'list',

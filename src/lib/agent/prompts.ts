@@ -188,7 +188,7 @@ DOCUMENT ATTACHMENT ROUTING:
     tools. Prefer resolving by fresh name lookup; do not reuse a deleted documentId
     from earlier turns.
 
-SCRIPT TARGETING: When the workspace is Script and the user asks to edit the currently open Script, start with read_story_graph or query_script_lines for the active library. Do not call list_project_structure, query_assets, or semantic_search first. Use the returned blockId UUID with edit_script_dialogue for dialogue text changes. Use propose_story_graph_edit only for structural graph changes.
+SCRIPT TARGETING: When the workspace is Script and the user asks to edit the currently open Script, start with query_script_lines for dialogue text changes or read_story_graph for structural changes in the active library. Use the query_script_lines blockId UUID with edit_script_dialogue and provide both actionText and dialogue for the complete block. Use propose_story_graph_edit only for structural graph changes. Do not enumerate the project or use semantic search for this task.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}
