@@ -38,10 +38,6 @@ export type StoryGraphChange =
   | {
       type: 'ending_changed'; fromLabel: string;
       fromTargetLabel: string | null; terminal: true;
-    }
-  | {
-      type: 'node_updated'; nodeId: string; label: string;
-      fields: Array<'content' | 'speaker' | 'commands'>;
     };
 
 type NormalizedOperation = StoryGraphPatchOperation & {
@@ -291,29 +287,6 @@ function applyOperation(
         type: 'ending_changed', fromLabel: from.label,
         fromTargetLabel: previous, terminal: true,
       });
-      return;
-    }
-    case 'update_node': {
-      if (operation.content === undefined && operation.speaker === undefined && operation.commands === undefined) {
-        invalid('update_node requires content, speaker, or commands');
-      }
-      const node = graph.nodes.find((candidate) => candidate.assetId === operation.nodeId);
-      if (!node) invalid(`Story node UUID ${operation.nodeId} was not found`);
-      const fields: Array<'content' | 'speaker' | 'commands'> = [];
-      if (operation.content !== undefined) {
-        node.content = operation.content;
-        fields.push('content');
-      }
-      if (operation.speaker !== undefined) {
-        node.speaker = operation.speaker;
-        fields.push('speaker');
-      }
-      if (operation.commands !== undefined) {
-        node.commands = operation.commands;
-        fields.push('commands');
-      }
-      normalized.push({ ...operation, nodeId: node.assetId! });
-      changes.push({ type: 'node_updated', nodeId: node.assetId!, label: node.label, fields });
       return;
     }
   }

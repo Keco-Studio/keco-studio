@@ -76,6 +76,9 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         nodes: storyNodes.map((node) => ({
           id: node.assetId,
           nodeId: node.assetId,
+          // For dialogue rows the persisted Script row UUID is also the
+          // dialogue block id consumed by edit_script_dialogue.
+          blockId: node.assetId,
           label: node.label,
           title: node.plotTitle,
           rowIndex: node.rowIndex + 1,
@@ -109,7 +112,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const readStoryGraph: AgentTool = {
   name: 'read_story_graph',
   description:
-    'Read the visible Plot tree and canonical executable nodes of a document-derived Script library. Use exact plotTitle when the user refers to a visible tree title; the result provides firstLabel and lastLabel for safe writes. Select by libraryId first, exact libraryName second, or omit both for the active Script library.',
+    'Read the visible Plot tree and canonical executable nodes of a document-derived Script library. Each node includes its persisted nodeId/blockId UUID for exact dialogue edits. Use exact plotTitle when the user refers to a visible tree title; the result provides firstLabel and lastLabel for safe structural writes. Select by libraryId first, exact libraryName second, or omit both for the active Script library.',
   category: 'read',
   confirmationMode: 'pre_execute',
   parameters: {

@@ -49,13 +49,6 @@ const OperationSchema = z.discriminatedUnion('type', [
     type: z.literal('set_end'),
     fromLabel: NodeReferenceSchema,
   }).strict(),
-  z.object({
-    type: z.literal('update_node'),
-    nodeId: z.string().trim().min(1).max(200),
-    content: z.string().max(100_000).optional(),
-    speaker: z.string().max(200).optional(),
-    commands: z.string().max(10_000).optional(),
-  }).strict(),
 ]);
 
 export const StoryGraphPatchSchema = z.object({

@@ -146,8 +146,6 @@ function changeLabels(change: StoryGraphChange): string[] {
       return [change.fromLabel, change.toTargetLabel];
     case 'ending_changed':
       return [change.fromLabel];
-    case 'node_updated':
-      return [change.label];
   }
 }
 

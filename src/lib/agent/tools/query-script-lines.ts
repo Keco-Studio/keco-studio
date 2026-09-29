@@ -95,6 +95,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       id: asset.id,
       assetId: asset.id,
       nodeId: asset.id,
+      blockId: asset.id,
       label: get(values, 'Label'),
       type: typeRaw === '' ? 0 : Number(typeRaw),
       name: get(values, 'Name'),
@@ -120,7 +121,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const queryScriptLines: AgentTool = {
   name: 'query_script_lines',
   description:
-    'Query the script lines and branch structure of a script library. Returns structured lines with persisted id/nodeId UUIDs, label, type, speaker name, content, and options. Use a returned nodeId with propose_story_graph_edit update_node to edit dialogue text. libraryName defaults to the active library from page context when omitted.',
+    'Query the script lines and branch structure of a script library. Returns structured lines with persisted nodeId/blockId UUIDs, label, type, speaker name, content, and options. Use a returned blockId with edit_script_dialogue for exact dialogue text changes. libraryName defaults to the active library from page context when omitted.',
   category: 'read',
   confirmationMode: 'pre_execute', // unused for read tools
   parameters: {
