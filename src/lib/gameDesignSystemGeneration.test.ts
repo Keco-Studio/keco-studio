@@ -115,6 +115,21 @@ describe('structured Game Design System generation', () => {
     expect(JSON.stringify(messages)).not.toContain('/game-art-styles/');
   });
 
+  it('bounds large source context before sending a generation request', () => {
+    const messages = buildStructuredGenerationMessages({
+      ...input,
+      pastedMarkdown: 'P'.repeat(20_000),
+      sourceSnapshots: Array.from({ length: 10 }, (_, index) => ({
+        ...input.sourceSnapshots[0],
+        label: `Source ${index}`,
+        excerpt: `${index}:${'S'.repeat(20_000)}`,
+      })),
+    });
+    expect(String(messages[1].content).length).toBeLessThan(45_000);
+    expect(String(messages[1].content)).toContain('Source 0');
+    expect(String(messages[1].content)).toContain('truncated for generation context');
+  });
+
   it('requests Simplified Chinese when the normalized GDS input is Chinese', () => {
     const messages = buildStructuredGenerationMessages({
       ...input,

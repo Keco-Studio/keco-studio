@@ -46,4 +46,26 @@ describe('semantic_search usage attribution', () => {
       context: expect.objectContaining({ operation: 'retrieval_query' }),
     }));
   });
+
+  it('degrades cleanly when the embedding provider is unavailable', async () => {
+    embedQuery.mockRejectedValueOnce(new Error('Embedding API error 404: Not Found'));
+
+    const result = await semanticSearch.execute({ query: 'dialogue line' }, {
+      projectId: 'project-1',
+      userId: 'user-1',
+      conversationId: 'conversation-1',
+      userRole: 'editor',
+      supabase: {} as SupabaseClient,
+      usageBinding,
+    } as ToolContext);
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        results: [],
+        degradationReason: 'embedding_unavailable',
+      },
+    });
+    expect(semanticSearchChunks).not.toHaveBeenCalled();
+  });
 });

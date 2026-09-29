@@ -74,6 +74,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         plotEdges: summarizedPlots.edges,
         ...(selectedPlot ? { selectedPlot: publicPlotNode(selectedPlot) } : {}),
         nodes: storyNodes.map((node) => ({
+          id: node.assetId,
+          nodeId: node.assetId,
           label: node.label,
           title: node.plotTitle,
           rowIndex: node.rowIndex + 1,

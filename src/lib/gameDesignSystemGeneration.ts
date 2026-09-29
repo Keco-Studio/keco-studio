@@ -33,6 +33,10 @@ export type ResolvedGameDesignGenerationInput = {
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 
 const model = () => process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || 'deepseek-flash';
+const GDS_PROMPT_MAX_CHARS = 40_000;
+const GDS_SOURCE_MAX_CHARS = 5_000;
+const GDS_PASTED_MARKDOWN_MAX_CHARS = 8_000;
+const GDS_MAX_COMPLETION_TOKENS = 8_000;
 const gameDesignSystemLlmOptions = (): StreamLlmOptions => ({
   provider: gameDesignSystemProvider(),
   model: process.env.GAME_DESIGN_SYSTEM_LLM_MODEL || model(),
@@ -44,7 +48,7 @@ const gameDesignSystemLlmOptions = (): StreamLlmOptions => ({
     : {}),
   thinking: 'disabled',
   temperature: 0.2,
-  maxCompletionTokens: 12_000,
+  maxCompletionTokens: GDS_MAX_COMPLETION_TOKENS,
 });
 
 function gameDesignSystemProvider(): AiProvider {
@@ -68,15 +72,25 @@ export function hashResolvedGenerationInput(input: ResolvedGameDesignGenerationI
 }
 
 function sourceText(snapshot: GameDesignSourceSnapshot): string {
+  const excerpt = snapshot.excerpt ?? '';
+  const boundedExcerpt = excerpt.length <= GDS_SOURCE_MAX_CHARS
+    ? excerpt
+    : `${excerpt.slice(0, 2_500)}\n...[truncated for generation context]\n${excerpt.slice(-2_500)}`;
   return [
     `SOURCE ${snapshot.kind.toUpperCase()}: ${snapshot.label}`,
     `Resource ID: ${snapshot.resourceId ?? 'n/a'}`,
     `Content hash: ${snapshot.contentHash}`,
     `Truncated: ${snapshot.truncated ? 'yes' : 'no'}`,
     'BEGIN SOURCE CONTENT',
-    snapshot.excerpt ?? '',
+    boundedExcerpt,
     'END SOURCE CONTENT',
   ].join('\n');
+}
+
+function boundedJson(value: unknown, maxChars: number): unknown {
+  const serialized = JSON.stringify(value);
+  if (serialized.length <= maxChars) return value;
+  return `${serialized.slice(0, maxChars)}...[truncated for generation context]`;
 }
 
 function requestedOutputLanguage(input: ResolvedGameDesignGenerationInput): 'zh-CN' | 'en-US' {
@@ -110,13 +124,14 @@ export function buildStructuredGenerationMessages(input: ResolvedGameDesignGener
     referenceGames: input.referenceGames,
     baseSystemId: input.baseSystemId ?? null,
     baseVersionId: input.baseVersionId ?? null,
-    baseDocument: input.baseDocument ?? null,
-    baseRules: input.baseRules ?? null,
-    pastedMarkdown: input.pastedMarkdown?.slice(0, 20_000) ?? null,
+    baseDocument: boundedJson(input.baseDocument ?? null, 6_000),
+    baseRules: boundedJson(input.baseRules ?? null, 10_000),
+    pastedMarkdown: input.pastedMarkdown?.slice(0, GDS_PASTED_MARKDOWN_MAX_CHARS) ?? null,
   };
   const sources = input.sourceSnapshots.length > 0
-    ? input.sourceSnapshots.map(sourceText).join('\n\n')
+    ? input.sourceSnapshots.map(sourceText).join('\n\n').slice(0, GDS_PROMPT_MAX_CHARS)
     : 'No project sources selected.';
+  const userContent = `Create the Game Design System from this normalized request:\n${JSON.stringify(context, null, 2)}\n\n${sources}`;
   return [
     {
       role: 'system',
@@ -142,7 +157,7 @@ export function buildStructuredGenerationMessages(input: ResolvedGameDesignGener
     },
     {
       role: 'user',
-      content: `Create the Game Design System from this normalized request:\n${JSON.stringify(context, null, 2)}\n\n${sources}`,
+      content: userContent.slice(0, GDS_PROMPT_MAX_CHARS),
     },
   ];
 }

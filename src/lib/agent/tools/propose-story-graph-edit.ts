@@ -426,12 +426,24 @@ const operationSchemas = [
         ...(type === 'set_next' ? ['targetLabel'] : []),
       ],
     })),
+  {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      type: { const: 'update_node' },
+      nodeId: { type: 'string', format: 'uuid', description: 'Persisted Script row UUID returned as nodeId by read_story_graph.' },
+      content: { type: 'string', maxLength: 100000 },
+      speaker: { type: 'string', maxLength: 200 },
+      commands: { type: 'string', maxLength: 10000 },
+    },
+    required: ['type', 'nodeId'],
+  },
 ];
 
 export const proposeStoryGraphEdit: AgentTool = {
   name: 'propose_story_graph_edit',
   description:
-    'Preview and atomically edit the executable graph of a document-derived Script. Always call read_story_graph first and use its stable labels. Supports creating and positioning nodes, changing the entry, adding/redirecting/removing choices, setting ordinary successors, and setting endings. To prepend a new entry, create it with insertBeforeLabel and nextLabel pointing to the old entry, then call set_entry. Removing a choice never deletes downstream content.',
+    'Preview and atomically edit the executable graph of a document-derived Script. Always call read_story_graph first. For dialogue text, speaker, or commands edits use update_node with the persisted nodeId UUID returned by read_story_graph; this avoids semantic search. Use stable labels for graph edges and new-node placement. Supports creating and positioning nodes, changing the entry, adding/redirecting/removing choices, setting ordinary successors, setting endings, and updating an existing node.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',

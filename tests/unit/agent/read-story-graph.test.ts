@@ -110,7 +110,7 @@ describe('read_story_graph', () => {
         ]),
         nodes: expect.arrayContaining([
           expect.objectContaining({
-            label: 'Intro', rowIndex: 1,
+            label: 'Intro', rowIndex: 1, id: 'a1', nodeId: 'a1',
             outgoing: [{ kind: 'next', target: 'Decision' }],
           }),
           expect.objectContaining({

@@ -96,8 +96,11 @@ export function buildStoryGraphEditPreview(input: {
   const edgeChanges: EdgeChange[] = [];
   input.changes.forEach((change) => {
     if (change.type === 'node_created') return;
-    const source = input.after.nodes.find((node) => node.label === change.fromLabel)
-      ?? input.before.nodes.find((node) => node.label === change.fromLabel);
+    const source = 'fromLabel' in change
+      ? input.after.nodes.find((node) => node.label === change.fromLabel)
+        ?? input.before.nodes.find((node) => node.label === change.fromLabel)
+      : input.after.nodes.find((node) => node.assetId === change.nodeId)
+        ?? input.before.nodes.find((node) => node.assetId === change.nodeId);
     if (source) rows.add(source.rowIndex + 1);
     switch (change.type) {
       case 'choice_added':
@@ -142,6 +145,8 @@ export function buildStoryGraphEditPreview(input: {
           fromTarget: change.fromTargetLabel,
           toTarget: null,
         });
+        return;
+      case 'node_updated':
         return;
       case 'entry_changed': {
         const target = input.after.nodes.find((node) => node.label === change.toLabel);
