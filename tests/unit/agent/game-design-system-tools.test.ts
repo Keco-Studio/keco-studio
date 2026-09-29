@@ -16,6 +16,7 @@ jest.mock('@/lib/agent/agent-gds-copy-service', () => ({
   ...jest.requireActual('@/lib/agent/agent-gds-copy-service'), copyAgentGameDesignSystem: jest.fn(),
 }));
 jest.mock('@/lib/services/gddGenerationService', () => ({ createGddGenerationJob: jest.fn() }));
+jest.mock('@/lib/agent/gdd-job-wake', () => ({ wakeQueuedGddJob: jest.fn() }));
 jest.mock('@/lib/agent/data-access', () => ({ getLibraryProperties: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/lib/agent/llm-client', () => ({ streamLlm: jest.fn() }));
 jest.mock('@/lib/agent/tool-execution-stream', () => ({ executeAgentTool: jest.fn() }));
@@ -43,6 +44,7 @@ import {
 } from '@/lib/services/gameDesignSystemService';
 import { CopyOutputDeletedError, copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
 import { createGddGenerationJob } from '@/lib/services/gddGenerationService';
+import { wakeQueuedGddJob } from '@/lib/agent/gdd-job-wake';
 import { GDD_GENERATION_WARNING } from '@/lib/agent/game-design-system-tool-service';
 import { listGameDesignSystemsTool } from '@/lib/agent/tools/list-game-design-systems';
 import { readGameDesignSystemTool } from '@/lib/agent/tools/read-game-design-system';
@@ -84,6 +86,7 @@ function fakeClient() {
         return this;
       },
       range(start: number, end: number) { calls.push(['range', table, start, end]); rows = rows.slice(start, end + 1); return this; },
+      limit(count: number) { calls.push(['limit', table, count]); rows = rows.slice(0, count); return this; },
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
       single: async () => ({ data: rows[0] ?? null, error: null }),
       then(resolve: (value: unknown) => unknown) { return Promise.resolve(resolve({ data: rows, error: null })); },
@@ -94,6 +97,7 @@ function fakeClient() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(wakeQueuedGddJob).mockResolvedValue('scheduled');
   const rules = buildLegacyRuleSet({ genres: ['RPG'], philosophies: [], body: '# Rules\nBe readable.' });
   version = { id: versionId, system_id: designSystemId, version_number: 1, parent_version_id: null,
     rules, document: buildCompatibilityGameDesignDocument(rules, { title: 'Rules' }),
@@ -324,7 +328,8 @@ describe('explicit project writes', () => {
         calls.push(['enqueue']);
         return { id: jobId, status: 'queued' } as never;
       });
-      expect(await generateGddTool.execute(result.args, ctx)).toEqual({ success: true, displayHint: 'text', data: { jobType: 'gdd', jobId, status: 'queued' } });
+      expect(await generateGddTool.execute(result.args, ctx)).toEqual({ success: true, displayHint: 'text', data: { jobType: 'gdd', jobId, status: 'queued', workerWake: 'scheduled' } });
+      expect(wakeQueuedGddJob).toHaveBeenCalledWith({ status: 'queued', availableAt: undefined });
       expect(calls.slice(calls.findIndex((call) => call[0] === 'enqueue') + 1)).toEqual([]);
       expect(createGddGenerationJob).toHaveBeenCalledTimes(1);
       expect(createGddGenerationJob).toHaveBeenCalledWith(service, expect.objectContaining({ ownerId: userId, projectId, designSystemId, versionId, idempotencyKey: id(6), inputHash: expect.any(String), input: expect.objectContaining({ mode: 'professional', resourceMode: 'async', versionId }) }));
@@ -354,10 +359,15 @@ describe('explicit project writes', () => {
 describe('one-shot job status', () => {
   it.each(['gdd', 'game-design-system'] as const)('checks owner and returns only bounded %s status with one read', async (jobType) => {
     const result = await getGenerationStatusTool.execute({ jobType, jobId }, ctx);
-    expect(result).toEqual({ success: true, displayHint: 'text', data: { jobType, jobId, status: 'queued', phase: 'collecting' } });
+    expect(result).toEqual({ success: true, displayHint: 'text', data: {
+      jobType, jobId, status: 'queued', phase: 'collecting',
+      ...(jobType === 'gdd' ? { statusHint: 'Queued means awaiting a worker invocation. Collecting is an initial phase label, not evidence that source collection is in progress or stalled.' } : {}),
+      ...(jobType === 'gdd' ? { workerWake: 'scheduled' } : {}),
+    } });
     expect(service.from).toHaveBeenCalledTimes(1);
     expect(calls).toContainEqual(['eq', jobType === 'gdd' ? 'gdd_generation_jobs' : 'game_design_system_generation_jobs', 'owner_id', userId]);
     expect(createGddGenerationJob).not.toHaveBeenCalled(); expect(createGameDesignSystemGenerationJob).not.toHaveBeenCalled();
+    expect(wakeQueuedGddJob).toHaveBeenCalledTimes(jobType === 'gdd' ? 1 : 0);
   });
 
   it.each(['gdd', 'game-design-system'] as const)('denies another owner for %s', async (jobType) => {
@@ -369,6 +379,61 @@ describe('one-shot job status', () => {
     expect((await getGenerationStatusTool.execute({ jobId }, ctx)).success).toBe(false);
     jest.mocked(getUserProjectRole).mockRejectedValue(new Error('Revoked'));
     expect((await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx)).success).toBe(false);
+    expect(wakeQueuedGddJob).not.toHaveBeenCalled();
+  });
+
+  it('passes the queued GDD retry time to the background wake guard', async () => {
+    tables.gdd_generation_jobs[0].available_at = '2999-01-01T00:00:00.000Z';
+    await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(wakeQueuedGddJob).toHaveBeenCalledWith({
+      status: 'queued', availableAt: '2999-01-01T00:00:00.000Z',
+    });
+  });
+
+  it('reports a failed worker dispatch and does not call a resumed phase unstarted', async () => {
+    tables.gdd_generation_jobs[0].phase = 'planning';
+    jest.mocked(wakeQueuedGddJob).mockResolvedValueOnce('failed');
+    const result = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(result.data).toMatchObject({ status: 'queued', phase: 'planning', workerWake: 'failed' });
+    expect(JSON.stringify(result.data)).not.toContain('worker has not started');
+  });
+
+  it('returns the generated document link or bounded failure reason to the assistant', async () => {
+    tables.gdd_generation_jobs[0] = { ...tables.gdd_generation_jobs[0], status: 'completed', phase: 'completed',
+      output_document_id: id(90), output_document_name: 'Tactics GDD', error: null };
+    tables.gdd_resource_jobs = [{ id: id(91), gdd_generation_job_id: jobId, kind: 'tables', status: 'queued',
+      available_at: new Date(Date.now() - 1000).toISOString(), error: null }];
+    tables.gdd_map_artifacts = [{ id: id(92), gdd_generation_job_id: jobId, title: 'Harbor Map', status: 'failed', error: 'private provider error' }];
+    const completed = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(completed.data).toMatchObject({ document: { id: id(90), name: 'Tactics GDD', url: `/${projectId}/doc/${id(90)}` },
+      resources: [{ kind: 'tables', status: 'queued' }], maps: [{ title: 'Harbor Map', status: 'failed' }],
+      resourceWake: 'scheduled' });
+    expect(wakeQueuedGddJob).toHaveBeenCalledWith({ status: 'queued', availableAt: tables.gdd_resource_jobs[0].available_at }, 'resource');
+    expect(JSON.stringify(completed.data)).not.toContain('private provider error');
+    expect(wakeQueuedGddJob).not.toHaveBeenCalledWith({ status: 'queued', availableAt: undefined });
+
+    tables.gdd_generation_jobs[0] = { ...tables.gdd_generation_jobs[0], status: 'failed', phase: 'failed',
+      output_document_id: null, output_document_name: null, error: 'Generation worker lease expired after final attempt.' };
+    const failed = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(failed.data).toMatchObject({ error: 'Worker lease expired after the final attempt.' });
+    expect((failed.data as { document?: unknown }).document).toBeUndefined();
+    tables.gdd_generation_jobs[0].error = 'provider API key: private-secret';
+    const privateFailure = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(privateFailure.data).toMatchObject({ error: 'Generation failed.' });
+    expect(JSON.stringify(privateFailure.data)).not.toContain('private-secret');
+  });
+
+  it('reports failed child recovery and can wake a queued map on a completed parent', async () => {
+    tables.gdd_generation_jobs[0] = { ...tables.gdd_generation_jobs[0], status: 'completed', phase: 'completed',
+      output_document_id: id(90), output_document_name: 'Tactics GDD' };
+    tables.gdd_resource_jobs = [{ id: id(91), gdd_generation_job_id: jobId, kind: 'tables', status: 'queued',
+      available_at: new Date(Date.now() - 1000).toISOString() }];
+    tables.gdd_map_artifacts = [{ id: id(92), gdd_generation_job_id: jobId, title: 'Harbor Map', status: 'queued',
+      available_at: new Date(Date.now() - 1000).toISOString() }];
+    jest.mocked(wakeQueuedGddJob).mockResolvedValueOnce('failed').mockResolvedValueOnce('scheduled');
+    const result = await getGenerationStatusTool.execute({ jobType: 'gdd', jobId }, ctx);
+    expect(result.data).toMatchObject({ resourceWake: 'failed', mapWake: 'scheduled' });
+    expect(wakeQueuedGddJob).toHaveBeenCalledWith({ status: 'queued', availableAt: tables.gdd_map_artifacts[0].available_at }, 'map');
   });
 });
 
