@@ -41,6 +41,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.items::-webkit-scrollbar {
+  display: none;
 }
 
 .item {
