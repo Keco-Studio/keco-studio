@@ -49,7 +49,7 @@ export async function designToolResult(operation: () => Promise<unknown>, displa
   }
 }
 
-class DesignToolError extends Error {}
+export class DesignToolError extends Error {}
 
 function summary(system: GameDesignSystem) {
   return { id: system.id, title: system.title.slice(0, 160), summary: system.summary?.slice(0, 600) ?? null,
@@ -245,6 +245,12 @@ function safeGddFailure(error: string | null | undefined): string {
   return 'Generation failed.';
 }
 
+function retryIsDue(availableAt?: string): boolean {
+  if (!availableAt) return true;
+  const dueAt = Date.parse(availableAt);
+  return !Number.isFinite(dueAt) || dueAt <= Date.now();
+}
+
 export async function generationStatus(ctx: ToolContext, params: unknown) {
   authenticate(ctx);
   const input = z.object({ jobType: z.enum(['game-design-system', 'gdd']), jobId: z.string().uuid() }).strict().parse(params);
@@ -266,7 +272,8 @@ export async function generationStatus(ctx: ToolContext, params: unknown) {
   if (input.jobType === 'gdd') {
     if (!data.project_id) throw new DesignToolError('Generation job not found.');
     await projectAccess(ctx, data.project_id, 'gdd');
-    if (data.status === 'queued') workerWake = await wakeQueuedGddJob({ status: data.status, availableAt: data.available_at });
+    if (data.status === 'queued') workerWake = retryIsDue(data.available_at)
+      ? await wakeQueuedGddJob({ status: data.status, availableAt: data.available_at }) : 'waiting_for_retry';
   }
   let children: { resources: Array<{ kind: string; status: string }> | null;
     maps: Array<{ title: string; status: string }> | null } | null = null;
@@ -289,8 +296,10 @@ export async function generationStatus(ctx: ToolContext, params: unknown) {
         ? maps.data.map((item) => ({ title: item.title, status: item.status })) : null };
       const queuedResource = resources.success ? resources.data.find((item) => item.status === 'queued') : undefined;
       const queuedMap = maps.success ? maps.data.find((item) => item.status === 'queued') : undefined;
-      if (queuedResource) resourceWake = await wakeQueuedGddJob({ status: queuedResource.status, availableAt: queuedResource.available_at }, 'resource');
-      if (queuedMap) mapWake = await wakeQueuedGddJob({ status: queuedMap.status, availableAt: queuedMap.available_at }, 'map');
+      if (queuedResource) resourceWake = retryIsDue(queuedResource.available_at)
+        ? await wakeQueuedGddJob({ status: queuedResource.status, availableAt: queuedResource.available_at }, 'resource') : 'waiting_for_retry';
+      if (queuedMap) mapWake = retryIsDue(queuedMap.available_at)
+        ? await wakeQueuedGddJob({ status: queuedMap.status, availableAt: queuedMap.available_at }, 'map') : 'waiting_for_retry';
     } catch {
       children = { resources: null, maps: null };
     }

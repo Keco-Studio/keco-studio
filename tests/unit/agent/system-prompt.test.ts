@@ -11,6 +11,8 @@ it('does not treat repeated queued GDD snapshots as evidence to cancel or resubm
   expect(prompt).toContain('Do not ask the user to manage the worker or choose a replacement mode');
   expect(prompt).toContain('A completed GDD document can still have queued, running, or failed resources');
   expect(prompt).toContain('resourceWake and mapWake');
+  expect(prompt).toContain('status card polls automatically across requests');
+  expect(prompt).toContain('do not tell the user to ask again for status');
 });
 
 describe('buildSystemPrompt design-document table rules', () => {

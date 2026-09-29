@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 
+jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({ auth: { getSession: jest.fn() } }) }));
+
 jest.mock('next/image', () => {
   function MockNextImage({
     src,

@@ -7,6 +7,8 @@ import {
 } from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
+jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({ auth: { getSession: jest.fn() } }) }));
+
 jest.mock('next/image', () => {
   function MockNextImage({
     src,

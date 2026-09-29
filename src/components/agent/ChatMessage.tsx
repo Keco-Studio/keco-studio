@@ -14,6 +14,7 @@ import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
 import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
 import { summarizeReasoning } from './reasoning-utils';
+import { GddChatJobStatus, parseGddChatJob } from './GddChatJobStatus';
 
 interface Props {
   item: ChatItem;
@@ -108,6 +109,8 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
       return <div className={styles.errorBubble}>{item.error}</div>;
     case 'tool': {
       const data = item.toolCall?.data as { jobType?: unknown; jobId?: unknown; status?: unknown } | undefined;
+      const gdd = item.toolCall?.status === 'success' ? parseGddChatJob(data) : null;
+      if (gdd) return <GddChatJobStatus initial={gdd} />;
       if (item.toolCall?.status === 'success' && (data?.jobType === 'gdd' || data?.jobType === 'game-design-system') &&
           typeof data.jobId === 'string' && typeof data.status === 'string') {
         return <div className={`${styles.bubble} ${styles.assistant}`} data-testid="generation-job-status">
