@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { validateMapPlanV3, validateMapSceneV3, type MapPlanV3, type MapSceneV3 } from '../model/directMapSchema';
 import {
   CreateMapServiceError,
@@ -168,6 +168,7 @@ export function useMapDraft<
   const [status, setStatus] = useState<MapSaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState('');
+  const autosaveTimer = useRef<number | null>(null);
   const writer = useMemo(() => new SerializedMapDraftWriter<MapDraftPayload<P, S>>(
     (target, payload) => adapter.save(target, payload.plan, payload.scene),
     {
@@ -205,8 +206,15 @@ export function useMapDraft<
     if (!identity || writer.isFrozen() || currentPayloadKey === lastSaved) return;
     if (!currentValidation) return;
     const delay = writer.isRunning() ? 0 : 750;
-    const timer = window.setTimeout(() => void writer.enqueue(currentPayload), delay);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => {
+      if (autosaveTimer.current === timer) autosaveTimer.current = null;
+      void writer.enqueue(currentPayload);
+    }, delay);
+    autosaveTimer.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (autosaveTimer.current === timer) autosaveTimer.current = null;
+    };
   }, [currentPayload, currentPayloadKey, currentValidation, identity, lastSaved, writer]);
 
   const create = useCallback(async (
@@ -263,6 +271,10 @@ export function useMapDraft<
   }, [writer]);
 
   const saveNow = useCallback(async (): Promise<MapDraftIdentity | null> => {
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
     const target = writer.currentIdentity();
     if (!target) return null;
     if (!adapter.validate(plan, scene)) {

@@ -1,6 +1,9 @@
+/** @jest-environment jsdom */
 import { describe, expect, it, jest } from '@jest/globals';
+import { act, renderHook } from '@testing-library/react';
 import {
   SerializedMapDraftWriter,
+  useMapDraft,
   validateMapDraftPayloadV3,
   type MapDraftPayloadV3,
 } from '@/features/create-map/hooks/useMapDraft';
@@ -121,5 +124,52 @@ describe('SerializedMapDraftWriter', () => {
     expect(validation.success).toBe(true);
     expect(saved).toEqual([{ plan, scene }]);
     expect((saved[0].plan as { visualBrief?: unknown }).visualBrief).toBeUndefined();
+  });
+});
+
+describe('useMapDraft', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('cancels a pending autosave when saveNow persists the same payload', async () => {
+    jest.useFakeTimers();
+    const initial = payload('Initial plan');
+    const changed = payload('Changed plan');
+    const draftIdentity = identity('map-a', 'revision-a');
+    const firstSave = deferred<number>();
+    const save = jest.fn(async (current: MapDraftIdentity) => (
+      save.mock.calls.length === 1 ? firstSave.promise : current.saveVersion + 1
+    ));
+    const adapter = {
+      validate: () => true,
+      create: async () => draftIdentity,
+      save,
+      publish: async () => ({ publishedRevisionId: 'published', nextDraftRevisionId: 'next' }),
+      load: async () => ({ identity: draftIdentity, plan: initial.plan, scene: initial.scene }),
+    };
+    const { result, rerender } = renderHook(({ plan }) => useMapDraft(plan, initial.scene, adapter), {
+      initialProps: { plan: initial.plan },
+    });
+
+    await act(async () => {
+      await result.current.create('project-a', null, initial.plan, initial.scene);
+    });
+    rerender({ plan: changed.plan });
+
+    let saveNow!: Promise<MapDraftIdentity | null>;
+    act(() => {
+      saveNow = result.current.saveNow();
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(750);
+    });
+    firstSave.resolve(1);
+    await act(async () => {
+      await saveNow;
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.identity?.saveVersion).toBe(1);
   });
 });
