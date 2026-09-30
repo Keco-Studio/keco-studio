@@ -1295,7 +1295,6 @@ test.describe('Create Map V3 mocked workflow', () => {
     const browserFailures = await loginAndOpen(page, backend);
     await page.getByRole('button', { name: 'Open source panel' }).click();
     await createSavedMap(page);
-    await page.getByRole('button', { name: 'Close source panel' }).click();
     await generateReadyMap(page);
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible();
     await expect(page.getByText('Grid ready', { exact: true })).toBeVisible({ timeout: 10_000 });

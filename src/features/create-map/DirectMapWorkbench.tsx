@@ -360,6 +360,7 @@ export function DirectMapWorkbench() {
       ]);
       setViewMode('detail');
       setPlanDetailsOpen(true);
+      setLeftOpen(false);
       setRightOpen(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create the direct map Plan.');
