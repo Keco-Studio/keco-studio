@@ -133,8 +133,28 @@
   flex-shrink: 0;
 }
 
-.actionButton:hover,
+.actionButton:hover {
+  background-color: #0B99FF;
+  border-color: #D1D5DB;
+}
+
+.actionButton:hover img {
+  filter: brightness(0) invert(1);
+}
+
+.actionButton:active {
+  background-color: #0B99FF;
+}
+
+.actionButton:active img {
+  filter: brightness(0) invert(1);
+}
+
 .actionButtonActive {
-  border-color: #0b99ff;
-  background: #f0f8ff;
+  background-color: #0B99FF !important;
+  border-color: #0B99FF !important;
+}
+
+.actionButtonActive img {
+  filter: brightness(0) invert(1);
 }

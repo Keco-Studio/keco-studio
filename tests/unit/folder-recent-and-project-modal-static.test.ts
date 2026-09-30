@@ -55,6 +55,17 @@ describe('folder/recent cards and project modal visual contracts', () => {
     }
   });
 
+  it('uses the table card blue action-button states on document cards', () => {
+    const documentCard = read('src/components/admin/DocumentRecentCard.module.css');
+
+    expect(documentCard).toMatch(
+      /\.actionButton:hover\s*\{[^}]*background-color:\s*#0B99FF;[^}]*border-color:\s*#D1D5DB;/s,
+    );
+    expect(documentCard).toMatch(/\.actionButton:hover img\s*\{[^}]*filter:\s*brightness\(0\) invert\(1\);/s);
+    expect(documentCard).toMatch(/\.actionButton:active\s*\{[^}]*background-color:\s*#0B99FF;/s);
+    expect(documentCard).toMatch(/\.actionButton:active img\s*\{[^}]*filter:\s*brightness\(0\) invert\(1\);/s);
+  });
+
   it('matches the Create Project dialog size and disabled helper text color', () => {
     const dialog = read('src/components/shared/FormDialog.module.css');
     expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*616px;[^}]*height:\s*370px;/s);
