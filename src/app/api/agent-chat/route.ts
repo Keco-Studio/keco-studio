@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
-import { getOrCreateConversation } from '@/lib/agent/conversation-store';
+import { getConversation, getOrCreateConversation } from '@/lib/agent/conversation-store';
 import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { resolveScopeFromNavigation, contextFieldsFromScope } from '@/lib/agent/scope';
 import { sseResponse } from '@/lib/agent/sse';
@@ -13,10 +13,14 @@ import { getDocumentExportSource } from '@/lib/server/documentExportSourceServic
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { buildDesignMessage } from '@/lib/design-message';
 import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import { isAgentWorkspace, workspaceAllowsAccountScope } from '@/lib/agent/workspace';
+import { MAX_AGENT_GAME_MEDIA_BYTES, validateGameMediaAttachment } from '@/lib/agent/game-media-attachment';
+import { MAX_AGENT_MAP_REFERENCE_BYTES, validateMapReferenceAttachment } from '@/lib/agent/map-reference-attachment';
 import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
 export const maxDuration = 120;
+export const runtime = 'nodejs';
 
 const isUuid = (v: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -26,11 +30,13 @@ export const POST = withAuth(async function POST(
   _context,
   { supabase, user }
 ) {
-  let body: {
+  type Body = {
     conversationId?: string;
     projectId?: string;
     message?: string;
     imageUrls?: unknown;
+    gameMediaSubmissionId?: unknown;
+    mapReferenceSubmissionId?: unknown;
     selectionContext?: unknown;
     currentDocumentId?: string;
     currentFolderId?: string;
@@ -42,8 +48,33 @@ export const POST = withAuth(async function POST(
     autoExecute?: unknown;
     documentExport?: unknown;
   };
+  let body: Body;
+  let gameMediaFile: File | null = null;
+  let mapReferenceFile: File | null = null;
   try {
-    body = await request.json();
+    if (request.headers.get('content-type')?.toLowerCase().startsWith('multipart/form-data')) {
+      const contentLength = Number(request.headers.get('content-length'));
+      if (!Number.isSafeInteger(contentLength) || contentLength < 1) {
+        return NextResponse.json({ error: 'Content-Length is required for game media' }, { status: 411 });
+      }
+      if (contentLength > MAX_AGENT_GAME_MEDIA_BYTES + 64 * 1024) {
+        return NextResponse.json({ error: 'Game media must be 10 MB or smaller.' }, { status: 413 });
+      }
+      const form = await request.formData();
+      const rawBody = form.get('payload');
+      const gameFiles = form.getAll('gameMedia');
+      const mapFiles = form.getAll('mapReference');
+      const files = [...gameFiles, ...mapFiles];
+      if (typeof rawBody !== 'string' || files.length !== 1 || !(files[0] instanceof File)
+        || Array.from(form.keys()).some((key) => !['payload', 'gameMedia', 'mapReference'].includes(key))) {
+        return NextResponse.json({ error: 'Invalid attachment' }, { status: 400 });
+      }
+      body = JSON.parse(rawBody) as Body;
+      if (gameFiles.length === 1) gameMediaFile = files[0] as File;
+      else mapReferenceFile = files[0] as File;
+    } else {
+      body = await request.json();
+    }
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -52,15 +83,34 @@ export const POST = withAuth(async function POST(
   if (!clientMessage) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
   }
+  const gameMediaSubmissionId = body.gameMediaSubmissionId;
+  if (gameMediaFile && (typeof gameMediaSubmissionId !== 'string' || !isUuid(gameMediaSubmissionId))) {
+    return NextResponse.json({ error: 'Invalid game-media submission id' }, { status: 400 });
+  }
+  if (!gameMediaFile && gameMediaSubmissionId !== undefined) {
+    return NextResponse.json({ error: 'Game-media submission requires an attachment' }, { status: 400 });
+  }
+  const mapReferenceSubmissionId = body.mapReferenceSubmissionId;
+  if (mapReferenceFile && (typeof mapReferenceSubmissionId !== 'string' || !isUuid(mapReferenceSubmissionId))) {
+    return NextResponse.json({ error: 'Invalid Map reference submission id' }, { status: 400 });
+  }
+  if (!mapReferenceFile && mapReferenceSubmissionId !== undefined) {
+    return NextResponse.json({ error: 'Map reference submission requires an attachment' }, { status: 400 });
+  }
 
   const isNewConversation = !body.conversationId;
-  const bodyProjectId = String(body.projectId ?? '').trim();
-  const liveWorkspace: AgentWorkspace = body.workspace === 'script' ? 'script' : 'studio';
+  if (isNewConversation && body.projectId !== undefined && typeof body.projectId !== 'string') {
+    return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
+  }
+  const bodyProjectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (isNewConversation && body.workspace !== undefined && !isAgentWorkspace(body.workspace)) {
+    return NextResponse.json({ error: 'Invalid workspace' }, { status: 400 });
+  }
+  const liveWorkspace: AgentWorkspace = isAgentWorkspace(body.workspace) ? body.workspace : 'studio';
 
-  // A new conversation must be opened inside a project — that project (and the
-  // current folder/table selection) is snapshotted as the conversation's frozen
-  // scope. An existing conversation derives its project from its own binding.
-  if (isNewConversation && (!bodyProjectId || !isUuid(bodyProjectId))) {
+  // A new conversation snapshots the workspace and optional project from live
+  // navigation. Existing conversations use their persisted binding below.
+  if (isNewConversation && (bodyProjectId ? !isUuid(bodyProjectId) : !workspaceAllowsAccountScope(liveWorkspace))) {
     return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
   }
 
@@ -72,6 +122,13 @@ export const POST = withAuth(async function POST(
     : undefined;
 
   try {
+    const storedConversation = body.conversationId
+      ? await getConversation(supabase, body.conversationId)
+      : null;
+    if (body.conversationId && (!storedConversation || storedConversation.user_id !== user.id)) {
+      return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
+    }
+    const requestedProjectId = bodyProjectId || null;
     const initialAutoExecute =
       typeof body.autoExecute === 'boolean' ? body.autoExecute : false;
 
@@ -129,23 +186,44 @@ export const POST = withAuth(async function POST(
       documentExport = { sourceDocumentId, exportType: 'table', snapshotToken };
     }
 
-    // For a new conversation, snapshot the scope from live navigation.
+    // Resource hints are untrusted navigation data. Only bind resources that
+    // belong to the same project as this conversation.
+    let folderHint: { id: string; name: string } | undefined;
+    let libraryHint: { id: string; name: string } | undefined;
+    if (isNewConversation && requestedProjectId && body.currentFolderId) {
+      if (typeof body.currentFolderId !== 'string' || !isUuid(body.currentFolderId)) {
+        return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('folders').select('id, name')
+        .eq('id', body.currentFolderId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid folder context' }, { status: 400 });
+      folderHint = data;
+    }
+    if (isNewConversation && requestedProjectId && body.currentLibraryId) {
+      if (typeof body.currentLibraryId !== 'string' || !isUuid(body.currentLibraryId)) {
+        return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      }
+      const { data, error } = await supabase.from('libraries').select('id, name')
+        .eq('id', body.currentLibraryId).eq('project_id', requestedProjectId).maybeSingle();
+      if (error || !data) return NextResponse.json({ error: 'Invalid library context' }, { status: 400 });
+      libraryHint = data;
+    }
+
+    // For a new conversation, snapshot the scope from verified navigation.
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
-          projectId: bodyProjectId,
+          projectId: requestedProjectId ?? undefined,
           workspace: liveWorkspace,
-          currentFolderId: body.currentFolderId,
-          currentFolderName: body.currentFolderName,
-          currentLibraryId: body.currentLibraryId,
-          currentLibraryName: body.currentLibraryName,
+          currentFolderId: folderHint?.id,
+          currentFolderName: folderHint?.name,
+          currentLibraryId: libraryHint?.id,
+          currentLibraryName: libraryHint?.name,
         })
       : undefined;
 
-    const conversation = await getOrCreateConversation(supabase, {
-      conversationId: body.conversationId,
+    const conversation = storedConversation ?? await getOrCreateConversation(supabase, {
       userId: user.id,
-      // Existing conversations ignore this; only used to create a new one.
-      projectId: bodyProjectId,
+      projectId: requestedProjectId,
       initialAutoExecute,
       scope: scopeSnapshot,
       ...(documentExport ? { documentExport } : {}),
@@ -156,16 +234,44 @@ export const POST = withAuth(async function POST(
     const boundMeta = resolveConversationMeta(conversation.meta);
     const boundScope = isNewConversation ? scopeSnapshot : boundMeta.scope;
 
-    // v1: the global scope has no cross-project capability yet (see spec §7).
-    if (boundScope?.level === 'global') {
+    const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
+    if (!contextFields.projectId && !workspaceAllowsAccountScope(contextFields.workspace)) {
       return NextResponse.json(
-        { error: 'This conversation is not bound to a specific project. Open a project and start a new conversation.' },
+        { error: 'Select a project before using Studio.' },
         { status: 400 }
       );
     }
 
-    const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
-    const userRole = await resolveUserRole(supabase, contextFields.projectId, user.id);
+    const userRole = contextFields.projectId
+      ? await resolveUserRole(supabase, contextFields.projectId, user.id)
+      : undefined;
+    if (gameMediaFile && (contextFields.workspace !== 'studio'
+      || !contextFields.projectId || userRole === 'viewer' || !userRole)) {
+      return NextResponse.json({ error: 'Editor or admin project access is required for game media' }, { status: 403 });
+    }
+    if (mapReferenceFile && (contextFields.workspace !== 'create-map'
+      || !contextFields.projectId || userRole === 'viewer' || !userRole)) {
+      return NextResponse.json({ error: 'Editor or admin Create Map access is required' }, { status: 403 });
+    }
+    let gameMediaAttachment;
+    if (gameMediaFile) {
+      try {
+        gameMediaAttachment = await validateGameMediaAttachment(gameMediaFile);
+      } catch {
+        return NextResponse.json({ error: 'Invalid game-media attachment' }, { status: 400 });
+      }
+    }
+    let mapReferenceAttachment;
+    if (mapReferenceFile) {
+      if (mapReferenceFile.size > MAX_AGENT_MAP_REFERENCE_BYTES) {
+        return NextResponse.json({ error: 'Map reference must be 5 MB or smaller' }, { status: 413 });
+      }
+      try {
+        mapReferenceAttachment = await validateMapReferenceAttachment(mapReferenceFile);
+      } catch {
+        return NextResponse.json({ error: 'Invalid Map reference attachment' }, { status: 400 });
+      }
+    }
     if (boundMeta.documentExport && userRole !== 'admin') {
       throw new AgentAccessError('Only admin users can export project content');
     }
@@ -182,11 +288,13 @@ export const POST = withAuth(async function POST(
         return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
       }
     }
-    const currentDocumentContext = await resolveCurrentDocumentContext(
-      supabase,
-      contextFields.projectId,
-      typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
-    );
+    const currentDocumentContext = contextFields.projectId
+      ? await resolveCurrentDocumentContext(
+          supabase,
+          contextFields.projectId,
+          typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
+        )
+      : {};
 
     const toolContext: ToolContext = {
       userId: user.id,
@@ -196,7 +304,6 @@ export const POST = withAuth(async function POST(
       documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
-      workspace: contextFields.workspace ?? liveWorkspace,
     };
 
     const message = documentSnapshot
@@ -216,6 +323,10 @@ export const POST = withAuth(async function POST(
       userMessage: message,
       signal: abortController.signal,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      gameMediaAttachment,
+      gameMediaSubmissionId: gameMediaFile ? gameMediaSubmissionId as string : undefined,
+      mapReferenceAttachment,
+      mapReferenceSubmissionId: mapReferenceFile ? mapReferenceSubmissionId as string : undefined,
       selectionContext,
       toolContext,
       conversationMeta: boundMeta,
@@ -223,7 +334,7 @@ export const POST = withAuth(async function POST(
       usageBinding: {
         context: {
           actorUserId: user.id,
-          projectId: conversation.project_id,
+          ...(conversation.project_id ? { projectId: conversation.project_id } : {}),
           feature: 'agent_chat',
           operation: 'react_iteration',
           correlationId: `agent_turn:${turnId}`,

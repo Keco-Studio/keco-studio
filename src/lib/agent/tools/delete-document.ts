@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { deleteDocumentIfUnchanged } from '@/lib/services/documentService';
@@ -64,7 +65,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       selectorFromParams(parsed.data),
       ctx
     );
@@ -75,7 +76,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         ...(resolution.candidates ? { data: { candidates: resolution.candidates } } : {}),
       };
     }
-    if (resolution.document.project_id !== ctx.projectId) {
+    if (resolution.document.project_id !== requireProjectContext(ctx)) {
       return { success: false, error: 'Document not found in this project.' };
     }
 
@@ -86,7 +87,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     );
     if (
       state.documentId !== resolution.document.id ||
-      state.projectId !== ctx.projectId
+      state.projectId !== requireProjectContext(ctx)
     ) {
       return { success: false, error: 'Document not found in this project.' };
     }
@@ -128,14 +129,14 @@ async function executeImport(
   if (!preview.success) {
     return { success: false, error: 'Delete confirmation data is unavailable; please retry.' };
   }
-  if (preview.data.projectId !== ctx.projectId) {
+  if (preview.data.projectId !== requireProjectContext(ctx)) {
     return { success: false, error: 'Document not found in this project.' };
   }
 
   try {
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       { documentId: preview.data.documentId },
       ctx
     );
@@ -176,7 +177,7 @@ async function executeImport(
       .then(({ removeProjectDocumentIndex }) =>
         removeProjectDocumentIndex({
           actorUserId: ctx.userId,
-          projectId: ctx.projectId,
+          projectId: requireProjectContext(ctx),
           documentId: preview.data.documentId,
         })
       )

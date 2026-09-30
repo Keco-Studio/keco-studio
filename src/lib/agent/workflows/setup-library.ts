@@ -11,6 +11,7 @@
  *                   field fails midway the freshly created library is rolled back.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { addLibraryField } from '@/lib/services/libraryAssetsService';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
@@ -90,7 +91,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (ctx.documentExport) {
       const source = await resolveDocumentLibrarySourceDisplay(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         ctx.documentExport
       );
       folderId = source.folderId;
@@ -99,7 +100,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     } else if (folderName) {
       const { folder, available } = await findFolderByName(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         folderName,
         ctx
       );
@@ -114,7 +115,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     }
 
     // 2. Reject duplicate library name.
-    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId, ctx);
+    const existing = await listProjectLibraries(ctx.supabase, requireProjectContext(ctx), ctx);
     if (existing.some((lib) => norm(lib.name) === norm(libraryName))) {
       return {
         success: false,
@@ -141,7 +142,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         for (const refName of field.referenceLibraries) {
           const { library, available } = await findLibraryByName(
             ctx.supabase,
-            ctx.projectId,
+            requireProjectContext(ctx),
             refName,
             undefined,
             ctx
@@ -201,7 +202,7 @@ async function executeImport(
   try {
     libraryId = await createLibraryServer(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       preview.libraryName,
       preview.folderId,
       preview.description,
@@ -242,7 +243,7 @@ async function executeImport(
   const writeGuide = buildLibraryWriteGuide(properties);
 
   scheduleLibrarySchemaReindex(ctx.supabase, {
-    projectId: ctx.projectId,
+    projectId: requireProjectContext(ctx),
     libraryId,
   });
 
@@ -262,7 +263,7 @@ async function executeImport(
       id: libraryId,
       ...(ctx.documentExport
         ? {
-            projectId: ctx.projectId,
+            projectId: requireProjectContext(ctx),
             sourceDocumentId: ctx.documentExport.sourceDocumentId,
           }
         : {}),

@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { findFolderByName } from '../data-access';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
@@ -47,7 +48,7 @@ function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
     .then(({ reindexProjectDocumentAsActor }) =>
       reindexProjectDocumentAsActor({
         actorUserId: ctx.userId,
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         documentId,
         usageBinding: ctx.usageBinding,
       })
@@ -69,7 +70,7 @@ async function prepareConfirmation(
   try {
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       selectorFromParams(parsed.data),
       ctx
     );
@@ -113,7 +114,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       selectorFromParams(parsed.data),
       ctx
     );
@@ -132,7 +133,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (parsed.data.folderName !== undefined) {
       const { folder, available } = await findFolderByName(
         ctx.supabase,
-        ctx.projectId,
+        requireProjectContext(ctx),
         parsed.data.folderName,
         ctx
       );
@@ -154,7 +155,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       displayHint: 'text',
       invalidations: [{
         type: 'documents',
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         documentId: resolution.document.id,
       }],
       data: {

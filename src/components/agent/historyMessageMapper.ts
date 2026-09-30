@@ -2,7 +2,7 @@
  * Maps persisted agent_messages rows to frontend ChatItem[] for history display.
  */
 
-import type { ChatItem } from './types';
+import type { ChatItem, ToolCallView } from './types';
 import { deriveUserDisplay } from './userMessageDisplay';
 import { getMessageText } from '@/lib/agent/content-parts';
 import type { ChatMessage } from '@/lib/agent/types';
@@ -57,6 +57,23 @@ function toolNameFromCall(tc: ToolCallRef): string {
   return tc.function?.name ?? 'tool';
 }
 
+function historyToolCall(tool: string, text: string): ToolCallView {
+  const data = parseToolData(text);
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const result = data as Record<string, unknown>;
+    if (result.displayHint === 'map') return {
+      tool, status: result.success === true ? 'success' : 'failure', displayHint: 'map', data: result.data,
+    };
+    const job = result.data as Record<string, unknown> | null | undefined;
+    if (job && (job.jobType === 'gdd' || job.jobType === 'game-design-system') &&
+        typeof job.jobId === 'string' && typeof job.status === 'string') return {
+      tool, status: result.success === true ? 'success' : 'failure', displayHint: 'text',
+      data: { jobType: job.jobType, jobId: job.jobId.slice(0, 64), status: job.status.slice(0, 80) },
+    };
+  }
+  return { tool, status: 'success', data };
+}
+
 export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): ChatItem[] {
   const loaded: ChatItem[] = [];
   let turnItems: ChatItem[] = [];
@@ -85,7 +102,11 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
 
     if (m.role === 'user' && text) {
       flushTurn();
-      const display = deriveUserDisplay(text, imageUrlsFromBody(body));
+      const media = body.game_media_attachment;
+      const mediaName = media && typeof media === 'object' && !Array.isArray(media)
+        && typeof (media as Record<string, unknown>).fileName === 'string'
+        ? (media as Record<string, string>).fileName : undefined;
+      const display = deriveUserDisplay(text, imageUrlsFromBody(body), undefined, mediaName);
       loaded.push({ id: m.id, role: 'user', text: display.text, attachments: display.attachments });
       i++;
       continue;
@@ -122,7 +143,7 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
           turnItems.push({
             id: toolRow.id,
             role: 'tool',
-            toolCall: { tool: name, status: 'success', data: parseToolData(toolText) },
+            toolCall: historyToolCall(name, toolText),
           });
         }
 
@@ -139,7 +160,7 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
       turnItems.push({
         id: m.id,
         role: 'tool',
-        toolCall: { tool: toolName, status: 'success', data: parseToolData(text) },
+        toolCall: historyToolCall(toolName, text),
       });
       i++;
       continue;

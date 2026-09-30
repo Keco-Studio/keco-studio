@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
+import type { AgentWorkspace } from '@/lib/agent/types';
 import styles from './ChatPanel.module.css';
 
 interface ConversationScopeView {
@@ -12,15 +13,18 @@ interface ConversationScopeView {
 
 interface ConversationItem {
   id: string;
-  projectId: string;
-  projectName: string;
+  projectId: string | null;
+  projectName?: string;
+  workspace: AgentWorkspace;
   scope?: ConversationScopeView;
   title: string | null;
   updatedAt: string;
 }
 
 interface Props {
-  projectId: string;
+  projectId?: string;
+  workspace: AgentWorkspace;
+  enabled: boolean;
   activeId?: string;
   onSelect: (id: string) => void;
 }
@@ -42,36 +46,52 @@ function formatHistoryDate(updatedAt: string): string {
   });
 }
 
-export function ConversationList({ projectId, activeId, onSelect }: Props) {
+const workspaceLabels: Record<AgentWorkspace, string> = {
+  projects: 'Projects',
+  studio: 'Studio',
+  script: 'Script',
+  'create-map': 'Create Map',
+  'game-design-systems': 'Game Design Systems',
+};
+
+export function conversationHistoryLabel(item: Pick<ConversationItem, 'projectId' | 'projectName' | 'workspace'>): string {
+  return item.projectId ? (item.projectName || 'Unknown project') : workspaceLabels[item.workspace];
+}
+
+export function ConversationList({ projectId, workspace, enabled, activeId, onSelect }: Props) {
   const supabase = useSupabase();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
-    if (!projectId) {
-      setConversations([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    const res = await fetch(`/api/agent-chat/conversations?projectId=${encodeURIComponent(projectId)}`, {
-      credentials: 'include',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-    if (!res.ok) {
-      setLoading(false);
-      return;
-    }
-    const json = (await res.json()) as { conversations: ConversationItem[] };
-    setConversations(json.conversations ?? []);
-    setLoading(false);
-  };
-
   useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    const load = async () => {
+      setConversations([]);
+      setLoading(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (controller.signal.aborted) return;
+        const params = new URLSearchParams({ workspace });
+        if (projectId) params.set('projectId', projectId);
+        const token = data?.session?.access_token;
+        const res = await fetch(`/api/agent-chat/conversations?${params}`, {
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { conversations: ConversationItem[] };
+        if (!controller.signal.aborted) setConversations(json.conversations ?? []);
+      } catch {
+        // The empty state is shown for a failed request.
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
     void load();
-  }, [projectId]);
+    return () => controller.abort();
+  }, [enabled, projectId, workspace, supabase]);
 
   return (
     <section
@@ -101,6 +121,7 @@ export function ConversationList({ projectId, activeId, onSelect }: Props) {
             >
               <span className={styles.convTitle}>{summarizeConversationTitle(c.title)}</span>
               <span className={styles.convMeta}>
+                <span>{conversationHistoryLabel(c)}</span>
                 <span className={styles.convDate}>{formatHistoryDate(c.updatedAt)}</span>
               </span>
             </button>

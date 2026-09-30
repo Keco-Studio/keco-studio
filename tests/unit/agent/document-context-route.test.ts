@@ -113,6 +113,7 @@ describe('agent chat route current-document project boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getOrCreateConversation.mockResolvedValue(conversation);
+    getConversation.mockResolvedValue(conversation);
     resolveUserRole.mockResolvedValue('editor');
     getDocumentExportSource.mockResolvedValue({ ...snapshot, snapshotToken: documentExport.snapshotToken });
     resolveDocumentForTool.mockImplementation(
@@ -308,7 +309,7 @@ describe('agent chat route current-document project boundary', () => {
         token: { epoch: 1, revision: 1 },
       }),
     };
-    getOrCreateConversation.mockResolvedValue({
+    getConversation.mockResolvedValue({
       ...conversation,
       meta: { autoExecute: false, documentExport: persistedExport },
     });
@@ -326,15 +327,12 @@ describe('agent chat route current-document project boundary', () => {
 
     expect(response.status).toBe(200);
     expect(getDocumentExportSource).not.toHaveBeenCalled();
-    expect(getOrCreateConversation).toHaveBeenCalledWith(
-      authedSupabase,
-      expect.not.objectContaining({ documentExport: expect.anything() })
-    );
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
     expect(runAgentTurn.mock.calls[0][0].toolContext.documentExport).toEqual(persistedExport);
   });
 
   it('rejects an existing bound conversation after the admin is downgraded to editor', async () => {
-    getOrCreateConversation.mockResolvedValue({
+    getConversation.mockResolvedValue({
       ...conversation,
       meta: { autoExecute: false, documentExport },
     });
@@ -448,11 +446,10 @@ describe('agent confirmation route current-document project boundary', () => {
           projectId: BOUND_PROJECT_ID,
           currentDocumentId: DOCUMENT_ID,
           currentDocumentName: 'Server Document Name',
-          currentFolderId: 'live-folder-id',
-          currentFolderName: 'Live Folder',
         }),
       })
     );
+    expect(resumeAgentTurn.mock.calls[0][0].toolContext).not.toHaveProperty('currentFolderId');
   });
 
   it('omits current-document fields when the live id is outside the conversation project', async () => {

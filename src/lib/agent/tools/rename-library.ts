@@ -2,6 +2,7 @@
  * rename_library — change a library's name.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { listProjectLibraries, renameLibraryServer } from '../data-access';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -21,7 +22,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   const { libraryName, newName } = parsed.data;
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };
@@ -29,7 +30,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const library = libraryFromLookupResult(libraryResult);
 
   try {
-    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId, ctx);
+    const existing = await listProjectLibraries(ctx.supabase, requireProjectContext(ctx), ctx);
     const conflict = existing.some(
       (lib) => lib.id !== library.id && norm(lib.name) === norm(newName)
     );

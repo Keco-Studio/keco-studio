@@ -2,10 +2,12 @@
 
 import { CloseOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SelectDocumentModal } from '@/components/script-system/SelectDocumentModal';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { createMapAgentRefreshKey, type CreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
 import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
@@ -129,6 +131,14 @@ export function DirectMapWorkbench() {
     historicalSelectionEpoch.current += 1;
     setHistoricalWorkspace(null);
   }, []);
+  const pendingRefresh = useRef<{ projectId: string; mapId?: string } | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const { data: agentRefresh } = useQuery<CreateMapAgentRefresh | null>({
+    queryKey: createMapAgentRefreshKey,
+    queryFn: async () => null,
+    enabled: false,
+    initialData: null,
+  });
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -153,6 +163,7 @@ export function DirectMapWorkbench() {
   const validation = useMemo(() => validateMapPlanV3(plan), [plan]);
   const busy = operation !== 'idle' || planSavePending || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
+  const mapSwitchBlocked = savedMapSwitchBlocked(draft);
   const canGenerate = !readOnly && !historicalWorkspace && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && hasCurrentSavedPlan && !busy;
   const historicalReadOnly = Boolean(historicalWorkspace);
@@ -191,9 +202,7 @@ export function DirectMapWorkbench() {
     if (previousGenerationPhase.current !== 'ready' && generation.phase === 'ready') {
       void mapGenerationHistory.refetch();
       setChatMessages((current) => {
-        if (current.some((message) => message.text.includes('Here is the created map') && !message.text.includes('plan'))) {
-          return current;
-        }
+        if (current.some((message) => message.text === 'Here is the created map')) return current;
         return [...current, { id: nextMessageId(), role: 'assistant', text: 'Here is the created map' }];
       });
     }
@@ -346,7 +355,7 @@ export function DirectMapWorkbench() {
       await savedMaps.refetch();
       setChatMessages((current) => [
         ...current,
-        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Done - creation check complete' },
         { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
       ]);
       setViewMode('detail');
@@ -381,8 +390,8 @@ export function DirectMapWorkbench() {
     }
   };
 
-  const openSavedMap = useCallback(async (map: SavedMapSummary) => {
-    if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
+  const openSavedMap = useCallback(async (map: SavedMapSummary, refresh = false) => {
+    if ((!refresh && map.id === draft.identity?.mapId) || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
     invalidateHistoricalSelection();
     setOperation('opening');
@@ -401,7 +410,7 @@ export function DirectMapWorkbench() {
       generation.installRestore(prepared);
       setChatMessages([
         { id: nextMessageId(), role: 'user', text: `Open map: ${loaded.plan.name}` },
-        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Done - creation check complete' },
         { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
         ...(prepared.scene.mapImage
           ? [{ id: nextMessageId(), role: 'assistant' as const, text: 'Here is the created map' }]
@@ -448,6 +457,28 @@ export function DirectMapWorkbench() {
       }
     }
   };
+
+  useEffect(() => {
+    if (!agentRefresh || (projectId && agentRefresh.projectId !== projectId)) return;
+    pendingRefresh.current = { projectId: agentRefresh.projectId, mapId: agentRefresh.mapId };
+    void savedMaps.refetch();
+    void mapGenerationHistory.refetch();
+    setRefreshVersion((version) => version + 1);
+  }, [agentRefresh, projectId, savedMaps.refetch, mapGenerationHistory.refetch]);
+
+  useEffect(() => {
+    const refresh = pendingRefresh.current;
+    // Wait for autosave before installing durable state, preserving local edits.
+    if (!refresh || busy || mapSwitchBlocked) return;
+    if (projectId && refresh.projectId !== projectId) {
+      pendingRefresh.current = null;
+      return;
+    }
+    const target = savedMaps.maps.find((map) => map.id === (refresh.mapId ?? draft.identity?.mapId));
+    if (!target || target.projectId !== refresh.projectId) return;
+    pendingRefresh.current = null;
+    void openSavedMap(target, true);
+  }, [refreshVersion, busy, mapSwitchBlocked, draft, projectId, savedMaps.maps, openSavedMap]);
 
   useEffect(() => {
     if (!requestedMapId) {
@@ -530,7 +561,6 @@ export function DirectMapWorkbench() {
     planVersionNumber: revision.planVersionNumber,
     isCurrent: revision.mapRevisionId === (historicalWorkspace?.mapVersion.mapRevisionId ?? image?.sourceRevisionId),
   }));
-
   const showRightPanel = viewMode === 'detail' && planDetailsOpen;
 
   return (

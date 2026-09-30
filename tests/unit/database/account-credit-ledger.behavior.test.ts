@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   anonClient,
   enforceRlsDbTestRun,
+  localPostgresUrl,
   RLS_DB_TESTS_ENABLED,
   buildProjectFixture,
   teardownProjectFixture,
@@ -14,27 +15,15 @@ jest.setTimeout(120_000);
 
 enforceRlsDbTestRun(process.env.REQUIRE_RLS_DB_TESTS === '1', RLS_DB_TESTS_ENABLED);
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
-const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const postgresUrl = localPostgresUrl();
 
 type Usage = { inputTokens: number; outputTokens: number; totalTokens: number } | null;
 
 function queryJson<T = Record<string, unknown>>(sql: string): T | null {
   const args = [postgresUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-At', '-c', sql];
-  let result = spawnSync('psql', args, { encoding: 'utf8' });
-  if (result.error?.code === 'ENOENT') {
-    result = spawnSync('docker', [
-      'exec',
-      'supabase_db_keco-studio',
-      'psql',
-      '-U',
-      'postgres',
-      '-d',
-      'postgres',
-      ...args.slice(1),
-    ], { encoding: 'utf8' });
-  }
+  const result = spawnSync('psql', args, { encoding: 'utf8' });
   if (result.status !== 0) {
-    throw new Error(`psql failed: ${(result.stderr ?? result.error?.message ?? '').trim()}`);
+    throw new Error(`psql failed: ${result.stderr?.trim() || result.error?.message || 'no error details'}`);
   }
   const output = (result.stdout ?? '').trim();
   return output ? JSON.parse(output) as T : null;

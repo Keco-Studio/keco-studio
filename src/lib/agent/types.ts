@@ -11,9 +11,12 @@ import type { AccessVerificationCache } from '@/lib/services/authorizationServic
 import type { AgentSelectionContext } from './selection-context';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
+import type { GameMediaAttachment, GameMediaAttachmentRecord } from './game-media-attachment';
+import type { MapReferenceAttachment } from './map-reference-attachment';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
-export type AgentWorkspace = 'studio' | 'script';
+export type AgentWorkspace = 'projects' | 'studio' | 'script' | 'create-map' | 'game-design-systems';
+export type AgentNavigationDestination = { kind: 'project'; projectId: string };
 
 export interface DocumentTableExportContext {
   sourceDocumentId: string;
@@ -30,14 +33,14 @@ export interface DocumentTableExportContext {
  */
 export type ConfirmationMode = 'pre_execute' | 'post_preview' | 'meta';
 
-export type DisplayHint = 'table' | 'text' | 'list' | 'script_preview' | 'skill_preview';
+export type DisplayHint = 'table' | 'text' | 'list' | 'script_preview' | 'skill_preview' | 'map';
 
 /** Loose JSON Schema type — we only forward this to the LLM verbatim. */
 export type JSONSchema = Record<string, unknown>;
 
 export interface ToolContext {
   userId: string;
-  projectId: string;
+  projectId?: string;
   conversationId: string;
   currentFolderId?: string;
   currentFolderName?: string;
@@ -46,8 +49,8 @@ export interface ToolContext {
   currentLibraryId?: string;
   currentLibraryName?: string;
   supabase: SupabaseClient;
-  userRole: UserRole;
-  workspace?: AgentWorkspace;
+  userRole?: UserRole;
+  workspace: AgentWorkspace;
   /** Server-validated source binding for tables generated from a document. */
   documentExport?: DocumentTableExportContext;
   /** Request-scoped authorization results; a new map is created for every turn. */
@@ -57,21 +60,34 @@ export interface ToolContext {
     messageId: string;
     content: string;
   };
+  /** Server-validated file carried by this authenticated user turn only. */
+  authoritativeGameMedia?: GameMediaAttachment & { messageId: string; submissionId: string };
+  /** Exact current multipart Map image; never sourced from Tool parameters. */
+  authoritativeMapReference?: MapReferenceAttachment & { messageId: string; submissionId: string };
   /** Usage binding retained by Agent-originated tools and deferred indexing. */
   usageBinding?: AiUsageBinding;
 }
 
 export type AgentInvalidation =
+  | { type: 'projects'; projectId?: string }
+  | { type: 'project-structure'; projectId: string }
+  | { type: 'script-workspace'; projectId: string; documentId?: string }
+  | { type: 'project-collaborators'; projectId: string }
+  | { type: 'game-media'; projectId: string }
+  | { type: 'game-design-systems'; designSystemId?: string; projectId?: string }
   | {
       type: 'library';
       id: string;
       projectId?: string;
       sourceDocumentId?: string;
     }
-  | { type: 'documents'; projectId: string; documentId?: string };
+  | { type: 'documents'; projectId: string; documentId?: string }
+  | { type: 'create-map'; projectId: string; mapId?: string };
 
 export interface ToolResult {
   success: boolean;
+  /** Rebuild the model Tool schema after a successful schema-changing operation. */
+  schemaChanged?: boolean;
   data?: unknown;
   /** Server-only data persisted in suspended state; never emit to UI, LLM, or tool-result events. */
   internalData?: unknown;
@@ -79,6 +95,7 @@ export interface ToolResult {
   displayHint?: DisplayHint;
   /** Structured caches the frontend should refresh after a successful write. */
   invalidations?: AgentInvalidation[];
+  navigation?: AgentNavigationDestination;
 }
 
 export type ConfirmationPreparation =
@@ -107,6 +124,8 @@ export interface AgentTool {
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
+  /** Account writes, or explicit-target writes that revalidate project access in their domain adapter. */
+  permissionScope?: 'account' | 'explicit-project';
   /** Resolve and seal approval-critical arguments before a pre-execute pause. */
   prepareConfirmation?: (
     params: unknown,
@@ -198,6 +217,8 @@ export interface ChatMessage {
   name?: string;
   /** Server-validated model declaration for the pinned Game Design System policy. */
   game_design_evidence?: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence;
+  game_media_attachment?: GameMediaAttachmentRecord;
+  game_media_submission_id?: string;
 }
 
 export interface ToolCall {
@@ -241,6 +262,7 @@ export type SSEEvent =
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
   | { type: 'cache_invalidated'; invalidations: AgentInvalidation[]; paths?: string[] }
+  | { type: 'navigation_requested'; destination: AgentNavigationDestination }
   | { type: 'game_design_evidence'; evidence: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence }
   | { type: 'done' }
   | { type: 'error'; message: string };
@@ -265,6 +287,11 @@ export interface AgentTurnInput {
   signal?: AbortSignal;
   /** Public image URLs (Supabase storage) attached to this user turn, if any. */
   imageUrls?: string[];
+  /** Actual multipart file validated by the route, never an LLM or URL argument. */
+  gameMediaAttachment?: GameMediaAttachment;
+  gameMediaSubmissionId?: string;
+  mapReferenceAttachment?: MapReferenceAttachment;
+  mapReferenceSubmissionId?: string;
   /** Explicit selected table data attached to this user turn only. */
   selectionContext?: AgentSelectionContext;
   toolContext: ToolContext;

@@ -46,4 +46,16 @@ describe('accounted storage write guard', () => {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
+
+  it('ignores custom Next.js build directories', () => {
+    const rootDir = mkdtempSync(path.join(tmpdir(), 'storage-write-guard-'));
+    try {
+      const buildDir = path.join(rootDir, '.next-playwright', 'server');
+      mkdirSync(buildDir, { recursive: true });
+      writeFileSync(path.join(buildDir, 'chunk.js'), "storage.from('map-assets').upload('path.png', file);\n");
+      expect(findAccountedStorageWrites(rootDir, new Set())).toEqual([]);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -669,8 +669,18 @@ export async function retryGddGenerationJob(
 export async function cancelGddGenerationJob(
   serviceClient: SupabaseClient,
   jobId: string,
-): Promise<PublicGddGenerationJob> {
-  const { data, error } = await serviceClient.from('gdd_generation_jobs').update({
+  expectedStatus: 'queued' | 'running',
+): Promise<PublicGddGenerationJob | null>;
+export async function cancelGddGenerationJob(
+  serviceClient: SupabaseClient,
+  jobId: string,
+): Promise<PublicGddGenerationJob>;
+export async function cancelGddGenerationJob(
+  serviceClient: SupabaseClient,
+  jobId: string,
+  expectedStatus?: 'queued' | 'running',
+): Promise<PublicGddGenerationJob | null> {
+  const update = serviceClient.from('gdd_generation_jobs').update({
     status: 'failed',
     phase: 'failed',
     error: 'Generation cancelled by user.',
@@ -678,9 +688,13 @@ export async function cancelGddGenerationJob(
     lease_owner: null,
     lease_expires_at: null,
     heartbeat_at: null,
-  }).eq('id', jobId).in('status', ['queued', 'running']).select(PUBLIC_JOB_COLUMNS).maybeSingle();
+  }).eq('id', jobId);
+  const { data, error } = await (expectedStatus
+    ? update.eq('status', expectedStatus)
+    : update.in('status', ['queued', 'running'])).select(PUBLIC_JOB_COLUMNS).maybeSingle();
   if (error) throw error;
   if (data) return data as PublicGddGenerationJob;
+  if (expectedStatus) return null;
   const existing = await getPublicGddGenerationJob(serviceClient, jobId);
   if (!existing) throw new Error('GDD generation job not found.');
   return existing;

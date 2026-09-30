@@ -26,7 +26,7 @@ export interface NavigationInput {
  */
 export function resolveScopeFromNavigation(nav: NavigationInput): ConversationScope {
   const workspace = nav.workspace ? { workspace: nav.workspace } : {};
-  if (nav.currentLibraryId) {
+  if (nav.projectId && nav.currentLibraryId) {
     return {
       level: 'table',
       ...workspace,
@@ -37,7 +37,7 @@ export function resolveScopeFromNavigation(nav: NavigationInput): ConversationSc
       libraryName: nav.currentLibraryName,
     };
   }
-  if (nav.currentFolderId) {
+  if (nav.projectId && nav.currentFolderId) {
     return {
       level: 'folder',
       ...workspace,
@@ -67,18 +67,19 @@ export type ScopeContextFields = Pick<
  * Build the navigation fields of a ToolContext from a conversation's bound
  * scope, ignoring the client's live navigation. Legacy conversations without a
  * scope degrade to the project level using the conversation's own project id.
+ * The conversation binding is authoritative even if scope metadata disagrees.
  */
 export function contextFieldsFromScope(
   scope: ConversationScope | undefined,
-  fallbackProjectId: string
+  fallbackProjectId: string | null
 ): ScopeContextFields {
+  const projectId = fallbackProjectId ?? undefined;
   if (!scope) {
-    return { projectId: fallbackProjectId };
+    return { projectId, workspace: 'studio' };
   }
-  const workspace = scope.workspace ? { workspace: scope.workspace } : {};
   return {
-    projectId: scope.projectId ?? fallbackProjectId,
-    ...workspace,
+    projectId,
+    workspace: scope.workspace ?? 'studio',
     currentFolderId: scope.folderId,
     currentFolderName: scope.folderName,
     currentLibraryId: scope.libraryId,

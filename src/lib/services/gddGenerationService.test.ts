@@ -235,6 +235,18 @@ describe('gddGenerationService', () => {
     expect(inStatus).toHaveBeenCalledWith('status', ['queued', 'running']);
   });
 
+  it('reports no cancellation when the confirmed status changed before the conditional update', async () => {
+    const maybeSingle = jest.fn(async () => ({ data: null, error: null }));
+    const select = jest.fn(() => ({ maybeSingle }));
+    const eqStatus = jest.fn((_column: string, _status: string) => ({ select }));
+    const eqId = jest.fn(() => ({ eq: eqStatus }));
+    const update = jest.fn(() => ({ eq: eqId }));
+
+    await expect(cancelGddGenerationJob({ from: () => ({ update }) } as never,
+      'job-1', 'running')).resolves.toBeNull();
+    expect(eqStatus).toHaveBeenCalledWith('status', 'running');
+  });
+
   it('persists the Document and completion through one service-role RPC', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
     await expect(persistCompletedGddGenerationJob({ rpc } as never, {

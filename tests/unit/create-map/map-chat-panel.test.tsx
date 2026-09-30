@@ -1,5 +1,6 @@
+/** @jest-environment jsdom */
 import React from 'react';
-import { describe, expect, it, jest } from '@jest/globals';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MapChatPanel } from '@/features/create-map/components/MapChatPanel';
 
@@ -7,31 +8,45 @@ jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
 }));
-
 jest.mock('next/image', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => React.createElement('img', props),
 }));
 
-jest.mock('@/assets/images/paper.svg', () => 'paper');
+const messages = [
+  { id: '1', role: 'user' as const, text: 'Make a village map' },
+  { id: '2', role: 'assistant' as const, text: 'Here is the created map plan' },
+  { id: '3', role: 'assistant' as const, text: 'Here is the created map' },
+];
 
-describe('MapChatPanel', () => {
-  const baseProps = {
+function renderPanel(overrides: Partial<React.ComponentProps<typeof MapChatPanel>> = {}) {
+  const props: React.ComponentProps<typeof MapChatPanel> = {
     mapTitle: 'Village map',
-    messages: [
-      { id: '1', role: 'user' as const, text: 'Make a village map' },
-      { id: '2', role: 'assistant' as const, text: 'Here is the created map plan' },
-      { id: '3', role: 'assistant' as const, text: 'Here is the created map' },
-    ],
+    messages,
     onBack: jest.fn(),
     onCreate: jest.fn(),
     onAsk: jest.fn(),
     canAsk: true,
+    mapPlan: { title: 'Village map plan', versionLabel: 'Version1' },
+    mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: '/map.png' },
+    generationHistory: [{ mapRevisionId: 'revision-1', mapVersionNumber: 1, planVersionNumber: 1, isCurrent: true }],
+    onSelectMapVersion: jest.fn(),
+    onViewMapPlan: jest.fn(),
+    ...overrides,
   };
+  render(<MapChatPanel {...props} />);
+  return props;
+}
 
+describe('MapChatPanel', () => {
   it('renders chat header actions and search without a generate control', () => {
     const markup = renderToStaticMarkup(React.createElement(MapChatPanel, {
-      ...baseProps,
+      mapTitle: 'Village map',
+      messages,
+      onBack: jest.fn(),
+      onCreate: jest.fn(),
+      onAsk: jest.fn(),
+      canAsk: true,
       mapPlan: { title: 'Village map plan', versionLabel: 'Version1' },
       mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: 'https://example.test/map.png' },
       onViewMapPlan: jest.fn(),
@@ -40,7 +55,7 @@ describe('MapChatPanel', () => {
         { mapRevisionId: 'revision-1', mapVersionNumber: 1, planVersionNumber: 1, isCurrent: false },
       ],
       onSelectMapVersion: jest.fn(),
-    } as never));
+    }));
 
     expect(markup).toContain('Village map');
     expect(markup).toContain('aria-label="Create map"');
@@ -63,16 +78,28 @@ describe('MapChatPanel', () => {
     expect(markup).toMatch(/aria-label="Send"[^>]*>[\s\S]*?anticon-arrow-up/);
   });
 
-  it('wires the attach control for File and Keco Document actions', () => {
-    const markup = renderToStaticMarkup(React.createElement(MapChatPanel, {
-      ...baseProps,
-      onAttachFile: jest.fn(),
-      onAttachKecoDocument: jest.fn(),
-    }));
+  it('renders searchable messages, plan and image cards, and generation history', () => {
+    renderPanel();
+    expect(screen.getByRole('region', { name: 'Map conversation' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'View map plan' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Download map' }).getAttribute('href')).toBe('/map.png');
+    fireEvent.click(screen.getByRole('button', { name: 'Show map generation history' }));
+    expect(screen.getByText('MAP V1')).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search messages' }), { target: { value: 'village' } });
+    expect(screen.getByText('Make a village map')).toBeTruthy();
+    expect(screen.queryByText('Here is the created map plan')).toBeNull();
+  });
 
-    expect(markup).toContain('aria-label="Attach"');
-    expect(markup).toContain('aria-haspopup="menu"');
-    expect(markup).toMatch(/aria-label="Attach"[^>]*aria-haspopup="menu"/);
-    expect(markup).not.toMatch(/aria-label="Attach"[^>]*disabled/);
+  it('submits a prompt and opens the attachment actions', () => {
+    const onAsk = jest.fn();
+    const onAttachKecoDocument = jest.fn();
+    renderPanel({ onAsk, onAttachFile: jest.fn(), onAttachKecoDocument });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask AI to help' }), { target: { value: 'A river crossing' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onAsk).toHaveBeenCalledWith('A river crossing');
+    fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+    expect(screen.getByRole('menuitem', { name: 'File' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Keco Document' }));
+    expect(onAttachKecoDocument).toHaveBeenCalledTimes(1);
   });
 });

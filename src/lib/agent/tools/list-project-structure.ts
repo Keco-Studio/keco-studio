@@ -2,6 +2,7 @@
  * list_project_structure — read folders, libraries, documents, and field layout.
  */
 
+import { requireProjectContext } from '../workspace';
 import { getLibraryProperties, listProjectFolders } from '../data-access';
 import { listResolvedProjectDocuments } from '../document-resolver';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -11,14 +12,14 @@ const DOCUMENT_SUMMARY_LIMIT = 50;
 async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const [folders, documents] = await Promise.all([
-      listProjectFolders(ctx.supabase, ctx.projectId, ctx),
-      listResolvedProjectDocuments(ctx.supabase, ctx.projectId),
+      listProjectFolders(ctx.supabase, requireProjectContext(ctx), ctx),
+      listResolvedProjectDocuments(ctx.supabase, requireProjectContext(ctx)),
     ]);
 
     const { data: libraryRows, error } = await ctx.supabase
       .from('libraries')
       .select('id, name, folder_id')
-      .eq('project_id', ctx.projectId)
+      .eq('project_id', requireProjectContext(ctx))
       .order('created_at', { ascending: true });
     if (error) throw error;
 

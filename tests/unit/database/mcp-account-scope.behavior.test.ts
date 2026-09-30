@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   RLS_DB_TESTS_ENABLED,
+  localPostgresUrl,
   TEST_PASSWORD,
   anonClient,
   buildProjectFixture,
@@ -18,7 +19,7 @@ jest.setTimeout(120_000);
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const redirectUri = 'http://127.0.0.1:3000/oauth/callback';
-const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const postgresUrl = localPostgresUrl();
 
 interface RegisteredClient {
   client_id: string;

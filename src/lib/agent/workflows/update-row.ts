@@ -11,6 +11,7 @@
  * rowIndex instead of letting the LLM guess an assetId.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { updateAsset as updateAssetService } from '@/lib/services/libraryAssetsService';
 import { sortAssetsForUiRow } from '@/lib/utils/assetEmptiness';
@@ -74,7 +75,7 @@ async function executeUpdateRow(params: unknown, ctx: ToolContext): Promise<Tool
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };
@@ -194,7 +195,7 @@ async function executeImport(
     await updateAssetService(ctx.supabase, preview.assetId, preview.assetName, preview.resolvedValues);
     scheduleReindexForAssetFields(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       preview.assetId,
       Object.keys(preview.resolvedValues)
     );

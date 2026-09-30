@@ -57,10 +57,8 @@ test.describe('Destructive Tests - Delete Operations', () => {
     // - URL change, network idle, auth token presence, and user avatar visibility
     await loginPage.expectLoginSuccess();
 
-    // Note: seed-happy-path user has exactly one project, so after login success,
-    // the app will auto-redirect from /projects to /{projectId} (see Sidebar.tsx auto-navigate logic).
-    // This is the expected behavior - we're already in the project page.
-    // The pre-seeded project is "Livestock Management Project"
+    // Projects remains the account workspace until a project is selected explicitly.
+    await projectPage.openProject(projects.happyPath.name);
     await libraryPage.waitForPageLoad();
   });
 

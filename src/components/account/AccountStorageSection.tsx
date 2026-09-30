@@ -301,9 +301,10 @@ export function AccountStorageSection() {
   const summaryQuery = useQuery({ queryKey: ['account-storage'], queryFn: fetchAccountStorage, retry: false, staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true });
 
   useEffect(() => {
+    if (search === debouncedSearch) return;
     const timeout = window.setTimeout(() => { setDebouncedSearch(search); setOffset(0); setSelectedEntity(null); }, 250);
     return () => window.clearTimeout(timeout);
-  }, [search]);
+  }, [search, debouncedSearch]);
 
   const entitiesQuery = useQuery({
     queryKey: ['account-storage-entities', selectedProject?.id, currentFolderId, debouncedSearch, sort, offset],

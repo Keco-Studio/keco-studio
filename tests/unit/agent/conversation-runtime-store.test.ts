@@ -70,16 +70,17 @@ describe('agent chat runtime store', () => {
     expect(getProjectAgentRuntime('user-1', 'project-a')).toMatchObject({ key: visible.key, items: [] });
   });
 
-  it('allows a persisted conversation to be selected from another project entry', () => {
+  it('rejects selection of a persisted conversation from another project entry', () => {
     const conversation = createAgentChatRuntime({
       userId: 'user-1',
       projectId: 'project-a',
       conversationId: 'conversation-1',
     });
 
-    selectProjectAgentRuntime('user-1', 'project-b', conversation.key);
+    const selected = selectProjectAgentRuntime('user-1', 'project-b', conversation.key);
 
-    expect(getProjectAgentRuntime('user-1', 'project-b')?.conversationId).toBe('conversation-1');
+    expect(selected).toBeUndefined();
+    expect(getProjectAgentRuntime('user-1', 'project-b')).toBeUndefined();
   });
 
   it('isolates selected runtimes and conversation keys by user', () => {
