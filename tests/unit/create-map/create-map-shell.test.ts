@@ -139,13 +139,13 @@ it('renders the Create Map workbench semantic regions', () => {
   expect(markup).toContain('Saved maps');
 });
 
-it('shows the persisted map revision instead of a save-status message', () => {
+it('keeps the V3 workbench contract instead of a save-status message', () => {
   draftIdentity = { mapId: 'map-3', revisionId: 'revision-3', revisionNumber: 3, saveVersion: 0 };
 
   try {
     const markup = renderWorkbenchMarkup(React.createElement(CreateMapWorkbench));
 
-    expect(markup).toContain('Version3');
+    expect(markup).toContain('data-schema-version="3"');
     expect(markup).not.toContain('All changes saved');
   } finally {
     draftIdentity = null;

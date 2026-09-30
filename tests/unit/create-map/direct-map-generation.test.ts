@@ -6,10 +6,12 @@ import {
   directMapTargetMatches,
   materializeDirectMapScene,
   prepareDirectMapRestore,
+  savedPlanSelectionIsCurrent,
   type DirectMapGenerationAsset,
   type DirectMapGenerationTarget,
 } from '@/features/create-map/hooks/useDirectMapGeneration';
-import type { MapAssetRecord, SavedMapWorkspaceV3 } from '@/features/create-map/services/createMapService';
+import { createMapDraftAdapterV3 } from '@/features/create-map/hooks/useMapDraft';
+import type { MapAssetRecord, MapDraftIdentity, SavedMapWorkspaceV3 } from '@/features/create-map/services/createMapService';
 import { makeEmptyMapSceneV3, makeValidMapPlanV3 } from './fixtures';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
@@ -135,6 +137,53 @@ describe('direct map generation lifecycle', () => {
     expect(directMapTargetMatches(TARGET, { ...TARGET, revisionId: 'stale' })).toBe(false);
     expect(directMapTargetMatches(TARGET, { ...TARGET, generationId: 'stale' })).toBe(false);
     expect(directMapTargetMatches(TARGET, { ...TARGET, planFingerprint: 'c'.repeat(64) })).toBe(false);
+  });
+
+  it('accepts a saved Plan only for its exact current Draft revision and save version', () => {
+    const selection = {
+      id: 'plan-v1',
+      versionNumber: 1,
+      draftRevisionId: TARGET.revisionId,
+      draftSaveVersion: TARGET.saveVersion,
+    };
+
+    expect(savedPlanSelectionIsCurrent(selection, {
+      mapId: TARGET.mapId,
+      revisionId: TARGET.revisionId,
+      revisionNumber: 1,
+      saveVersion: TARGET.saveVersion,
+    })).toBe(true);
+    expect(savedPlanSelectionIsCurrent(selection, {
+      mapId: TARGET.mapId,
+      revisionId: '10000000-0000-4000-8000-000000000099',
+      revisionNumber: 1,
+      saveVersion: TARGET.saveVersion,
+    })).toBe(false);
+    expect(savedPlanSelectionIsCurrent(selection, {
+      mapId: TARGET.mapId,
+      revisionId: TARGET.revisionId,
+      revisionNumber: 1,
+      saveVersion: TARGET.saveVersion + 1,
+    })).toBe(false);
+  });
+
+  it('publishes the exact selected Plan version', async () => {
+    const identity: MapDraftIdentity = {
+      mapId: TARGET.mapId,
+      revisionId: TARGET.revisionId,
+      revisionNumber: 1,
+      saveVersion: 0,
+    };
+    const publish = jest.fn(async () => ({
+      status: 'published' as const,
+      published_revision_id: TARGET.revisionId,
+      next_draft_revision_id: '10000000-0000-4000-8000-000000000099',
+    }));
+    const adapter = createMapDraftAdapterV3({ publishV3: publish } as never);
+
+    await adapter.publish(identity, 'plan-v1');
+
+    expect(publish).toHaveBeenCalledWith(identity, 'plan-v1');
   });
 
   it('restores a matching durable asset and keeps ready state when signing fails', async () => {

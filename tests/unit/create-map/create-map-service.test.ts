@@ -168,6 +168,243 @@ describe('Create Map browser service', () => {
     expect(rpc).toHaveBeenCalledWith('save_map_draft_v2', expect.objectContaining({ p_expected_save_version: 3 }));
   });
 
+  it('saves an immutable V3 Plan snapshot and publishes the exact selected Plan version', async () => {
+    const rpc = jest.fn(async (name: string) => {
+      if (name === 'save_map_plan_v3') {
+        return {
+          data: [{
+            status: 'saved', plan_version_id: 'plan-v2', plan_version_number: 2, draft_save_version: 4,
+          }],
+          error: null,
+        };
+      }
+      if (name === 'publish_map_revision_v3') {
+        return {
+          data: [{ status: 'published', published_revision_id: 'revision-v1', next_draft_revision_id: 'draft-v2' }],
+          error: null,
+        };
+      }
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    const service = createMapService({ rpc } as never);
+    const identity = { mapId: 'map-1', revisionId: 'draft-v1', revisionNumber: 7, saveVersion: 4 };
+    const plan = makeValidMapPlanV3();
+
+    await expect(service.savePlanV3(identity, plan)).resolves.toMatchObject({
+      id: 'plan-v2', versionNumber: 2, draftRevisionId: identity.revisionId,
+      draftSaveVersion: identity.saveVersion, plan,
+    });
+    await expect(service.publishV3(identity, 'plan-v2')).resolves.toMatchObject({
+      published_revision_id: 'revision-v1', next_draft_revision_id: 'draft-v2',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('save_map_plan_v3', expect.objectContaining({
+      p_map_id: identity.mapId,
+      p_draft_revision_id: identity.revisionId,
+      p_expected_save_version: identity.saveVersion,
+    }));
+    expect(rpc).toHaveBeenCalledWith('publish_map_revision_v3', expect.objectContaining({
+      p_map_id: identity.mapId,
+      p_draft_revision_id: identity.revisionId,
+      p_expected_save_version: identity.saveVersion,
+      p_plan_version_id: 'plan-v2',
+    }));
+  });
+
+  it('sends the selected Plan version when preparing direct map generation', async () => {
+    global.fetch = jest.fn(async () => Response.json({ status: 'planned' })) as typeof fetch;
+    const service = createMapService({} as never);
+
+    await service.prepareMapGeneration({
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '10000000-0000-4000-8000-000000000004',
+    });
+
+    expect((global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1]?.body).toBe(JSON.stringify({
+      action: 'prepare_map_generation',
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '10000000-0000-4000-8000-000000000004',
+    }));
+  });
+
+  it('rejects a missing selected Plan version before the browser requests generation', async () => {
+    global.fetch = jest.fn() as typeof fetch;
+
+    await expect(createMapService({} as never).prepareMapGeneration({
+      projectId: '10000000-0000-4000-8000-000000000001',
+      mapId: '10000000-0000-4000-8000-000000000002',
+      revisionId: '10000000-0000-4000-8000-000000000003',
+      saveVersion: 4,
+      planVersionId: '',
+    })).rejects.toMatchObject({ code: 'invalid_plan_version' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('calls the selection-aware preparation RPC with the exact Plan ID', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{
+        published_revision_id: '10000000-0000-4000-8000-000000000001',
+        next_draft_revision_id: '10000000-0000-4000-8000-000000000002',
+        asset_id: '10000000-0000-4000-8000-000000000003',
+        asset_status: 'planned',
+      }],
+      error: null,
+    }));
+
+    await createMapService({ rpc } as never).prepareGenerationV3({
+      mapId: '10000000-0000-4000-8000-000000000004',
+      revisionId: '10000000-0000-4000-8000-000000000005',
+      saveVersion: 4,
+      generationId: '10000000-0000-4000-8000-000000000006',
+      planFingerprint: 'a'.repeat(64),
+      planVersionId: '10000000-0000-4000-8000-000000000007',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('prepare_map_generation_v3', expect.objectContaining({
+      p_plan_version_id: '10000000-0000-4000-8000-000000000007',
+    }));
+  });
+
+  it('loads Map V1 with its bound Plan V1 when a later Plan V2 exists', async () => {
+    const planV1 = makeValidMapPlanV3({ name: 'Plan V1' });
+    const planV2 = makeValidMapPlanV3({ name: 'Plan V2' });
+    const scene = makeEmptyMapSceneV3();
+    const image = makeMapAssetRecord({
+      id: 'image-v1',
+      map_revision_id: 'map-revision-v1',
+      asset_key: 'map-image',
+      kind: 'map_image',
+      status: 'ready',
+      requested_capability: 'direct_map_image',
+      generation_id: '10000000-0000-4000-8000-000000000001',
+      plan_fingerprint: 'a'.repeat(64),
+      provider_operation: 'create_image_pro',
+      provider_job_id: 'job-v1',
+      storage_path: `project-1/map-1/map-revision-v1/map-image/${'b'.repeat(64)}.png`,
+      sha256: 'b'.repeat(64),
+      width: planV1.map.width,
+      height: planV1.map.height,
+      has_transparency: false,
+    });
+    const { from, revisionQuery } = createMapVersionLoadMock({
+      revision: {
+        id: 'map-revision-v1', map_project_id: 'map-1', map_version_number: 1, plan_version_id: 'plan-v1',
+        plan: planV1, scene,
+        map_projects: { project_id: 'project-1' },
+        map_plan_versions: {
+          id: 'plan-v1', map_project_id: 'map-1', plan_version_number: 1,
+          draft_revision_id: 'draft-v1', draft_save_version: 2, plan: planV1,
+        },
+      },
+      assets: [image],
+    });
+    const storage = { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.example/map-v1' }, error: null }) }) };
+
+    await expect(createMapService({ from, storage } as never).loadMapVersionV3('map-1', 'map-revision-v1'))
+      .resolves.toMatchObject({
+        mapVersion: { mapRevisionId: 'map-revision-v1', mapVersionNumber: 1, planVersionId: 'plan-v1', planVersionNumber: 1 },
+        planVersion: { id: 'plan-v1', versionNumber: 1, plan: planV1 },
+        mapPlan: planV1,
+        mapScene: expect.objectContaining({
+          mapImage: expect.objectContaining({ sourceRevisionId: 'map-revision-v1' }),
+        }),
+        image: expect.objectContaining({ id: 'image-v1', signedUrl: 'https://signed.example/map-v1' }),
+      });
+
+    expect(revisionQuery.eq).toHaveBeenCalledWith('id', 'map-revision-v1');
+    expect(revisionQuery.eq).toHaveBeenCalledWith('map_project_id', 'map-1');
+    expect(planV2.name).toBe('Plan V2');
+  });
+
+  it.each([
+    ['missing generation ID', { generation_id: null }],
+    ['malformed generation ID', { generation_id: 'not-a-uuid' }],
+    ['missing Plan fingerprint', { plan_fingerprint: null }],
+    ['malformed Plan fingerprint', { plan_fingerprint: 'not-a-sha256' }],
+    ['non-string provider job ID', { provider_job_id: 42 }],
+  ])('rejects a ready historical image with a %s', async (_case, overrides) => {
+    const plan = makeValidMapPlanV3();
+    const image = makeMapAssetRecord({
+      id: 'image-v1',
+      map_revision_id: 'map-revision-v1',
+      asset_key: 'map-image',
+      kind: 'map_image',
+      status: 'ready',
+      requested_capability: 'direct_map_image',
+      generation_id: '10000000-0000-4000-8000-000000000001',
+      plan_fingerprint: 'a'.repeat(64),
+      provider_operation: 'create_image_pro',
+      provider_job_id: 'job-v1',
+      storage_path: `project-1/map-1/map-revision-v1/map-image/${'b'.repeat(64)}.png`,
+      sha256: 'b'.repeat(64),
+      width: plan.map.width,
+      height: plan.map.height,
+      has_transparency: false,
+      ...overrides,
+    } as Partial<MapAssetRecord>);
+    const { from } = createMapVersionLoadMock({
+      revision: {
+        id: 'map-revision-v1', map_project_id: 'map-1', map_version_number: 1, plan_version_id: 'plan-v1',
+        scene: makeEmptyMapSceneV3(), map_projects: { project_id: 'project-1' },
+        map_plan_versions: {
+          id: 'plan-v1', map_project_id: 'map-1', plan_version_number: 1,
+          draft_revision_id: 'draft-v1', draft_save_version: 2, plan,
+        },
+      },
+      assets: [image],
+    });
+
+    const storage = { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://signed.example/map-v1' }, error: null }) }) };
+    await expect(createMapService({ from, storage } as never).loadMapVersionV3('map-1', 'map-revision-v1'))
+      .rejects.toMatchObject({ code: 'invalid_saved_map' });
+  });
+
+  it('lists ready Map versions with their independently bound Plan version numbers', async () => {
+    const order = jest.fn(async () => ({
+      data: [{
+        id: 'map-revision-v1', map_version_number: 1, plan_version_id: 'plan-v1',
+        map_plan_versions: { id: 'plan-v1', plan_version_number: 3 },
+      }],
+      error: null,
+    }));
+    const query = { eq: jest.fn(), not: jest.fn(), order };
+    query.eq.mockReturnValue(query);
+    query.not.mockReturnValue(query);
+    const from = jest.fn(() => ({ select: jest.fn(() => query) }));
+
+    await expect(createMapService({ from } as never).listMapVersionsV3('map-1')).resolves.toEqual([{
+      mapRevisionId: 'map-revision-v1', mapVersionNumber: 1, planVersionId: 'plan-v1', planVersionNumber: 3,
+    }]);
+    expect(query.eq).toHaveBeenCalledWith('map_project_id', 'map-1');
+    expect(query.eq).toHaveBeenCalledWith('status', 'ready');
+    expect(query.not).toHaveBeenCalledWith('map_version_number', 'is', null);
+    expect(order).toHaveBeenCalledWith('map_version_number', { ascending: false });
+  });
+
+  it('rejects a Map version whose embedded Plan binding belongs to another Map', async () => {
+    const plan = makeValidMapPlanV3();
+    const { from } = createMapVersionLoadMock({
+      revision: {
+        id: 'map-revision-v1', map_project_id: 'map-1', map_version_number: 1, plan_version_id: 'plan-other',
+        plan, scene: makeEmptyMapSceneV3(),
+        map_plan_versions: {
+          id: 'plan-other', map_project_id: 'map-other', plan_version_number: 1,
+          draft_revision_id: 'draft-other', draft_save_version: 0, plan,
+        },
+      },
+      assets: [],
+    });
+
+    await expect(createMapService({ from } as never).loadMapVersionV3('map-1', 'map-revision-v1'))
+      .rejects.toMatchObject({ code: 'invalid_saved_map' });
+  });
+
   it('creates editable scene objects and Keco obstacle geometry from a plan', () => {
     const plan = makeValidMapPlan();
     const scene = createSceneFromPlan(plan);
@@ -444,6 +681,19 @@ function createV2SavedMapLoadMock(input: { plan: unknown; scene: unknown }) {
     }
     throw new Error(`Unexpected table: ${table}`);
   });
+}
+
+function createMapVersionLoadMock(input: { revision: Record<string, unknown>; assets: MapAssetRecord[] }) {
+  const revisionQuery = { eq: jest.fn(), single: jest.fn(async () => ({ data: input.revision, error: null })) };
+  revisionQuery.eq.mockReturnValue(revisionQuery);
+  const assetQuery = { eq: jest.fn(), order: jest.fn(async () => ({ data: input.assets, error: null })) };
+  assetQuery.eq.mockReturnValue(assetQuery);
+  const from = jest.fn((table: string) => {
+    if (table === 'map_revisions') return { select: jest.fn(() => revisionQuery) };
+    if (table === 'map_assets') return { select: jest.fn(() => assetQuery) };
+    throw new Error(`Unexpected table: ${table}`);
+  });
+  return { from, revisionQuery };
 }
 
 function makeMapAssetRecord(overrides: Partial<MapAssetRecord> = {}): MapAssetRecord {

@@ -48,9 +48,22 @@ type RevisionV3 = {
   schema_version: 3;
   plan: MapPlanV3;
   scene: MapSceneV3;
+  status: 'draft' | 'generating' | 'ready';
+  plan_version_id: string | null;
+  map_version_number: number | null;
+  parent_revision_id: string | null;
 };
 
 type Revision = RevisionV3;
+
+type PlanVersion = {
+  id: string;
+  map_project_id: string;
+  plan_version_number: number;
+  draft_revision_id: string;
+  draft_save_version: number;
+  plan: MapPlanV3;
+};
 
 type MockMap = {
   id: string;
@@ -157,6 +170,7 @@ function queryValue(url: URL, key: string): string | null {
 class CreateMapV3MockBackend {
   readonly maps = new Map<string, MockMap>();
   readonly assets = new Map<string, AssetRecord>();
+  readonly planVersions = new Map<string, PlanVersion>();
   readonly references: ReferenceRecord[] = [];
   readonly edgeBodies: Array<Record<string, unknown>> = [];
   lastPlanRequest: Record<string, unknown> | null = null;
@@ -228,12 +242,68 @@ class CreateMapV3MockBackend {
         schema_version: 3,
         plan,
         scene: readyScene(plan, assetRevisionId),
+        status: 'draft',
+        plan_version_id: null,
+        map_version_number: null,
+        parent_revision_id: null,
       }]]),
     });
   }
 
   readyAssets(): AssetRecord[] {
     return [...this.assets.values()].filter((asset) => asset.status === 'ready');
+  }
+
+  planVersionsForMap(mapId: string): PlanVersion[] {
+    return [...this.planVersions.values()]
+      .filter((version) => version.map_project_id === mapId)
+      .sort((left, right) => left.plan_version_number - right.plan_version_number);
+  }
+
+  mapVersionBindings(mapId: string): Array<{ mapVersionNumber: number; planVersionNumber: number }> {
+    const map = this.maps.get(mapId);
+    if (!map) return [];
+    return [...map.revisions.values()]
+      .flatMap((revision) => {
+        const planVersion = revision.plan_version_id ? this.planVersions.get(revision.plan_version_id) : null;
+        return revision.status === 'ready' && revision.map_version_number !== null && planVersion
+          ? [{ mapVersionNumber: revision.map_version_number, planVersionNumber: planVersion.plan_version_number }]
+          : [];
+      })
+      .sort((left, right) => left.mapVersionNumber - right.mapVersionNumber);
+  }
+
+  private publishMapRevision(map: MockMap, draft: Revision, planVersionId: string): {
+    publishedRevisionId: string;
+    nextDraftRevisionId: string;
+  } | null {
+    const planVersion = this.planVersions.get(planVersionId);
+    if (
+      map.currentRevisionId !== draft.id
+      || draft.status !== 'draft'
+      || !planVersion
+      || planVersion.map_project_id !== map.id
+      || planVersion.draft_revision_id !== draft.id
+      || planVersion.draft_save_version !== draft.save_version
+      || canonical(planVersion.plan) !== canonical(draft.plan)
+    ) return null;
+
+    draft.status = 'generating';
+    draft.plan_version_id = planVersion.id;
+    const nextDraftRevisionId = uuid(++this.sequence);
+    map.revisions.set(nextDraftRevisionId, {
+      ...structuredClone(draft),
+      id: nextDraftRevisionId,
+      revision_number: draft.revision_number + 1,
+      save_version: 0,
+      status: 'draft',
+      plan_version_id: null,
+      map_version_number: null,
+      parent_revision_id: draft.id,
+    });
+    map.currentRevisionId = nextDraftRevisionId;
+    map.updatedAt = new Date().toISOString();
+    return { publishedRevisionId: draft.id, nextDraftRevisionId };
   }
 
   private assetRecord(mapId: string, revisionId: string, generationId: string, planFingerprint: string): AssetRecord {
@@ -375,16 +445,11 @@ class CreateMapV3MockBackend {
       );
       let nextDraftRevisionId: string | null = null;
       if (!asset) {
+        const published = this.publishMapRevision(map, revision, String(body.planVersionId));
+        if (!published) return json(route, { error: 'Map revision is stale.', code: 'MAP_REVISION_STALE' }, 409);
         const generationId = uuid(++this.sequence);
         const planFingerprint = fingerprint(revision.plan);
-        nextDraftRevisionId = uuid(++this.sequence);
-        map.revisions.set(nextDraftRevisionId, {
-          ...structuredClone(revision),
-          id: nextDraftRevisionId,
-          revision_number: revision.revision_number + 1,
-          save_version: 0,
-        });
-        map.currentRevisionId = nextDraftRevisionId;
+        nextDraftRevisionId = published.nextDraftRevisionId;
         asset = this.assetRecord(map.id, revision.id, generationId, planFingerprint);
         this.assets.set(asset.id, asset);
         this.createAssetRpc = {
@@ -395,6 +460,7 @@ class CreateMapV3MockBackend {
             p_expected_save_version: body.saveVersion,
             p_generation_id: generationId,
             p_plan_fingerprint: planFingerprint,
+            p_plan_version_id: body.planVersionId,
           },
         };
       }
@@ -527,11 +593,21 @@ class CreateMapV3MockBackend {
     }
     if (table === 'map_revisions') {
       const revisionId = queryValue(url, 'id');
-      for (const map of this.maps.values()) {
-        const revision = revisionId ? map.revisions.get(revisionId) : undefined;
-        if (revision) return respond([revision]);
-      }
-      return respond([]);
+      const mapId = queryValue(url, 'map_project_id');
+      const status = queryValue(url, 'status');
+      const rows = [...this.maps.values()].flatMap((map) => [...map.revisions.values()]
+        .filter((revision) => (!revisionId || revision.id === revisionId)
+          && (!mapId || map.id === mapId)
+          && (!status || revision.status === status))
+        .map((revision) => ({
+          ...revision,
+          map_project_id: map.id,
+          map_projects: { project_id: PROJECT_ID },
+          map_plan_versions: revision.plan_version_id
+            ? this.planVersions.get(revision.plan_version_id) ?? null
+            : null,
+        })));
+      return respond(rows);
     }
     if (table === 'map_assets') {
       const assetId = queryValue(url, 'id');
@@ -555,6 +631,10 @@ class CreateMapV3MockBackend {
         schema_version: 3,
         plan: body.p_plan,
         scene: body.p_scene,
+        status: 'draft',
+        plan_version_id: null,
+        map_version_number: null,
+        parent_revision_id: null,
       };
       this.maps.set(MAP_ID, {
         id: MAP_ID,
@@ -568,7 +648,13 @@ class CreateMapV3MockBackend {
     if (rpc === 'save_map_draft_v3') {
       const map = this.maps.get(body.p_map_id);
       const revision = map?.revisions.get(body.p_revision_id);
-      if (!map || revision?.schema_version !== 3) return json(route, [], 409);
+      if (
+        !map
+        || revision?.schema_version !== 3
+        || map.currentRevisionId !== revision.id
+        || revision.status !== 'draft'
+        || revision.save_version !== body.p_expected_save_version
+      ) return json(route, [{ status: 'conflict', save_version: null }]);
       revision.plan = body.p_plan;
       revision.scene = body.p_scene;
       revision.save_version += 1;
@@ -576,28 +662,54 @@ class CreateMapV3MockBackend {
       map.updatedAt = new Date().toISOString();
       return json(route, [{ status: 'saved', save_version: revision.save_version }]);
     }
+    if (rpc === 'save_map_plan_v3') {
+      const map = this.maps.get(body.p_map_id);
+      const draft = map?.revisions.get(body.p_draft_revision_id);
+      if (
+        !map
+        || !draft
+        || map.currentRevisionId !== draft.id
+        || draft.schema_version !== 3
+        || draft.status !== 'draft'
+        || draft.save_version !== body.p_expected_save_version
+      ) {
+        return json(route, [{
+          status: 'conflict', plan_version_id: null, plan_version_number: null, draft_save_version: null,
+        }]);
+      }
+      const existing = this.planVersionsForMap(map.id).find((version) => (
+        version.draft_revision_id === draft.id && version.draft_save_version === draft.save_version
+      ));
+      const planVersion = existing ?? {
+        id: uuid(++this.sequence),
+        map_project_id: map.id,
+        plan_version_number: this.planVersionsForMap(map.id).length + 1,
+        draft_revision_id: draft.id,
+        draft_save_version: draft.save_version,
+        plan: structuredClone(draft.plan),
+      };
+      this.planVersions.set(planVersion.id, planVersion);
+      return json(route, [{
+        status: 'saved',
+        plan_version_id: planVersion.id,
+        plan_version_number: planVersion.plan_version_number,
+        draft_save_version: planVersion.draft_save_version,
+      }]);
+    }
     if (rpc === 'publish_map_revision_v3') {
       const map = this.maps.get(body.p_map_id);
       const draft = map?.revisions.get(body.p_draft_revision_id);
-      if (!map || draft?.schema_version !== 3) return json(route, [], 409);
-      const publishedId = uuid(++this.sequence);
-      const nextDraftId = uuid(++this.sequence);
-      map.revisions.set(publishedId, {
-        ...structuredClone(draft),
-        id: publishedId,
-        revision_number: draft.revision_number,
-      });
-      map.revisions.set(nextDraftId, {
-        ...structuredClone(draft),
-        id: nextDraftId,
-        revision_number: draft.revision_number + 1,
-        save_version: 0,
-      });
-      map.currentRevisionId = nextDraftId;
+      const published = map && draft && draft.schema_version === 3
+        ? this.publishMapRevision(map, draft, String(body.p_plan_version_id))
+        : null;
+      if (!published) return json(route, [{
+        status: 'conflict', published_revision_id: null, next_draft_revision_id: null, map_version_number: null,
+      }]);
       return json(route, [{
         status: 'published',
-        published_revision_id: publishedId,
-        next_draft_revision_id: nextDraftId,
+        published_revision_id: published.publishedRevisionId,
+        next_draft_revision_id: published.nextDraftRevisionId,
+        map_version_number: null,
       }]);
     }
     if (rpc === 'create_map_asset_plan_v3') {
@@ -640,6 +752,10 @@ class CreateMapV3MockBackend {
       }
       const map = [...this.maps.values()].find((candidate) => candidate.revisions.has(asset.map_revision_id));
       if (!map) return json(route, { code: 'map_not_found', error: 'Map not found' }, 404);
+      const generatedRevision = map.revisions.get(asset.map_revision_id);
+      if (!generatedRevision || generatedRevision.status !== 'generating') {
+        return json(route, { code: 'map_revision_stale', error: 'Map revision is stale' }, 409);
+      }
       const sha256 = createHash('sha256').update(`${asset.id}:${asset.attempt_count}`).digest('hex');
       Object.assign(asset, {
         status: 'ready',
@@ -656,6 +772,11 @@ class CreateMapV3MockBackend {
           candidateIndex: 0,
         },
       });
+      generatedRevision.status = 'ready';
+      generatedRevision.map_version_number = Math.max(
+        0,
+        ...[...map.revisions.values()].map((revision) => revision.map_version_number ?? 0),
+      ) + 1;
       return json(route, { assetId: asset.id, status: 'ready' });
     }
     return json(route, { code: 'unsupported_operation', error: 'Unsupported operation' }, 400);
@@ -718,6 +839,27 @@ async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
   await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
+  await savePlan(page, 1);
+}
+
+async function savePlan(page: Page, expectedVersion?: number): Promise<void> {
+  await page.getByRole('button', { name: 'Save plan', exact: true }).click();
+  const inspector = page.getByRole('heading', { name: 'Map plan details' }).locator('..');
+  if (expectedVersion == null) {
+    await expect(inspector).not.toContainText('Draft');
+  } else {
+    await expect(inspector).toContainText(`Plan V${expectedVersion}`);
+  }
+}
+
+async function editAndSavePlan(page: Page, version: number): Promise<void> {
+  await page.getByLabel('PixelLab description').fill(`An opaque map Plan ${version}.`);
+  await savePlan(page, version);
+}
+
+async function openMapHistory(page: Page, mapVersion: string): Promise<void> {
+  await page.getByRole('button', { name: 'Show map generation history' }).click();
+  await page.getByRole('button', { name: new RegExp(`Open ${mapVersion} with Plan V\\d+`) }).click();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
@@ -732,9 +874,6 @@ async function generateReadyMap(page: Page): Promise<void> {
   // complete before a visibility assertion observes it. The durable ready state
   // is the meaningful contract for this helper.
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
-  // Materializing the image and collision state updates the draft asynchronously.
-  // Wait until the next generation can be started from the durable saved state.
-  await expect(generateButton).toBeEnabled({ timeout: 10_000 });
 }
 
 async function expectWithin(locator: Locator, container: Locator): Promise<void> {
@@ -845,6 +984,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByLabel('PixelLab description').fill(exactDescription);
     await expect.poll(() => backend.maps.get(MAP_ID)?.revisions.get(backend.maps.get(MAP_ID)?.currentRevisionId ?? '')?.plan.description)
       .toBe(exactDescription);
+    await savePlan(page);
     await generateReadyMap(page);
 
     await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
@@ -873,6 +1013,26 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
       .toEqual([512, 512]);
     expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
+  });
+
+  test('keeps Map V1 bound to Plan V1 after later saved plans', async ({ page }) => {
+    const backend = new CreateMapV3MockBackend();
+    await loginAndOpen(page, backend);
+    await askForMapPlan(page, 'A quiet top-down village market with open paths.');
+    await savePlan(page, 1); // Plan V1
+    await generateReadyMap(page); // Map V1 -> Plan V1
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
+    await editAndSavePlan(page, 2);
+    await editAndSavePlan(page, 3);
+
+    await openMapHistory(page, 'MAP V1');
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Plan V1');
+
+    expect(backend.readyAssets()).toHaveLength(1);
+    expect(backend.planVersionsForMap(MAP_ID)).toHaveLength(3);
+    expect(backend.mapVersionBindings(MAP_ID)).toEqual([{ mapVersionNumber: 1, planVersionNumber: 1 }]);
   });
 
   test('surfaces technical validation failure and retries the same immutable asset', async ({ page }) => {
@@ -936,6 +1096,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
+    await savePlan(page);
     const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
     await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
     await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
@@ -952,10 +1113,11 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible({ timeout: 5_000 });
     await page.reload();
     await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
 
     backend.seedReadyV3Map(SLOW_MAP_ID, 'Slow Marsh', 600);

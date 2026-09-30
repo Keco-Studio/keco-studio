@@ -263,6 +263,7 @@ describe('Create Map MCP service', () => {
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,
       saveVersion: 0,
+      planVersionId: '10000000-0000-4000-8000-000000000009',
     })).resolves.toMatchObject({
       assetId: IDS.assetId,
       generationId: IDS.generationId,
@@ -276,6 +277,7 @@ describe('Create Map MCP service', () => {
       saveVersion: 0,
       generationId: IDS.generationId,
       planFingerprint: fingerprint,
+      planVersionId: '10000000-0000-4000-8000-000000000009',
     }));
     expect(sign).toHaveBeenCalledWith(expect.objectContaining({
       purpose: 'submit',
@@ -284,6 +286,22 @@ describe('Create Map MCP service', () => {
       attemptCount: 0,
     }));
     expect(domain.invokeProvider).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation preparation without a selected Plan version', async () => {
+    const domain = backend();
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, { backend: domain });
+
+    await expect(service.prepareGeneration({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      planVersionId: '10000000-0000-4000-8000-000000000009',
+      planVersionId: '10000000-0000-4000-8000-000000000009',
+      planVersionId: '',
+    })).rejects.toMatchObject({ code: 'FIELD_VALIDATION_FAILED' });
+    expect(domain.prepareAssetPlan).not.toHaveBeenCalled();
   });
 
   it('replays an asset created by a concurrent atomic prepare', async () => {
@@ -306,6 +324,7 @@ describe('Create Map MCP service', () => {
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,
       saveVersion: 0,
+      planVersionId: '10000000-0000-4000-8000-000000000009',
     })).resolves.toMatchObject({
       assetId: IDS.assetId,
       generationId: IDS.generationId,
@@ -332,6 +351,7 @@ describe('Create Map MCP service', () => {
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,
       saveVersion: 0,
+      planVersionId: '10000000-0000-4000-8000-000000000009',
     })).rejects.toMatchObject({ code: 'MAP_REVISION_STALE' });
   });
 
@@ -421,7 +441,7 @@ describe('Create Map MCP service', () => {
       verifyConfirmation: verify,
     });
 
-    const prepared = await service.prepareGeneration({
+    const prepared = await service.prepareExistingGeneration({
       projectId: IDS.projectId,
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,
@@ -489,7 +509,7 @@ describe('Create Map MCP service', () => {
       verifyConfirmation: verify,
     });
 
-    const prepared = await service.prepareGeneration({
+    const prepared = await service.prepareExistingGeneration({
       projectId: IDS.projectId,
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,
@@ -722,7 +742,7 @@ describe('Create Map MCP service', () => {
       now: () => 1_787_260_000_000,
     });
 
-    const prepared = await service.prepareGeneration({
+    const prepared = await service.prepareExistingGeneration({
       projectId: IDS.projectId,
       mapId: IDS.mapId,
       revisionId: IDS.revisionId,

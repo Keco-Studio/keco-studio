@@ -9,8 +9,8 @@ export function useMapGenerationHistory(mapId: string | null) {
   const supabase = useSupabase();
   const service = useMemo(() => createMapService(supabase), [supabase]);
   const query = useQuery({
-    queryKey: ['create-map', 'generation-history', 'v3', mapId],
-    queryFn: () => service.listGenerationHistoryV3(mapId as string),
+    queryKey: ['create-map', 'map-history', 'v3', mapId],
+    queryFn: () => service.listMapVersionsV3(mapId as string),
     enabled: Boolean(mapId),
     staleTime: 30_000,
   });

@@ -6,6 +6,7 @@ type DirectMapPlanInspectorProps = {
   plan: MapPlanV3;
   issues: MapPlanV3Issue[];
   onChange: (plan: MapPlanV3) => void;
+  onSavePlan: () => void;
   disabled?: boolean;
   onClose?: () => void;
   versionLabel?: string;
@@ -15,9 +16,10 @@ export function DirectMapPlanInspector({
   plan,
   issues,
   onChange,
+  onSavePlan,
   disabled = false,
   onClose,
-  versionLabel,
+  versionLabel = 'Draft',
 }: DirectMapPlanInspectorProps) {
   const profileValue = `${plan.map.width}x${plan.map.height}`;
   const descriptionIssues = issues.filter((issue) => issue.path[0] === 'description');
@@ -27,8 +29,9 @@ export function DirectMapPlanInspector({
       <div className={styles.planDetailsHeading}>
         <div className={styles.planDetailsCopy}>
           <h2 id="direct-plan-heading" className={styles.planDetailsTitle}>Map plan details</h2>
-          {versionLabel ? <span className={styles.planDetailsVersion}>{versionLabel}</span> : null}
+          <span className={styles.planDetailsVersion}>{versionLabel}</span>
         </div>
+        <button type="button" className={styles.planDetailsSave} onClick={onSavePlan} disabled={disabled}>Save plan</button>
         {onClose ? (
           <button type="button" className={styles.planDetailsClose} aria-label="Close map plan details" onClick={onClose}>
             <CloseOutlined />

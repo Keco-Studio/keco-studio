@@ -27,7 +27,7 @@ function findElement(node: React.ReactNode, predicate: (element: React.ReactElem
 describe('DirectMapPlanInspector', () => {
   it('edits the exact final prompt without compiling it', () => {
     const onChange = jest.fn();
-    const tree = DirectMapPlanInspector({ plan: makeValidMapPlanV3(), issues: [], onChange });
+    const tree = DirectMapPlanInspector({ plan: makeValidMapPlanV3(), issues: [], onChange, onSavePlan: jest.fn() });
     const textarea = findElement(tree, (element) => element.props['aria-label'] === 'PixelLab description');
 
     expect(textarea).not.toBeNull();
@@ -39,7 +39,7 @@ describe('DirectMapPlanInspector', () => {
 
   it('offers only supported profiles and shows the exact character budget', () => {
     const markup = renderToStaticMarkup(React.createElement(DirectMapPlanInspector, {
-      plan: makeValidMapPlanV3(), issues: [], onChange: jest.fn(), versionLabel: 'Version1',
+      plan: makeValidMapPlanV3(), issues: [], onChange: jest.fn(), onSavePlan: jest.fn(),
     }));
 
     for (const profile of DIRECT_MAP_PROFILE_VALUES) {
@@ -49,7 +49,23 @@ describe('DirectMapPlanInspector', () => {
     expect(markup).toContain(`${makeValidMapPlanV3().description.length} / 2000`);
     expect(markup).toContain('Seed');
     expect(markup).not.toContain('Tile size');
-    expect(markup).toContain('Version1');
+    expect(markup).toContain('Draft');
+    expect(markup).toContain('Save plan');
+  });
+
+  it('saves the visible Draft through the explicit Plan command', () => {
+    const onSavePlan = jest.fn();
+    const tree = DirectMapPlanInspector({
+      plan: makeValidMapPlanV3(),
+      issues: [],
+      onChange: jest.fn(),
+      onSavePlan,
+    });
+    const save = findElement(tree, (element) => element.props.children === 'Save plan');
+
+    expect(save).not.toBeNull();
+    (save?.props.onClick as () => void)();
+    expect(onSavePlan).toHaveBeenCalledTimes(1);
   });
 
   it('uses the Map plan details typography and textarea dimensions', () => {
