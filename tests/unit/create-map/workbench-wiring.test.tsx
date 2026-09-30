@@ -85,7 +85,7 @@ jest.mock('@/features/create-map/services/createMapService', () => ({
 }));
 
 describe('Create Map V3 direct workbench', () => {
-  it('discards an older Save plan response after the Draft changes', () => {
+  it('accepts a Save plan response after its own draft save advances the version', () => {
     const identity = {
       mapId: '10000000-0000-4000-8000-000000000001',
       revisionId: '10000000-0000-4000-8000-000000000002',
@@ -107,10 +107,13 @@ describe('Create Map V3 direct workbench', () => {
       identity,
       payloadKey: 'draft-b',
     })).toBe(false);
-    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
-      identity: { ...identity, saveVersion: 4 },
+    expect(savedPlanResponseIsCurrent('draft-a', { ...identity, saveVersion: 4 }, {
+      ...saved,
+      draftSaveVersion: 4,
+    }, {
+      identity,
       payloadKey: 'draft-a',
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('renders the Map Generator shell with browse and plan controls', () => {

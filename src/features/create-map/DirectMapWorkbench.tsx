@@ -72,11 +72,10 @@ function nextMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function sameDraftIdentity(left: MapDraftIdentity | null, right: MapDraftIdentity | null): boolean {
+function sameDraftRevision(left: MapDraftIdentity | null, right: MapDraftIdentity | null): boolean {
   return Boolean(left && right
     && left.mapId === right.mapId
-    && left.revisionId === right.revisionId
-    && left.saveVersion === right.saveVersion);
+    && left.revisionId === right.revisionId);
 }
 
 export function savedPlanResponseIsCurrent(
@@ -86,7 +85,7 @@ export function savedPlanResponseIsCurrent(
   current: { identity: MapDraftIdentity | null; payloadKey: string },
 ): boolean {
   return current.payloadKey === requestPayloadKey
-    && sameDraftIdentity(current.identity, settledDraft)
+    && sameDraftRevision(current.identity, settledDraft)
     && saved.draftRevisionId === settledDraft.revisionId
     && saved.draftSaveVersion === settledDraft.saveVersion;
 }
