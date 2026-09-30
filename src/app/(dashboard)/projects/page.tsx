@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal, type CreatedProjectPayload } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { upsertProjectInListCache } from '@/lib/queryInvalidation';
-import projectEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
+import { EmptyContentState } from '@/components/shared/EmptyContentState';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
@@ -84,19 +84,7 @@ export default function ProjectsPage() {
 
       {showEmpty && (
         <div className={styles.emptyStateWrapper}>
-          <div className={styles.emptyStateContainer}>
-            <div className={styles.emptyIcon}>
-              <Image
-                src={projectEmptyIcon}
-                alt="Project icon"
-                fill
-                sizes="237px"
-                className={styles.emptyIconImage}
-              />
-            </div>
-            <div className={styles.emptyText}>
-              There is no any project here. create your first project.
-            </div>
+          <EmptyContentState message="There is no any project here. create your first project.">
             <button
               className={styles.createProjectButton}
               onClick={() => setShowModal(true)}
@@ -119,7 +107,7 @@ export default function ProjectsPage() {
               </span>
               <span className={styles.buttonText}>Create first project</span>
             </button>
-          </div>
+          </EmptyContentState>
         </div>
       )}
 
