@@ -71,6 +71,8 @@ describe('MapChatPanel', () => {
     expect(markup).toContain('MAP V2');
     expect(markup).toContain('Plan V1');
     expect(markup).toContain('Plan V4');
+    expect(markup).toContain('data-history-version="1"');
+    expect(markup).toContain('data-history-version="2"');
     expect(markup).toContain('aria-label="Open Map V1 with Plan V1"');
     expect(markup).toContain('aria-label="Open Map V2 with Plan V4"');
     expect(markup).toContain('aria-label="Download map"');

@@ -237,6 +237,7 @@ export function MapChatPanel({
                   key={entry.mapRevisionId}
                   type="button"
                   className={entry.isCurrent ? styles.mapHistoryItemCurrent : styles.mapHistoryItem}
+                  data-history-version={entry.mapVersionNumber}
                   aria-current={entry.isCurrent || undefined}
                   aria-label={`Open Map V${entry.mapVersionNumber} with Plan V${entry.planVersionNumber}`}
                   disabled={!onSelectMapVersion}
