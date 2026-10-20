@@ -485,7 +485,6 @@ type UseDirectMapGenerationInput = {
   canPrepare: boolean;
   draftIdentity: MapDraftIdentity | null;
   savedPlanSelection: SavedPlanSelection | null;
-  ensureSavedPlan: () => Promise<SavedPlanSelection | null>;
   reloadDraftAfterPreparation: () => Promise<SavedMapWorkspaceV3 | null>;
   onSceneMaterialized: (scene: MapSceneV3) => void;
 };
@@ -497,7 +496,6 @@ export function useDirectMapGeneration({
   canPrepare,
   draftIdentity,
   savedPlanSelection,
-  ensureSavedPlan,
   reloadDraftAfterPreparation,
   onSceneMaterialized,
 }: UseDirectMapGenerationInput) {
@@ -555,33 +553,21 @@ export function useDirectMapGeneration({
 
   const startPreparation = useCallback(async (): Promise<PreparedDirectMapGeneration | null> => {
     if (preparationActive.current) return null;
-    preparationActive.current = true;
-    let planSelection: SavedPlanSelection | null;
-    try {
-      planSelection = savedPlanSelectionIsCurrent(savedPlanSelection, draftIdentity)
-        ? savedPlanSelection
-        : await ensureSavedPlan();
-    } catch (cause) {
-      preparationActive.current = false;
-      throw cause;
-    }
-    if (!planSelection || !draftIdentity || planSelection.draftRevisionId !== draftIdentity.revisionId) {
-      const cause = new Error('Could not create the current Plan snapshot for generation.');
+    if (!savedPlanSelectionIsCurrent(savedPlanSelection, draftIdentity)) {
+      const cause = new Error('Save the current Plan version before generating.');
       setError(cause.message);
-      preparationActive.current = false;
       throw cause;
     }
     const validation = validateMapPlanV3(plan);
     if (validation.success === false) {
       setError('Resolve the direct map Plan issues before preparing generation.');
-      preparationActive.current = false;
       return null;
     }
     if (!projectId || !canPrepare || !draftIdentity) {
       setError('Wait for the current map draft to finish saving.');
-      preparationActive.current = false;
       return null;
     }
+    preparationActive.current = true;
     const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
     const epoch = ++lifecycleEpoch.current;
     setPhase('preparing');
@@ -591,9 +577,9 @@ export function useDirectMapGeneration({
       const confirmation = await service.prepareMapGeneration({
         projectId,
         mapId: draftIdentity.mapId,
-        revisionId: planSelection.draftRevisionId,
-        saveVersion: planSelection.draftSaveVersion,
-        planVersionId: planSelection.id,
+        revisionId: draftIdentity.revisionId,
+        saveVersion: draftIdentity.saveVersion,
+        planVersionId: savedPlanSelection.id,
       });
       const nextTarget: DirectMapGenerationTarget = {
         projectId,
@@ -605,8 +591,8 @@ export function useDirectMapGeneration({
       };
       if (
         confirmation.mapId !== draftIdentity.mapId
-        || confirmation.revisionId !== planSelection.draftRevisionId
-        || confirmation.saveVersion !== planSelection.draftSaveVersion
+        || confirmation.revisionId !== draftIdentity.revisionId
+        || confirmation.saveVersion !== draftIdentity.saveVersion
         || confirmation.planFingerprint !== planFingerprint
         || confirmation.status !== 'planned'
         || confirmation.confirmationPurpose !== 'submit'
@@ -648,7 +634,7 @@ export function useDirectMapGeneration({
     } finally {
       preparationActive.current = false;
     }
-  }, [canPrepare, draftIdentity, ensureSavedPlan, plan, projectId, reloadDraftAfterPreparation, savedPlanSelection, service]);
+  }, [canPrepare, draftIdentity, plan, projectId, reloadDraftAfterPreparation, savedPlanSelection, service]);
 
   const submitPrepared = useCallback(async (prepared: PreparedDirectMapGeneration) => {
     const expected = prepared.target;
