@@ -19,10 +19,6 @@ import {
   type GameAssetStatus,
   type ProjectGameAsset,
 } from '@/lib/services/gameAssetsService';
-import { projectAssetMimeFromName } from '@/lib/services/projectAssetUploadContract';
-import { useAuth } from '@/lib/contexts/AuthContext';
-import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
-import { isStorageQuotaResponse, storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import styles from './GameAssetsPage.module.css';
 
 type ApiResponse = { assets: ProjectGameAsset[]; warnings: Array<{ source: string; message: string }> };
@@ -129,8 +125,6 @@ function buildJustifiedRows(
 
 export function GameAssetsPage({ projectId }: { projectId: string }) {
   const { message } = App.useApp();
-  const { userProfile } = useAuth();
-  const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
@@ -141,8 +135,6 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   const [assetSizeIndex, setAssetSizeIndex] = useState<AssetGridSizeIndex>(
     DEFAULT_ASSET_GRID_SIZE_INDEX,
   );
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const listMode = isAssetGridListMode(assetSizeIndex);
   const targetRowHeight = getAdminAssetTargetRowHeight(assetSizeIndex);
 
@@ -220,105 +212,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     return resolveSizedAsset(selected, measuredAspects).previewSrc;
   }, [selected, measuredAspects]);
 
-  const uploadAssets = async (files: FileList | null) => {
-    if (!files?.length) return;
-    if (files.length > 20) {
-      message.error('At most 20 assets can be uploaded at once');
-      return;
-    }
-    setUploading(true);
-    try {
-      const selectedFiles = Array.from(files);
-      const metadata = selectedFiles.map((file) => ({
-        fileName: file.name,
-        fileType: file.type || projectAssetMimeFromName(file.name) || 'application/octet-stream',
-        fileSize: file.size,
-      }));
-      const prepareResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'prepare', files: metadata }),
-      });
-      const prepared = await prepareResponse.json() as {
-        error?: string;
-        failedCount?: number;
-        items?: Array<{
-          index: number;
-          ok: boolean;
-          path?: string;
-          reservationId?: string;
-          file?: typeof metadata[number];
-          upload?: { url: string; method: 'PUT'; headers: Record<string, string> };
-        }>;
-      };
-      if (!prepareResponse.ok || !prepared.items) {
-        if (isStorageQuotaResponse(prepareResponse, prepared)) {
-          throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
-        }
-        throw new Error(prepared.error ?? 'Upload preparation failed');
-      }
-
-      let failedCount = prepared.failedCount ?? 0;
-      const completionItems = [];
-      for (const item of prepared.items) {
-        if (!item.ok || !item.path || !item.reservationId || !item.file || !item.upload) continue;
-        try {
-          const uploadResponse = await fetch(item.upload.url, {
-            method: item.upload.method,
-            headers: item.upload.headers,
-            body: selectedFiles[item.index],
-          });
-          // The completion call verifies failed PUTs too, releasing their reservation if no valid object exists.
-          void uploadResponse;
-        } catch { /* Completion below releases the prepared reservation. */ }
-        completionItems.push({ ...item.file, path: item.path, reservationId: item.reservationId });
-      }
-
-      let completedCount = 0;
-      if (completionItems.length > 0) {
-        const completeResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'complete', items: completionItems }),
-        });
-        const completed = await completeResponse.json() as {
-          completedCount?: number; failedCount?: number; error?: string;
-        };
-        if (!completeResponse.ok) {
-          if (isStorageQuotaResponse(completeResponse, completed)) {
-            throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
-          }
-          throw new Error(completed.error ?? 'Upload completion failed');
-        }
-        completedCount = completed.completedCount ?? 0;
-        failedCount += completed.failedCount ?? 0;
-      }
-      if (failedCount > 0) message.error(`${failedCount} asset(s) failed to upload`);
-      else message.success(`${completedCount} asset(s) uploaded`);
-      if (completedCount > 0) await assetsQuery.refetch();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-      if (uploadInputRef.current) uploadInputRef.current.value = '';
-    }
-  };
-
   return (
     <div className={styles.page} data-testid="game-assets-page">
       <div className={styles.workspace}>
         <section className={styles.fileArea} aria-label="Game asset files">
-          <div className={styles.toolbar}>
-            <input
-              ref={uploadInputRef}
-              type="file"
-              multiple
-              hidden
-              accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.mp4,.mp3,.m4a,.wav,.ogg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.json,.psd"
-              onChange={(event) => void uploadAssets(event.target.files)}
-            />
-            <Button loading={uploading} onClick={() => uploadInputRef.current?.click()}>Upload assets</Button>
-          </div>
           {assetsQuery.isLoading ? <div className={styles.state}><Spin /><span>Loading project assets…</span></div> : null}
           {assetsQuery.isError ? (
             <div className={styles.state}>

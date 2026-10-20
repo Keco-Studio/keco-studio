@@ -20,12 +20,6 @@
   padding: 28px 32px 40px;
 }
 
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
 /* Justified gallery: rows fill the width; tile size follows each image’s aspect ratio */
 .grid {
   display: flex;
