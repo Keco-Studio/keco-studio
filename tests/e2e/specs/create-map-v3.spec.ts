@@ -986,7 +986,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await conversation.getByRole('textbox', { name: 'Ask AI to help' }).fill(description);
     await conversation.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
+    await expect(page.getByRole('button', { name: 'Save plan', exact: true })).toHaveCount(0);
     await expect(conversation.getByText(description)).toBeVisible();
     await expect(conversation.getByText('Here is the created map plan')).toBeVisible();
     await expect(conversation.getByRole('button', { name: 'View map plan' })).toBeVisible();
@@ -1047,7 +1048,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
     await askForMapPlan(page, 'A quiet top-down village market with open paths.');
-    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
     await page.getByLabel('PixelLab description').fill(exactDescription);
     await expect.poll(() => backend.maps.get(MAP_ID)?.revisions.get(backend.maps.get(MAP_ID)?.currentRevisionId ?? '')?.plan.description)
@@ -1170,7 +1171,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await generateReadyMap(page);
-    await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Map canvas').getByText(/^Map V\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
     const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
     await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
