@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'next/navigation';
 import { App, Button, Spin } from 'antd';
 import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
 import {
   ASSET_GRID_SIZES,
@@ -125,9 +125,12 @@ function buildJustifiedRows(
 
 export function GameAssetsPage({ projectId }: { projectId: string }) {
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
+  const [contextAsset, setContextAsset] = useState<{ asset: ProjectGameAsset; x: number; y: number } | null>(null);
   const [measuredAspects, setMeasuredAspects] = useState<Record<string, number>>({});
   const gridRef = useRef<HTMLDivElement>(null);
   const lastZoomAtRef = useRef(0);
@@ -147,7 +150,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     },
     staleTime: 10_000,
   });
-  const assets = useMemo(() => assetsQuery.data?.assets ?? [], [assetsQuery.data?.assets]);
+  const assets = useMemo(
+    () => (assetsQuery.data?.assets ?? []).filter((asset) => !removedIds.has(asset.id)),
+    [assetsQuery.data?.assets, removedIds],
+  );
   const filtered = useMemo(() => {
     return assets.filter((asset) => category === 'all' || asset.category === category);
   }, [assets, category]);
@@ -207,6 +213,40 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected]);
 
+  useEffect(() => {
+    if (!contextAsset) return;
+    const dismiss = () => setContextAsset(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss();
+    };
+    window.addEventListener('click', dismiss);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', dismiss);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextAsset]);
+
+  const removeAsset = useCallback(async (asset: ProjectGameAsset) => {
+    if (!window.confirm(`Remove "${asset.name}" from this project's Assets library? This does not delete the original resource.`)) return;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/game-assets`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ assetId: asset.id }),
+      });
+      if (!response.ok) throw new Error('Unable to remove asset');
+      setRemovedIds((current) => new Set(current).add(asset.id));
+      queryClient.setQueryData<ApiResponse>(['project-game-assets', projectId], (current) => current
+        ? { ...current, assets: current.assets.filter((item) => item.id !== asset.id) }
+        : current);
+      setSelected((current) => current?.id === asset.id ? null : current);
+      message.success('Removed from Assets library');
+    } catch {
+      message.error("Couldn't remove asset");
+    }
+  }, [message, projectId, queryClient]);
+
   const selectedPreview = useMemo(() => {
     if (!selected) return null;
     return resolveSizedAsset(selected, measuredAspects).previewSrc;
@@ -244,6 +284,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                     item={item}
                     selected={selected?.id === item.asset.id}
                     onSelect={() => setSelected(item.asset)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setContextAsset({ asset: item.asset, x: event.clientX, y: event.clientY });
+                    }}
                     onMeasuredAspect={handleMeasuredAspect}
                     listMode={listMode}
                   />
@@ -251,6 +295,27 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
               </div>
             ))}
           </div>
+          {contextAsset ? (
+            <div
+              role="menu"
+              className={styles.contextMenu}
+              style={{ left: Math.max(0, Math.min(contextAsset.x, window.innerWidth - 128)), top: Math.max(0, Math.min(contextAsset.y, window.innerHeight - 44)) }}
+              onMouseLeave={() => setContextAsset(null)}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.contextMenuItem}
+                onClick={() => {
+                  const asset = contextAsset.asset;
+                  setContextAsset(null);
+                  void removeAsset(asset);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
           <div className={styles.zoomControls} aria-label="Asset size" data-testid="asset-size-controls">
             <button
               type="button"
@@ -296,12 +361,14 @@ function AssetCard({
   item,
   selected,
   onSelect,
+  onContextMenu,
   onMeasuredAspect,
   listMode,
 }: {
   item: JustifiedItem;
   selected: boolean;
   onSelect: () => void;
+  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMeasuredAspect: (assetId: string, aspect: number) => void;
   listMode: boolean;
 }) {
@@ -310,6 +377,7 @@ function AssetCard({
       type="button"
       className={`${styles.card} ${listMode ? styles.listCard : ''} ${selected ? styles.cardSelected : ''}`}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{ width: item.width, flex: `0 0 ${item.width}px` }}
       aria-pressed={selected}
       data-asset-card
