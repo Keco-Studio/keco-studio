@@ -116,7 +116,6 @@ export type UseSidebarContextMenuActionsParams = {
   openDuplicateLibrary: (id: string) => void;
   openImportLibrary: (folderId: string | null) => void;
   openImportScript: (folderId: string) => void;
-  openEditFolder: (id: string) => void;
   openEditAsset: (id: string) => void;
   supabase: SupabaseClient;
   queryClient: QueryClient;
@@ -132,6 +131,7 @@ export type UseSidebarContextMenuActionsParams = {
   assets: Record<string, SidebarAssetRow[]>;
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
+  onAssetsWorkspaceDelete?: () => void | Promise<void>;
   openMoveLibrary: (libraryId: string) => void;
   openMoveDocument: (documentId: string) => void;
   openNewDocumentInFolder: (folderId: string) => void;
@@ -163,7 +163,6 @@ export function useSidebarContextMenuActions({
   openDuplicateLibrary,
   openImportLibrary,
   openImportScript,
-  openEditFolder,
   openEditAsset,
   supabase,
   queryClient,
@@ -173,6 +172,7 @@ export function useSidebarContextMenuActions({
   assets,
   fetchAssets,
   onProjectDeleteViaAPI,
+  onAssetsWorkspaceDelete,
   openMoveLibrary,
   openMoveDocument,
   openNewDocumentInFolder,
@@ -439,6 +439,19 @@ export function useSidebarContextMenuActions({
 
       // Handle delete action
       if (action === 'delete') {
+        if (contextMenu.type === 'assets') {
+          if (userRole !== 'admin' || !onAssetsWorkspaceDelete) {
+            closeContextMenu();
+            return;
+          }
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this Assets folder? Your original asset files will not be deleted.',
+            onConfirm: onAssetsWorkspaceDelete,
+          });
+          closeContextMenu();
+          return;
+        }
         if (contextMenu.type === 'project') {
           requestDeleteConfirm({
             title: 'Confirm deletion',
@@ -613,7 +626,6 @@ export function useSidebarContextMenuActions({
       openDuplicateLibrary,
       openImportLibrary,
       openImportScript,
-      openEditFolder,
       openEditAsset,
       supabase,
       queryClient,
@@ -627,6 +639,7 @@ export function useSidebarContextMenuActions({
       assets,
       fetchAssets,
       onProjectDeleteViaAPI,
+      onAssetsWorkspaceDelete,
       openMoveLibrary,
       openMoveDocument,
       openNewDocumentInFolder,

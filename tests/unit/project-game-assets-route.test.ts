@@ -88,6 +88,25 @@ describe('project game asset removal', () => {
     supabase = { from: jest.fn(() => ({ upsert: jest.fn().mockResolvedValue({ error: null }) })) };
     expect((await remove({ assetId: `character:${ASSET_ID}` })).status).toBe(200);
   });
+
+  it('disables the Assets workspace for an admin without deleting its source assets', async () => {
+    getUserProjectRole.mockResolvedValue({ role: 'admin' });
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn(() => ({ eq }));
+    supabase = { from: jest.fn(() => ({ update })) };
+
+    const response = await remove({ action: 'workspace' });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ assetsWorkspaceEnabled: false });
+    expect(update).toHaveBeenCalledWith({ assets_workspace_enabled: false });
+    expect(eq).toHaveBeenCalledWith('id', PROJECT_ID);
+  });
+
+  it('does not let an editor remove the Assets workspace', async () => {
+    getUserProjectRole.mockResolvedValue({ role: 'editor' });
+    expect((await remove({ action: 'workspace' })).status).toBe(403);
+  });
 });
 
 describe('project game asset upload route', () => {
