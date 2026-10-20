@@ -860,7 +860,7 @@ async function openMapHistory(page: Page, mapVersion: number): Promise<void> {
   await page.getByRole('button', { name: new RegExp(`^Open Map V${mapVersion} with Plan V\\d+$`) }).click();
 }
 
-async function generateReadyMap(page: Page): Promise<void> {
+async function generateReadyMap(page: Page, version = 1): Promise<void> {
   const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
   const generateButton = rightPanel.getByRole('button', { name: 'Generate map', exact: true });
   await expect(generateButton).toBeEnabled();
@@ -868,10 +868,8 @@ async function generateReadyMap(page: Page): Promise<void> {
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
   await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
-  // The generating phase is intentionally brief in the mocked provider and may
-  // complete before a visibility assertion observes it. The durable ready state
-  // is the meaningful contract for this helper.
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel('Map canvas').getByText(`Map V${version}`, { exact: true })).toBeVisible({ timeout: 10_000 });
 }
 
 async function expectWithin(locator: Locator, container: Locator): Promise<void> {
@@ -1095,9 +1093,9 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
     await editPlan(page, 2);
-    await generateReadyMap(page); // Map V2 -> Plan V2
+    await generateReadyMap(page, 2); // Map V2 -> Plan V2
     await editPlan(page, 3);
-    await generateReadyMap(page); // Map V3 -> Plan V3
+    await generateReadyMap(page, 3); // Map V3 -> Plan V3
 
     await openMapHistory(page, 1);
     await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
@@ -1173,11 +1171,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByLabel('Map canvas').getByText(/^Map V\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
-    const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
-    await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
-    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
-    await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
-    await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await generateReadyMap(page, 2);
     const ready = backend.readyAssets();
     expect(ready).toHaveLength(2);
     expect(ready.map((asset) => asset.map_revision_id)).toContain(prior.map_revision_id);
