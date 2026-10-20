@@ -96,6 +96,9 @@ export function useLibraryChannel({
         const config = runtime().config;
         if (event.userId !== config.currentUserId) config.onRowOrderChange?.(event);
       })
+      .on('broadcast', { event: 'schema:change' }, (payload) => {
+        if (payload.payload?.userId !== runtime().config.currentUserId) runtime().config.onSchemaChange?.();
+      })
       .on('broadcast', { event: 'cells:batch-update' }, (payload) => {
         const event = payload.payload as CellsBatchUpdateEvent;
         const config = runtime().config;

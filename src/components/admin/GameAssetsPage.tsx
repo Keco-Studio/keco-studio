@@ -4,8 +4,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'next/navigation';
 import { App, Button, Spin } from 'antd';
 import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
+import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
 import {
   ASSET_GRID_SIZES,
   DEFAULT_ASSET_GRID_SIZE_INDEX,
@@ -19,10 +20,6 @@ import {
   type GameAssetStatus,
   type ProjectGameAsset,
 } from '@/lib/services/gameAssetsService';
-import { projectAssetMimeFromName } from '@/lib/services/projectAssetUploadContract';
-import { useAuth } from '@/lib/contexts/AuthContext';
-import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
-import { isStorageQuotaResponse, storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import styles from './GameAssetsPage.module.css';
 
 type ApiResponse = { assets: ProjectGameAsset[]; warnings: Array<{ source: string; message: string }> };
@@ -129,11 +126,13 @@ function buildJustifiedRows(
 
 export function GameAssetsPage({ projectId }: { projectId: string }) {
   const { message } = App.useApp();
-  const { userProfile } = useAuth();
-  const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
+  const [assetPendingRemoval, setAssetPendingRemoval] = useState<ProjectGameAsset | null>(null);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
+  const [contextAsset, setContextAsset] = useState<{ asset: ProjectGameAsset; x: number; y: number } | null>(null);
   const [measuredAspects, setMeasuredAspects] = useState<Record<string, number>>({});
   const gridRef = useRef<HTMLDivElement>(null);
   const lastZoomAtRef = useRef(0);
@@ -141,8 +140,6 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   const [assetSizeIndex, setAssetSizeIndex] = useState<AssetGridSizeIndex>(
     DEFAULT_ASSET_GRID_SIZE_INDEX,
   );
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const listMode = isAssetGridListMode(assetSizeIndex);
   const targetRowHeight = getAdminAssetTargetRowHeight(assetSizeIndex);
 
@@ -155,7 +152,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     },
     staleTime: 10_000,
   });
-  const assets = useMemo(() => assetsQuery.data?.assets ?? [], [assetsQuery.data?.assets]);
+  const assets = useMemo(
+    () => (assetsQuery.data?.assets ?? []).filter((asset) => !removedIds.has(asset.id)),
+    [assetsQuery.data?.assets, removedIds],
+  );
   const filtered = useMemo(() => {
     return assets.filter((asset) => category === 'all' || asset.category === category);
   }, [assets, category]);
@@ -215,110 +215,48 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected]);
 
+  useEffect(() => {
+    if (!contextAsset) return;
+    const dismiss = () => setContextAsset(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss();
+    };
+    window.addEventListener('click', dismiss);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', dismiss);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextAsset]);
+
+  const removeAsset = useCallback(async (asset: ProjectGameAsset) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/game-assets`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ assetId: asset.id }),
+      });
+      if (!response.ok) throw new Error('Unable to remove asset');
+      setRemovedIds((current) => new Set(current).add(asset.id));
+      queryClient.setQueryData<ApiResponse>(['project-game-assets', projectId], (current) => current
+        ? { ...current, assets: current.assets.filter((item) => item.id !== asset.id) }
+        : current);
+      setSelected((current) => current?.id === asset.id ? null : current);
+      message.success('Removed from Assets library');
+    } catch {
+      message.error("Couldn't remove asset");
+    }
+  }, [message, projectId, queryClient]);
+
   const selectedPreview = useMemo(() => {
     if (!selected) return null;
     return resolveSizedAsset(selected, measuredAspects).previewSrc;
   }, [selected, measuredAspects]);
 
-  const uploadAssets = async (files: FileList | null) => {
-    if (!files?.length) return;
-    if (files.length > 20) {
-      message.error('At most 20 assets can be uploaded at once');
-      return;
-    }
-    setUploading(true);
-    try {
-      const selectedFiles = Array.from(files);
-      const metadata = selectedFiles.map((file) => ({
-        fileName: file.name,
-        fileType: file.type || projectAssetMimeFromName(file.name) || 'application/octet-stream',
-        fileSize: file.size,
-      }));
-      const prepareResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'prepare', files: metadata }),
-      });
-      const prepared = await prepareResponse.json() as {
-        error?: string;
-        failedCount?: number;
-        items?: Array<{
-          index: number;
-          ok: boolean;
-          path?: string;
-          reservationId?: string;
-          file?: typeof metadata[number];
-          upload?: { url: string; method: 'PUT'; headers: Record<string, string> };
-        }>;
-      };
-      if (!prepareResponse.ok || !prepared.items) {
-        if (isStorageQuotaResponse(prepareResponse, prepared)) {
-          throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
-        }
-        throw new Error(prepared.error ?? 'Upload preparation failed');
-      }
-
-      let failedCount = prepared.failedCount ?? 0;
-      const completionItems = [];
-      for (const item of prepared.items) {
-        if (!item.ok || !item.path || !item.reservationId || !item.file || !item.upload) continue;
-        try {
-          const uploadResponse = await fetch(item.upload.url, {
-            method: item.upload.method,
-            headers: item.upload.headers,
-            body: selectedFiles[item.index],
-          });
-          // The completion call verifies failed PUTs too, releasing their reservation if no valid object exists.
-          void uploadResponse;
-        } catch { /* Completion below releases the prepared reservation. */ }
-        completionItems.push({ ...item.file, path: item.path, reservationId: item.reservationId });
-      }
-
-      let completedCount = 0;
-      if (completionItems.length > 0) {
-        const completeResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'complete', items: completionItems }),
-        });
-        const completed = await completeResponse.json() as {
-          completedCount?: number; failedCount?: number; error?: string;
-        };
-        if (!completeResponse.ok) {
-          if (isStorageQuotaResponse(completeResponse, completed)) {
-            throw new Error(storageQuotaMessage(roleQuery.data?.isOwner === true));
-          }
-          throw new Error(completed.error ?? 'Upload completion failed');
-        }
-        completedCount = completed.completedCount ?? 0;
-        failedCount += completed.failedCount ?? 0;
-      }
-      if (failedCount > 0) message.error(`${failedCount} asset(s) failed to upload`);
-      else message.success(`${completedCount} asset(s) uploaded`);
-      if (completedCount > 0) await assetsQuery.refetch();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-      if (uploadInputRef.current) uploadInputRef.current.value = '';
-    }
-  };
-
   return (
     <div className={styles.page} data-testid="game-assets-page">
       <div className={styles.workspace}>
         <section className={styles.fileArea} aria-label="Game asset files">
-          <div className={styles.toolbar}>
-            <input
-              ref={uploadInputRef}
-              type="file"
-              multiple
-              hidden
-              accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.mp4,.mp3,.m4a,.wav,.ogg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.json,.psd"
-              onChange={(event) => void uploadAssets(event.target.files)}
-            />
-            <Button loading={uploading} onClick={() => uploadInputRef.current?.click()}>Upload assets</Button>
-          </div>
           {assetsQuery.isLoading ? <div className={styles.state}><Spin /><span>Loading project assets…</span></div> : null}
           {assetsQuery.isError ? (
             <div className={styles.state}>
@@ -347,6 +285,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                     item={item}
                     selected={selected?.id === item.asset.id}
                     onSelect={() => setSelected(item.asset)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setContextAsset({ asset: item.asset, x: event.clientX, y: event.clientY });
+                    }}
                     onMeasuredAspect={handleMeasuredAspect}
                     listMode={listMode}
                   />
@@ -354,6 +296,40 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
               </div>
             ))}
           </div>
+          {contextAsset ? (
+            <div
+              role="menu"
+              className={styles.contextMenu}
+              style={{ left: Math.max(0, Math.min(contextAsset.x, window.innerWidth - 128)), top: Math.max(0, Math.min(contextAsset.y, window.innerHeight - 44)) }}
+              onMouseLeave={() => setContextAsset(null)}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.contextMenuItem}
+                onClick={() => {
+                  const asset = contextAsset.asset;
+                  setContextAsset(null);
+                  setAssetPendingRemoval(asset);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
+          <DeleteConfirmDialog
+            open={!!assetPendingRemoval}
+            title="Confirm deletion"
+            content={assetPendingRemoval
+              ? `Remove "${assetPendingRemoval.name}" from this project's Assets library? This does not delete the original resource.`
+              : ''}
+            onConfirm={() => {
+              const asset = assetPendingRemoval;
+              setAssetPendingRemoval(null);
+              if (asset) void removeAsset(asset);
+            }}
+            onCancel={() => setAssetPendingRemoval(null)}
+          />
           <div className={styles.zoomControls} aria-label="Asset size" data-testid="asset-size-controls">
             <button
               type="button"
@@ -399,12 +375,14 @@ function AssetCard({
   item,
   selected,
   onSelect,
+  onContextMenu,
   onMeasuredAspect,
   listMode,
 }: {
   item: JustifiedItem;
   selected: boolean;
   onSelect: () => void;
+  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMeasuredAspect: (assetId: string, aspect: number) => void;
   listMode: boolean;
 }) {
@@ -413,6 +391,7 @@ function AssetCard({
       type="button"
       className={`${styles.card} ${listMode ? styles.listCard : ''} ${selected ? styles.cardSelected : ''}`}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{ width: item.width, flex: `0 0 ${item.width}px` }}
       aria-pressed={selected}
       data-asset-card

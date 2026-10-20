@@ -75,6 +75,10 @@ const completeUploadSchema = z.object({
   })).min(1).max(MAX_BATCH_SIZE),
 }).strict();
 const activateWorkspaceSchema = z.object({ action: z.literal('activate-workspace') }).strict();
+const deleteAssetSchema = z.object({
+  assetId: z.string().regex(/^(manual|map|character):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+}).strict();
+const deleteWorkspaceSchema = z.object({ action: z.literal('workspace') }).strict();
 
 function validatedMetadata(input: z.infer<typeof fileMetadataSchema>) {
   const mimeType = canonicalProjectAssetMimeType(input.fileType) ?? mimeFromName(input.fileName);
@@ -105,6 +109,40 @@ export const GET = withAuth<RouteContext>(async (request, context, { supabase })
     if (error instanceof AuthorizationError) return json({ error: 'Forbidden' }, 403);
     console.error('[game-assets] list failed', error);
     return json({ error: 'Unable to load game assets' }, 500);
+  }
+});
+
+export const DELETE = withAuth<RouteContext>(async (request, context, { supabase, user }) => {
+  const { projectId } = await context.params;
+  if (!UUID.safeParse(projectId).success) return json({ error: 'Invalid project id' }, 400);
+  try {
+    const { role } = await getUserProjectRole(supabase, projectId, user.id);
+    const input = await request.json().catch(() => null);
+    const workspace = deleteWorkspaceSchema.safeParse(input);
+    if (workspace.success) {
+      if (role !== 'admin') return json({ error: 'Admin access is required' }, 403);
+      const { error } = await supabase
+        .from('projects')
+        .update({ assets_workspace_enabled: false })
+        .eq('id', projectId);
+      if (error) throw error;
+      return json({ assetsWorkspaceEnabled: false });
+    }
+    if (role === 'viewer') return json({ error: 'Editor or admin access is required' }, 403);
+    const body = deleteAssetSchema.safeParse(input);
+    if (!body.success) return json({ error: 'Invalid asset id' }, 400);
+    const result = await aggregateProjectGameAssets(supabase, projectId);
+    if (!result.assets.some((asset) => asset.id === body.data.assetId)) return json({ error: 'Asset not found' }, 404);
+    const { error } = await supabase.from('project_game_asset_hidden').upsert(
+      { project_id: projectId, asset_id: body.data.assetId },
+      { onConflict: 'project_id,asset_id', ignoreDuplicates: true },
+    );
+    if (error) throw error;
+    return json({ removed: true });
+  } catch (error) {
+    if (error instanceof AuthorizationError) return json({ error: 'Forbidden' }, 403);
+    console.error('[game-assets] removal failed', error);
+    return json({ error: 'Unable to remove asset' }, 500);
   }
 });
 

@@ -5,15 +5,16 @@ import path from 'node:path';
 const coreSource = readFileSync(path.join(process.cwd(), 'src/lib/agent/core.ts'), 'utf8');
 
 describe('agent turn budget core wiring', () => {
-  it('passes an explicit maxTokens value to every LLM completion', () => {
-    expect(coreSource).toContain('AGENT_LLM_MAX_TOKENS');
-    expect(coreSource).toMatch(/streamLlm\([^)]*\{[\s\S]*maxTokens:\s*AGENT_LLM_MAX_TOKENS/);
+  it('leaves the model completion limit to the provider while enforcing the turn budget', () => {
+    expect(coreSource).not.toContain('AGENT_LLM_MAX_TOKENS');
+    expect(coreSource).not.toMatch(/maxTokens\s*:/);
   });
 
-  it('checks the per-turn token budget between ReAct iterations', () => {
+  it('checks the per-turn token budget only when a deployment configures one', () => {
     expect(coreSource).toContain('isOverTokenBudget');
     expect(coreSource).toContain('tokenBudgetExceededMessage');
     expect(coreSource).toContain('addTokenUsageTotal');
+    expect(coreSource).toMatch(/AGENT_TURN_TOKEN_BUDGET\s*!==\s*undefined/);
   });
 
   it('checks a fresh wall-clock deadline for new and resumed turns', () => {

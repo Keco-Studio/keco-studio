@@ -460,6 +460,47 @@
   position: relative;
 }
 
+.propertyHeaderCell[data-reorder-handle='column'] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.columnDragging {
+  opacity: 0.45;
+}
+
+.columnDropBefore::before,
+.columnDropAfter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--keco-blue);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.columnDropBefore::before { left: -2px; }
+.columnDropAfter::after { right: -2px; }
+
+.rowDragHandle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.rowDragging {
+  opacity: 0.45;
+}
+
+.rowDropBefore > td {
+  box-shadow: inset 0 3px var(--keco-blue);
+}
+
+.rowDropAfter > td {
+  box-shadow: inset 0 -3px var(--keco-blue);
+}
+
 .propertyHeaderContent {
   display: flex;
   align-items: center;
@@ -1878,15 +1919,18 @@ td.cellCopy.copyBorderRight:hover {
   z-index: 1;
 }
 
-/* Container for MediaFileUpload component in cells - fit within fixed row */
+/* Let table media use the row and column's current available area. */
 .mediaFileUploadContainer {
   width: 100%;
   padding: 0;
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  height: 28px;
-  max-height: 28px;
+  height: calc(var(--row-height, 32px) - 4px);
+  max-height: none;
+  overflow: hidden;
 }
 
 .mediaFileUploadContainerCentered {

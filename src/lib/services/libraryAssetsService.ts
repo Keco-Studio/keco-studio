@@ -847,6 +847,24 @@ export async function normalizeRowIndices(
   }
 }
 
+/** Persist the complete field order in one transaction, avoiding transient unique-index collisions. */
+export async function reorderLibraryFields(
+  supabase: SupabaseClient,
+  libraryId: string,
+  fieldIds: string[],
+): Promise<void> {
+  if (fieldIds.length === 0) return;
+
+  const { error } = await supabase.rpc('reorder_library_fields', {
+    p_library_id: libraryId,
+    p_field_ids: fieldIds,
+  });
+
+  if (error) {
+    throw new Error(`Failed to reorder columns: ${error.message}`);
+  }
+}
+
 // T011: Update an existing asset and its property values
 export async function updateAsset(
   supabase: SupabaseClient,

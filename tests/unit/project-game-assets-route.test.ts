@@ -8,6 +8,7 @@ const SECOND_RESERVATION_ID = '55555555-5555-4555-8555-555555555555';
 const getUserProjectRole = jest.fn();
 const reserveProjectStorage = jest.fn();
 const releaseProjectStorage = jest.fn();
+const aggregateProjectGameAssets = jest.fn();
 class mockStorageQuotaError extends Error {
   constructor(public readonly code: string) {
     super(code);
@@ -33,8 +34,11 @@ jest.mock('@/lib/server/storageQuota', () => ({
   reserveProjectStorage: (...args: unknown[]) => reserveProjectStorage(...args),
   releaseProjectStorage: (...args: unknown[]) => releaseProjectStorage(...args),
 }));
+jest.mock('@/lib/services/gameAssetsService', () => ({
+  aggregateProjectGameAssets: (...args: unknown[]) => aggregateProjectGameAssets(...args),
+}));
 
-import { POST } from '@/app/api/projects/[projectId]/game-assets/route';
+import { DELETE, POST } from '@/app/api/projects/[projectId]/game-assets/route';
 
 function request(body: unknown): NextRequest {
   return new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/game-assets`, {
@@ -47,6 +51,63 @@ function request(body: unknown): NextRequest {
 function post(body: unknown) {
   return POST(request(body), { params: Promise.resolve({ projectId: PROJECT_ID }) });
 }
+
+function remove(body: unknown) {
+  return DELETE(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/game-assets`, {
+    method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
+}
+
+describe('project game asset removal', () => {
+  beforeEach(() => {
+    getUserProjectRole.mockReset().mockResolvedValue({ role: 'editor' });
+    aggregateProjectGameAssets.mockReset().mockResolvedValue({ assets: [{ id: `character:${ASSET_ID}` }], warnings: [] });
+    supabase = {};
+  });
+
+  it('persists removal of a generated asset without deleting its source', async () => {
+    const upsert = jest.fn().mockResolvedValue({ error: null });
+    const from = jest.fn(() => ({ upsert }));
+    supabase = { from };
+    const response = await remove({ assetId: `character:${ASSET_ID}` });
+    expect(response.status).toBe(200);
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(from).toHaveBeenCalledWith('project_game_asset_hidden');
+    expect(upsert).toHaveBeenCalledWith({ project_id: PROJECT_ID, asset_id: `character:${ASSET_ID}` }, { onConflict: 'project_id,asset_id', ignoreDuplicates: true });
+  });
+
+  it('rejects viewers and assets outside the project', async () => {
+    getUserProjectRole.mockResolvedValueOnce({ role: 'viewer' });
+    expect((await remove({ assetId: `character:${ASSET_ID}` })).status).toBe(403);
+    aggregateProjectGameAssets.mockResolvedValueOnce({ assets: [], warnings: [] });
+    expect((await remove({ assetId: `manual:${ASSET_ID}` })).status).toBe(404);
+  });
+
+  it('removes an available asset even when an unrelated source is unavailable', async () => {
+    aggregateProjectGameAssets.mockResolvedValue({ assets: [{ id: `character:${ASSET_ID}` }], warnings: [{ source: 'maps', message: 'unavailable' }] });
+    supabase = { from: jest.fn(() => ({ upsert: jest.fn().mockResolvedValue({ error: null }) })) };
+    expect((await remove({ assetId: `character:${ASSET_ID}` })).status).toBe(200);
+  });
+
+  it('disables the Assets workspace for an admin without deleting its source assets', async () => {
+    getUserProjectRole.mockResolvedValue({ role: 'admin' });
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn(() => ({ eq }));
+    supabase = { from: jest.fn(() => ({ update })) };
+
+    const response = await remove({ action: 'workspace' });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ assetsWorkspaceEnabled: false });
+    expect(update).toHaveBeenCalledWith({ assets_workspace_enabled: false });
+    expect(eq).toHaveBeenCalledWith('id', PROJECT_ID);
+  });
+
+  it('does not let an editor remove the Assets workspace', async () => {
+    getUserProjectRole.mockResolvedValue({ role: 'editor' });
+    expect((await remove({ action: 'workspace' })).status).toBe(403);
+  });
+});
 
 describe('project game asset upload route', () => {
   beforeEach(() => {

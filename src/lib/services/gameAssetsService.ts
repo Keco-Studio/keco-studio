@@ -75,6 +75,7 @@ export type ProjectGameAsset = {
 export type GameAssetWarnings = Array<{ source: string; message: string }>;
 
 const SHA256 = /^[a-f0-9]{64}$/i;
+const HIDDEN_ASSETS_PAGE_SIZE = 1_000;
 
 function asDate(value: unknown): string {
   return typeof value === 'string' && value ? value : new Date(0).toISOString();
@@ -269,6 +270,20 @@ export function countAssetCategories(assets: ProjectGameAsset[]): Record<'all' |
 
 type Signer = (bucket: string, path: string) => Promise<{ url: string; expiresAt: string } | null>;
 
+async function listHiddenAssetIds(supabase: SupabaseClient, projectId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (let start = 0; ; start += HIDDEN_ASSETS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('project_game_asset_hidden')
+      .select('asset_id')
+      .eq('project_id', projectId)
+      .range(start, start + HIDDEN_ASSETS_PAGE_SIZE - 1);
+    if (error) throw new Error('Unable to load removed assets');
+    for (const row of data ?? []) ids.add(String((row as { asset_id: string }).asset_id));
+    if (!data || data.length < HIDDEN_ASSETS_PAGE_SIZE) return ids;
+  }
+}
+
 async function defaultSigner(supabase: SupabaseClient, bucket: string, path: string): Promise<{ url: string; expiresAt: string } | null> {
   const expiresIn = 300;
   const signed = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
@@ -283,9 +298,11 @@ export async function aggregateProjectGameAssets(
 ): Promise<{ assets: ProjectGameAsset[]; warnings: GameAssetWarnings }> {
   const warnings: GameAssetWarnings = [];
   const assets: ProjectGameAsset[] = [];
+  const hiddenIds = await listHiddenAssetIds(supabase, projectId);
   const sign = options.sign ?? ((bucket, path) => defaultSigner(supabase, bucket, path));
 
   const add = async (asset: ProjectGameAsset, bucket: string) => {
+    if (hiddenIds.has(asset.id)) return;
     if (asset.status === 'ready' && asset.storagePath) {
       try {
         const signed = await sign(bucket, asset.storagePath);

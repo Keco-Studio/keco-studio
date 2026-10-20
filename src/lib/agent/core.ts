@@ -60,7 +60,6 @@ import {
   persistAgentTrace,
 } from './trace-store';
 import {
-  AGENT_LLM_MAX_TOKENS,
   AGENT_TURN_TOKEN_BUDGET,
   addTokenUsageTotal,
   compactLargeUserContentInMessages,
@@ -472,7 +471,10 @@ async function* continueLoop(
     if (iterations > 1) {
       messages = compactLargeUserContentInMessages(messages);
     }
-    if (isOverTokenBudget(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET)) {
+    if (
+      AGENT_TURN_TOKEN_BUDGET !== undefined
+      && isOverTokenBudget(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET)
+    ) {
       yield {
         type: 'error',
         message: tokenBudgetExceededMessage(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET),
@@ -501,7 +503,6 @@ async function* continueLoop(
     for await (const chunk of streamLlm(llmMessages, {
       provider: 'deepseek',
       tools: llmTools,
-      maxTokens: AGENT_LLM_MAX_TOKENS,
       signal,
       usageBinding: iterationUsageBinding,
     })) {

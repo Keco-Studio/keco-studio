@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { cloneElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { Checkbox, Tooltip } from 'antd';
+import { useDndMonitor, type DragEndEvent, type DragMoveEvent, type DragOverEvent } from '@dnd-kit/core';
+import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,6 +22,57 @@ import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import descriptionIcon from '@/assets/images/descriptionIcon.svg';
+import { type DropEdge } from '../utils/tableReorder';
+
+function getDropEdge(event: DragMoveEvent | DragOverEvent | DragEndEvent): DropEdge {
+  const translated = event.active.rect.current.translated;
+  const overRect = event.over?.rect;
+  if (!translated || !overRect) return 'before';
+  return translated.left + translated.width / 2 < overRect.left + overRect.width / 2
+    ? 'before'
+    : 'after';
+}
+
+function ColumnDragMonitor({ onOver, onEnd, onCancel }: {
+  onOver: (event: DragMoveEvent | DragOverEvent) => void;
+  onEnd: (event: DragEndEvent) => void;
+  onCancel: () => void;
+}) {
+  useDndMonitor({ onDragMove: onOver, onDragOver: onOver, onDragCancel: onCancel, onDragEnd: onEnd });
+  return null;
+}
+
+function SortableColumnHeader({
+  id,
+  enabled,
+  insertionEdge,
+  children,
+}: {
+  id: string;
+  enabled: boolean;
+  insertionEdge: DropEdge | null;
+  children: ReactElement<any>;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `column:${id}`,
+    disabled: !enabled,
+  });
+  const child = children.props;
+  return cloneElement(children as ReactElement<any>, {
+    ...attributes,
+    ...listeners,
+    ref: setNodeRef,
+    'data-reorder-handle': enabled ? 'column' : undefined,
+    className: `${child.className ?? ''} ${isDragging ? styles.columnDragging : ''} ${
+      insertionEdge === 'before' ? styles.columnDropBefore : insertionEdge === 'after' ? styles.columnDropAfter : ''
+    }`,
+    style: {
+      ...child.style,
+      transform: CSS.Transform.toString(transform),
+      transition,
+    },
+  });
+}
 
 function EllipsisTextWithTooltip({
   text,
@@ -100,6 +154,7 @@ function ColumnResizeHandle({
         e.stopPropagation();
         onColumnResizeStart(columnKey, e.clientX, e.currentTarget.parentElement as HTMLElement);
       }}
+      onPointerDown={(e) => e.stopPropagation()}
     />
   );
 }
@@ -141,6 +196,9 @@ export type TableHeaderProps = {
   assetNamesCache?: Record<string, string>;
   /** Merge freshly resolved reference labels into the shared cache */
   onMergeAssetNamesCache?: (patch: Record<string, string>) => void;
+  /** Whether the user can drag columns to change the shared schema order. */
+  canReorder?: boolean;
+  onReorderProperties?: (activeId: string, overId: string, edge: DropEdge) => void;
 };
 
 export function TableHeader({
@@ -162,6 +220,8 @@ export function TableHeader({
   getCheckedFilterValues,
   assetNamesCache = {},
   onMergeAssetNamesCache,
+  canReorder = false,
+  onReorderProperties,
 }: TableHeaderProps) {
   const supabase = useSupabase();
   const params = useParams();
@@ -231,6 +291,22 @@ export function TableHeader({
   }>({
     open: false,
   });
+  const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
+  const propertyIds = useMemo(() => properties.map((property) => `column:${property.id}`), [properties]);
+  const handleDragOver = useCallback((event: DragMoveEvent | DragOverEvent) => {
+    if (!String(event.active.id).startsWith('column:') || !event.over || !String(event.over.id).startsWith('column:') || String(event.active.id) === String(event.over.id)) {
+      setDropTarget(null);
+      return;
+    }
+    setDropTarget({ id: String(event.over.id).slice(7), edge: getDropEdge(event) });
+  }, []);
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const overId = event.over && String(event.over.id).startsWith('column:') ? String(event.over.id).slice(7) : null;
+    const activeId = String(event.active.id);
+    const edge = getDropEdge(event);
+    setDropTarget(null);
+    if (activeId.startsWith('column:') && overId && activeId.slice(7) !== overId) onReorderProperties?.(activeId.slice(7), overId, edge);
+  }, [onReorderProperties]);
 
   // Close the floating menu on outside pointer down; capture phase bypasses inner stopPropagation.
   useEffect(() => {
@@ -298,6 +374,7 @@ export function TableHeader({
 
   const header = (
     <thead>
+      {canReorder && <ColumnDragMonitor onOver={handleDragOver} onEnd={handleDragEnd} onCancel={() => setDropTarget(null)} />}
       <tr className={styles.headerRowBottom}>
         <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
           <div className={styles.checkboxContainer}>
@@ -313,8 +390,15 @@ export function TableHeader({
             isResizingColumn={isResizingColumn}
           />
         </th>
+        <SortableContext items={propertyIds} strategy={horizontalListSortingStrategy}>
         {properties.map((property) => (
-            <th
+            <SortableColumnHeader
+              key={property.id}
+              id={property.id}
+              enabled={canReorder}
+              insertionEdge={dropTarget?.id === property.id ? dropTarget.edge : null}
+            >
+              <th
               key={property.id}
               scope="col"
               className={`${styles.headerCell} ${styles.propertyHeaderCell}`}
@@ -362,6 +446,7 @@ export function TableHeader({
                           aria-label={
                             isColumnFiltered?.(property.id) ? 'Column filter active' : 'Filter by values'
                           }
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             const contentEl = (e.currentTarget as HTMLElement).closest(
@@ -427,6 +512,7 @@ export function TableHeader({
                   )}
                   <div
                     className={styles.propertyHeaderIconWrapper}
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       const contentEl = (e.currentTarget as HTMLElement).closest(
@@ -452,8 +538,10 @@ export function TableHeader({
                 onColumnResizeStart={onColumnResizeStart}
                 isResizingColumn={isResizingColumn}
               />
-            </th>
+              </th>
+            </SortableColumnHeader>
           ))}
+        </SortableContext>
         {showAddColumn && (
           <th
             scope="col"

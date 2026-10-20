@@ -69,6 +69,16 @@ describe('document-derived sidebar tree', () => {
     expect(css).not.toContain('data-library-under-document');
   });
 
+  it('defines Assets folder deletion as an admin-only context action', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../../src/components/layout/ContextMenu.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("type === 'assets') return userRole === 'admin'");
+    expect(source).toMatch(/if \(type === 'assets'\)[\s\S]*showDeleteButton[\s\S]*Delete/);
+  });
+
   it('renders documents and derived libraries as sibling leaf nodes', () => {
     const projectId = '11111111-1111-4111-8111-111111111111';
     const documentId = '22222222-2222-4222-8222-222222222222';

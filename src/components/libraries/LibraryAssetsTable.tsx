@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { App } from 'antd';
+import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import {
@@ -63,6 +65,9 @@ import { getAutoColumnWidths, getAutoTableWidth } from './utils/autoColumnWidths
 import { useElementClientWidth } from './hooks/useElementClientWidth';
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import { resolveTableUserRole, type TableUserRole } from './utils/tableUserRole';
+import { reorderLibraryFields } from '@/lib/services/libraryAssetsService';
+import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
+import { moveItemAtEdge, orderItemsById, type DropEdge } from './utils/tableReorder';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -90,6 +95,7 @@ export type LibraryAssetsTableProps = {
   onAddProperty?: (payload: AddColumnFormPayload) => Promise<void>;
   /** Project page role is authoritative when available. */
   projectRole?: TableUserRole;
+  isVersionPreview?: boolean;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -125,12 +131,14 @@ export function LibraryAssetsTable({
   onDeleteAssets,
   onAddProperty,
   projectRole,
+  isVersionPreview = false,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
 }: LibraryAssetsTableProps) {
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
 
   const rowStore = useRowStore();
   const { allRowsSource } = useRowSync(rows, rowStore);
@@ -326,7 +334,7 @@ export function LibraryAssetsTable({
   const referencedAssetIdFromQuery = parseReferencedAssetSearch(
     `?${searchParams.toString()}`
   );
-  const { isLoading: libraryAssetsLoading } = useLibraryData();
+  const { isLoading: libraryAssetsLoading, reorderRows, broadcastSchemaChange } = useLibraryData();
   const supabase = useSupabase();
   const {
     hoveredAssetId,
@@ -476,8 +484,18 @@ export function LibraryAssetsTable({
     setTypeValidationError,
   });
 
+  const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
+  const [rowOrder, setRowOrder] = useState<string[] | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const reorderPendingRef = useRef(false);
+  const propertiesForDisplay = useMemo(
+    () => columnOrder
+      ? orderItemsById(properties, columnOrder).map((property, index) => ({ ...property, orderIndex: index }))
+      : properties,
+    [columnOrder, properties],
+  );
   const { orderedProperties, scriptColumns, hasScriptColumns } =
-    useLibraryTableStructure(properties);
+    useLibraryTableStructure(propertiesForDisplay);
   // The current library metadata is authoritative; route reuse must not retain
   // the previously viewed derived library's mode.
   const scriptViewMode = resolveLibraryViewMode(library?.documentExportType);
@@ -487,7 +505,11 @@ export function LibraryAssetsTable({
     applyColumnFilter,
     isColumnFiltered,
     getCheckedFilterValues,
-  } = useColumnValueFilters(resolvedRows, orderedProperties, assetNamesCache);
+  } = useColumnValueFilters(
+    orderItemsById(resolvedRows, rowOrder),
+    orderedProperties,
+    assetNamesCache,
+  );
 
   useEffect(() => {
     if (detailDrawerRowId && !displayRows.some((r) => r.id === detailDrawerRowId)) {
@@ -497,6 +519,51 @@ export function LibraryAssetsTable({
 
   const activeProperties = orderedProperties;
   const showAddColumn = userRole === 'admin' || userRole === 'editor';
+  const canReorder = showAddColumn && !isSaving && !reordering && !isVersionPreview;
+  const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const handleColumnReorder = useCallback(async (activeId: string, overId: string, edge: DropEdge) => {
+    if (!library || !canReorder || reorderPendingRef.current) return;
+    const previousOrder = columnOrder;
+    const next = moveItemAtEdge(orderedProperties, activeId, overId, edge);
+    if (next.every((property, index) => property.id === orderedProperties[index]?.id)) return;
+    reorderPendingRef.current = true;
+    setReordering(true);
+    setColumnOrder(next.map((property) => property.id));
+    try {
+      await reorderLibraryFields(supabase, library.id, next.map((property) => property.id));
+      await broadcastSchemaChange().catch((error) => console.error('Failed to broadcast schema change', error));
+      await invalidateLibrarySchemaData(queryClient, { libraryId: library.id, refetchActiveSchema: true });
+      setColumnOrder(null);
+    } catch (error) {
+      setColumnOrder(previousOrder);
+      setToastMessage({ message: error instanceof Error ? error.message : 'Failed to move column', type: 'error' });
+    } finally {
+      reorderPendingRef.current = false;
+      setReordering(false);
+    }
+  }, [broadcastSchemaChange, canReorder, columnOrder, library, orderedProperties, queryClient, supabase]);
+
+  const handleRowReorder = useCallback(async (activeId: string, overId: string, edge: DropEdge) => {
+    if (!canReorder || reorderPendingRef.current || resolvedRows.some((row) => row.id.startsWith('temp-'))) return;
+    const allRows = orderItemsById(resolvedRows, rowOrder);
+    const previousOrder = rowOrder;
+    const next = moveItemAtEdge(allRows, activeId, overId, edge);
+    if (next.every((row, index) => row.id === allRows[index]?.id)) return;
+    reorderPendingRef.current = true;
+    setReordering(true);
+    setRowOrder(next.map((row) => row.id));
+    try {
+      await reorderRows(next);
+      setRowOrder(null);
+    } catch (error) {
+      setRowOrder(previousOrder);
+      setToastMessage({ message: error instanceof Error ? error.message : 'Failed to move row', type: 'error' });
+    } finally {
+      reorderPendingRef.current = false;
+      setReordering(false);
+    }
+  }, [canReorder, reorderRows, resolvedRows, rowOrder]);
   const resizeColumnKeys = useMemo(
     () => [NUMBER_COLUMN_KEY, ...activeProperties.map((property) => property.id)],
     [activeProperties],
@@ -576,8 +643,8 @@ export function LibraryAssetsTable({
   };
 
   const getAllRowsForCellSelection = useCallback(() => {
-    return dataManager.getRowsWithOptimisticUpdates();
-  }, [dataManager]);
+    return orderItemsById(dataManager.getRowsWithOptimisticUpdates(), rowOrder);
+  }, [dataManager, rowOrder]);
   const allRowsForSelection = getAllRowsForCellSelection();
   const tableIndexes = useMemo(
     () => buildTableIndexes(allRowsForSelection, orderedProperties),
@@ -1012,6 +1079,7 @@ export function LibraryAssetsTable({
               </div>
             )
           ) : (
+            <DndContext sensors={dragSensors}>
             <table
               className={`${styles.table} ${useCustomColumnWidths ? styles.colsCustom : styles.colsAuto}`}
               style={useCustomColumnWidths ? undefined : autoTableStyle}
@@ -1046,6 +1114,8 @@ export function LibraryAssetsTable({
               getCheckedFilterValues={getCheckedFilterValues}
               assetNamesCache={assetNamesCache}
               onMergeAssetNamesCache={mergeAssetNamesCache}
+              canReorder={canReorder}
+              onReorderProperties={handleColumnReorder}
             />
             <LibraryAssetsTableBody
               displayRows={displayRows}
@@ -1124,8 +1194,11 @@ export function LibraryAssetsTable({
               handleSaveEditedCell={handleSaveEditedCell}
               handleCancelEditing={handleCancelEditing}
               handleAddRowDirect={handleAddRowDirect}
+              canReorder={canReorder}
+              onReorderRows={handleRowReorder}
             />
             </table>
+            </DndContext>
           )}
         </div>
         {showAddColumn && (

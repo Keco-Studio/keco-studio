@@ -21,7 +21,7 @@ export type ContextMenuAction =
 type ContextMenuProps = {
   x: number;
   y: number;
-  type?: 'project' | 'library' | 'folder' | 'asset' | 'document';
+  type?: 'project' | 'library' | 'folder' | 'asset' | 'document' | 'assets';
   onClose: () => void;
   onAction?: (action: ContextMenuAction) => void;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
@@ -198,6 +198,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       // Admin and editor can delete assets/documents, viewer cannot
       return userRole === 'admin' || userRole === 'editor';
     }
+    if (type === 'assets') return userRole === 'admin';
     return false;
   };
 
@@ -234,6 +235,13 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     const showEditButton = canEdit();
     const showDuplicateButton = canDuplicate();
     
+    if (type === 'assets') {
+      return showDeleteButton ? (
+        <button className={`${styles.menuItem} ${styles.deleteItem}`} onClick={() => handleAction('delete')}>
+          Delete
+        </button>
+      ) : null;
+    }
     if (type === 'project') {
       // Project: Project info (admin only), Collaborators, Duplicate, separator, Delete (admin only)
       return (

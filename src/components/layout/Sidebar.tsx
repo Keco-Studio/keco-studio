@@ -217,7 +217,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeImportLibraryModal,
     openNewFolder,
     closeFolderModal,
-    openEditFolder,
     closeEditFolderModal,
     openEditAsset,
     closeEditAssetModal,
@@ -756,10 +755,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!node || !node.key) return;
 
     const rawKey = String(node.key);
-    let type: 'project' | 'library' | 'folder' | 'asset' | 'document' | null = null;
+    let type: 'project' | 'library' | 'folder' | 'asset' | 'document' | 'assets' | null = null;
     let id: string | null = null;
 
-    if (rawKey.startsWith('folder-')) {
+    if (rawKey === GAME_ASSETS_TREE_KEY) {
+      type = 'assets';
+      id = rawKey;
+    } else if (rawKey.startsWith('folder-')) {
       type = 'folder';
       id = rawKey.replace('folder-', '');
     } else if (rawKey.startsWith('library-')) {
@@ -773,7 +775,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       id = rawKey.replace('asset-', '');
     }
 
-    if (!type || !id) return;
+    if (!type || !id || (type === 'assets' && userRole !== 'admin')) return;
     // Folder actions live on the row "+" menu; skip the right-click menu.
     if (type === 'folder') return;
 
@@ -845,6 +847,26 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     },
     [supabase, queryClient, currentIds.projectId, router, setError]
   );
+
+  const handleAssetsWorkspaceDelete = useCallback(async () => {
+    const projectId = currentIds.projectId;
+    if (!projectId) return;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/game-assets`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'workspace' }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error ?? 'Unable to delete Assets folder');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      router.push(`/${projectId}`);
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : 'Unable to delete Assets folder');
+    }
+  }, [currentIds.projectId, queryClient, router]);
 
   const openMoveLibrary = useCallback((libraryId: string) => {
     if (userRole !== 'admin') return;
@@ -1136,7 +1158,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openDuplicateLibrary,
     openImportLibrary,
     openImportScript,
-    openEditFolder,
     openEditAsset,
     supabase,
     queryClient,
@@ -1146,6 +1167,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     assets,
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
+    onAssetsWorkspaceDelete: handleAssetsWorkspaceDelete,
     openMoveLibrary,
     openMoveDocument,
     openNewDocumentInFolder,

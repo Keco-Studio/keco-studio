@@ -5,8 +5,14 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseOptionalPositiveInt(value: string | undefined): number | undefined {
+  if (!value?.trim()) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export const AGENT_LLM_MAX_TOKENS = parsePositiveInt(process.env.AGENT_LLM_MAX_TOKENS, 4096);
-export const AGENT_TURN_TOKEN_BUDGET = parsePositiveInt(process.env.AGENT_TURN_TOKEN_BUDGET, 120_000);
+export const AGENT_TURN_TOKEN_BUDGET = parseOptionalPositiveInt(process.env.AGENT_TURN_TOKEN_BUDGET);
 export const AGENT_TURN_MAX_DURATION_MS = parsePositiveInt(
   process.env.AGENT_TURN_MAX_DURATION_MS,
   120_000
