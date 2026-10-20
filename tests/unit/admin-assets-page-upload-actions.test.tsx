@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { GameAssetsPage } from '@/components/admin/GameAssetsPage';
 
 const message = { error: jest.fn(), success: jest.fn() };
@@ -44,4 +44,26 @@ describe('GameAssetsPage upload actions', () => {
 
     expect(screen.queryByRole('button', { name: 'Upload assets' })).toBeNull();
   });
+});
+
+it('confirms removal and closes the selected asset only after success', async () => {
+  const asset = { id: 'manual:one', name: 'Forest.png', category: 'media', source: 'manual', status: 'ready', format: 'png', mimeType: 'image/png', previewUrl: null };
+  global.fetch = jest.fn(async (_url, options) => ({
+    ok: true, json: async () => options?.method === 'DELETE' ? {} : { assets: [asset], warnings: [] },
+  })) as jest.Mock;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 800 });
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+  renderPage();
+  const card = await screen.findByRole('button', { name: 'Forest.png' });
+  fireEvent.click(card);
+  fireEvent.contextMenu(card);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  expect(screen.getByRole('dialog', { name: 'Asset detail' })).toBeTruthy();
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  fireEvent.contextMenu(card);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Asset detail' })).toBeNull());
+  expect(screen.queryByRole('button', { name: 'Forest.png' })).toBeNull();
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Forest.png'));
+  confirm.mockRestore();
 });
