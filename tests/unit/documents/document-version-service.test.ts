@@ -97,6 +97,10 @@ function makeClient(options: {
         calls.push({ kind: 'limit', table, value });
         return builder;
       },
+      range(start: number, end: number) {
+        calls.push({ kind: 'range', table, value: { start, end } });
+        return builder;
+      },
       in(column: string, value: unknown) {
         calls.push({ kind: `in:${column}`, table, value });
         return Promise.resolve(profiles);
@@ -190,6 +194,15 @@ describe('documentVersionService', () => {
         createdAt: '2026-07-14T12:00:00.000Z',
       },
     ]);
+  });
+
+  it('applies a bounded range when listing one assistant page', async () => {
+    const { client, calls } = makeClient();
+    await listDocumentVersions(client, DOCUMENT_ID, { offset: 40, limit: 21 });
+    expect(calls).toContainEqual({ kind: 'range', table: 'document_versions',
+      value: { start: 40, end: 60 } });
+    await expect(listDocumentVersions(client, DOCUMENT_ID, { offset: 0, limit: 52 }))
+      .rejects.toThrow('Invalid document version page');
   });
 
   it('returns an accessible empty history after a metadata-only document probe', async () => {
@@ -421,6 +434,41 @@ describe('documentVersionService', () => {
       p_yjs_state: 'merged-state',
       p_markdown: '# Current merged',
     });
+  });
+
+  it('replays a keyed version without reading a later document state', async () => {
+    const { client, rpc } = makeClient({ rpc: [
+      { data: [versionRow({ version_id: VERSION_ID })], error: null },
+    ] });
+    await expect(createDocumentVersion(client, {
+      documentId: DOCUMENT_ID, name: 'Release 1', idempotencyKey: VERSION_ID,
+    })).resolves.toMatchObject({ id: VERSION_ID, name: 'Release 1' });
+    expect(readDocumentState).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('get_document_version_create_request', {
+      p_version_id: VERSION_ID, p_document_id: DOCUMENT_ID, p_name: 'Release 1',
+    });
+  });
+
+  it('passes a new request key as the durable version id', async () => {
+    const { client, rpc } = makeClient({ rpc: [
+      { data: [], error: null },
+      { data: [versionRow({ version_id: VERSION_ID })], error: null },
+    ] });
+    await createDocumentVersion(client, {
+      documentId: DOCUMENT_ID, name: 'Release 1', idempotencyKey: VERSION_ID,
+    });
+    expect(rpc).toHaveBeenCalledWith('create_document_version',
+      expect.objectContaining({ p_version_id: VERSION_ID }));
+  });
+
+  it('rejects a reused key with a different version request', async () => {
+    const { client } = makeClient({ rpc: [
+      { data: null, error: { code: '23505', message: 'IDEMPOTENCY_CONFLICT' } },
+    ] });
+    await expect(createDocumentVersion(client, {
+      documentId: DOCUMENT_ID, name: 'Changed', idempotencyKey: VERSION_ID,
+    })).rejects.toThrow('Idempotency key was already used');
+    expect(readDocumentState).not.toHaveBeenCalled();
   });
 
   it('maps mutation permission failures to DocumentReadOnlyError', async () => {

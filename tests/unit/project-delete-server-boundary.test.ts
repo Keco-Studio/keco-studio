@@ -133,6 +133,20 @@ function createServiceClient(
 }
 
 describe('deleteProjectWithServerBoundary', () => {
+  it('passes an approved cascade digest to the atomic outbox RPC', async () => {
+    const calls: string[] = [];
+    const result = await deleteProjectWithServerBoundary({
+      authClient: createAuthClient('admin'),
+      serviceClient: createServiceClient(calls, [{ storage_path: 'references/project-1/ref-1/a.png' }]),
+      projectId: 'project-1',
+      userId: 'admin-user',
+      expectedDeletionFingerprint: 'a'.repeat(64),
+    });
+
+    expect(calls).toEqual(['rpc:agent_delete_project_cascade_if_current:project-1']);
+    expect(result.cleanupJobIds).toEqual(['cleanup-1']);
+  });
+
   it('allows an admin collaborator to delete through the service-role client', async () => {
     const calls: string[] = [];
 

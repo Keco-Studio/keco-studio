@@ -1,38 +1,29 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { useNavigation } from '@/lib/contexts/NavigationContext';
-import { takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
+import type { AgentWorkspaceContext } from '@/lib/agent/client-workspace';
+import { peekDesignHandoff, takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
-import botIcon from '@/assets/images/bot.svg';
 import chatIcon from '@/assets/images/chat.svg';
 import { useAgentChat } from './useAgentChat';
+import { agentRuntimeScopeKey } from './agentChatRuntimeStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
 import { AgentPanelHeader } from './AgentPanelHeader';
-import { useDraggableLauncherPosition } from './useDraggableLauncherPosition';
-import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './ChatPanel.module.css';
 
-export function ChatPanel() {
-  const pathname = usePathname();
-  const workspace = isScriptSystemPath(pathname) ? 'script' as const : 'studio' as const;
+export function ChatPanel({ context, open, onOpenChange }: {
+  context: AgentWorkspaceContext;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { workspace, projectId, projectName, currentDocumentId, currentFolderId,
+    currentFolderName, currentLibraryId, currentLibraryName } = context;
   const { userProfile } = useAuth();
-  const {
-    currentProjectId,
-    currentProjectName,
-    currentLibraryId,
-    currentLibraryName,
-    currentFolderId,
-    currentFolderName,
-    currentDocumentId,
-  } = useNavigation();
-  const [open, setOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
   const [inputFocusRequest, setInputFocusRequest] = useState(0);
@@ -41,16 +32,18 @@ export function ChatPanel() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastScrollSampleRef = useRef<{ top: number; time: number } | null>(null);
   const scrollJumpHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const {
-    style: launcherStyle,
-    onPointerDown: onLauncherPointerDown,
-    isDragging: isLauncherDragging,
-  } = useDraggableLauncherPosition();
+
+  useEffect(() => {
+    if (!open) {
+      setShowHistory(false);
+      setPendingSelectionContext(undefined);
+    }
+  }, [open]);
 
   const ctx = useMemo(
     () => ({
       userId: userProfile?.id,
-      projectId: currentProjectId ?? '',
+      projectId: projectId ?? '',
       currentDocumentId: currentDocumentId ?? undefined,
       currentFolderId: currentFolderId ?? undefined,
       currentFolderName: currentFolderName ?? undefined,
@@ -60,7 +53,7 @@ export function ChatPanel() {
     }),
     [
       userProfile?.id,
-      currentProjectId,
+      projectId,
       currentDocumentId,
       currentFolderId,
       currentFolderName,
@@ -86,31 +79,12 @@ export function ChatPanel() {
     startNewConversation,
     loadConversation,
     appendNote,
-  } = useAgentChat(ctx);
-
-  // Close the panel whenever the navigation scope it was opened in changes
-  // (a different project, folder, or table/library). The scope is captured when
-  // the panel opens and compared against the live location on each navigation.
-  // We ignore unresolved states (no project id, e.g. the projects list or an
-  // in-flight route) so transient flickers never close a freshly opened panel.
-  const openScopeRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!open) {
-      openScopeRef.current = null;
-      return;
-    }
-    if (!currentProjectId) return;
-    const scopeKey = `${workspace}|${currentProjectId}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}`;
-    if (openScopeRef.current === null) {
-      openScopeRef.current = scopeKey;
-      return;
-    }
-    if (openScopeRef.current !== scopeKey) {
-      setOpen(false);
-      setShowHistory(false);
-      setPendingSelectionContext(undefined);
-    }
-  }, [open, currentProjectId, currentFolderId, currentLibraryId, workspace]);
+  } = useAgentChat(ctx, open);
+  const draftScopeKey = agentRuntimeScopeKey({
+    userId: userProfile?.id,
+    workspace,
+    projectId,
+  });
 
   // Locked-target label: an existing conversation shows its frozen scope; a new
   // one previews what the current navigation will bind to on first message.
@@ -124,15 +98,15 @@ export function ChatPanel() {
         case 'global':
           return 'Global';
         default:
-          return currentProjectName || 'Project';
+          return projectName || 'Project';
       }
     }
     // New conversation preview (not yet frozen).
     if (currentLibraryName) return currentLibraryName;
     if (currentFolderName) return currentFolderName;
-    if (currentProjectName) return currentProjectName;
+    if (projectName) return projectName;
     return null;
-  }, [activeScope, currentProjectName, currentLibraryName, currentFolderName]);
+  }, [activeScope, projectName, currentLibraryName, currentFolderName]);
 
   const headerTitle = useMemo(() => {
     if (items.length === 0) return 'New chat';
@@ -189,45 +163,46 @@ export function ChatPanel() {
     setShowScrollJump(false);
   }, [scrollJumpMode]);
 
-  // Consume a pending design-upload hand-off: open the panel, start a fresh
-  // conversation, and auto-send the assembled message to the agent.
+  // A hand-off opens the panel before consuming its queued message.
   const consumeDesignHandoff = useCallback(() => {
-    if (!currentProjectId || !userProfile?.id) return;
-    const handoff = takeDesignHandoff(currentProjectId);
+    if (!projectId || !userProfile?.id) return;
+    const handoff = takeDesignHandoff(projectId);
     if (!handoff) return;
-    setOpen(true);
     setPendingSelectionContext(undefined);
     startNewConversation();
     void send(handoff.message, {
       imageUrls: handoff.imageUrls,
       documentExport: handoff.documentExport,
     });
-  }, [currentProjectId, userProfile?.id, startNewConversation, send]);
+  }, [projectId, userProfile?.id, startNewConversation, send]);
 
   useEffect(() => {
-    // Run once on mount/route in case the event fired before this listener
-    // attached (e.g. after a full page load), then keep listening for new ones.
-    consumeDesignHandoff();
+    if (projectId && peekDesignHandoff(projectId)) onOpenChange(true);
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail;
-      if (detail?.projectId && detail.projectId !== currentProjectId) return;
-      consumeDesignHandoff();
+      if (detail?.projectId && detail.projectId !== projectId) return;
+      onOpenChange(true);
+      if (open) consumeDesignHandoff();
     };
     window.addEventListener(DESIGN_UPLOAD_EVENT, handler);
     return () => window.removeEventListener(DESIGN_UPLOAD_EVENT, handler);
-  }, [consumeDesignHandoff, currentProjectId]);
+  }, [consumeDesignHandoff, onOpenChange, open, projectId]);
+
+  useEffect(() => {
+    if (open) consumeDesignHandoff();
+  }, [open, consumeDesignHandoff]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ selectionContext?: AgentSelectionContext }>).detail;
       if (!detail?.selectionContext) return;
-      setOpen(true);
+      onOpenChange(true);
       setPendingSelectionContext(detail.selectionContext);
       setInputFocusRequest((value) => value + 1);
     };
     window.addEventListener('agent:open-with-selection', handler);
     return () => window.removeEventListener('agent:open-with-selection', handler);
-  }, []);
+  }, [onOpenChange]);
 
   // Append a note when an import completes via the handoff to ImportScriptModal.
   useEffect(() => {
@@ -240,37 +215,14 @@ export function ChatPanel() {
     return () => window.removeEventListener('agent:import-complete', handler as EventListener);
   }, [appendNote]);
 
-  if (!currentProjectId) return null;
-
   return (
-    <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''}`}>
-      {!open ? (
-      <button
-        className={`${styles.launcher} ${isLauncherDragging ? styles.launcherDragging : ''}`}
-        data-testid="agent-launcher"
-        title="Keco Assistant"
-        style={launcherStyle}
-        onPointerDown={onLauncherPointerDown}
-        onClick={() => {
-          setPendingSelectionContext(undefined);
-          setOpen(true);
-        }}
-      >
-        <Image
-          src={botIcon}
-          alt=""
-          width={56}
-          height={56}
-          className={styles.launcherIcon}
-          aria-hidden="true"
-        />
-      </button>
-      ) : (
+    <div className={`${styles.panelSlot} ${open ? styles.panelSlotOpen : ''} ${workspace === 'create-map' ? styles.panelSlotMap : ''}`}>
+      {open && (
       <div className={styles.panel} data-testid="agent-panel">
       <AgentPanelHeader
         canManageConversations={Boolean(userProfile?.id)}
         title={headerTitle}
-        subtitle={currentProjectName || lockLabel}
+        subtitle={projectName || lockLabel}
         historyOpen={showHistory}
         onNew={() => {
           setShowHistory(false);
@@ -281,13 +233,15 @@ export function ChatPanel() {
         onClose={() => {
           setPendingSelectionContext(undefined);
           setShowHistory(false);
-          setOpen(false);
+          onOpenChange(false);
         }}
       />
 
       {showHistory && (
         <ConversationList
-          projectId={currentProjectId}
+          projectId={projectId}
+          workspace={workspace}
+          enabled={open && showHistory}
           activeId={conversationId}
           onSelect={(id) => {
             setShowHistory(false);
@@ -334,7 +288,9 @@ export function ChatPanel() {
 
           <ChatInput
             userId={userProfile?.id}
-            projectId={currentProjectId ?? undefined}
+            draftScopeKey={draftScopeKey}
+            projectId={projectId}
+            workspace={workspace}
             isStreaming={isStreaming}
             autoExecute={autoExecute}
             focusRequest={inputFocusRequest}

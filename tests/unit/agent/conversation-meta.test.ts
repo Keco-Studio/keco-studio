@@ -8,6 +8,8 @@ import {
 import { updateConversationMeta } from '../../../src/lib/agent/conversation-store';
 import type { AgentTool, ToolContext, ToolResult } from '../../../src/lib/agent/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { deleteAsset } from '../../../src/lib/agent/tools/delete-asset';
+import { deleteLibrary } from '../../../src/lib/agent/tools/delete-library';
 
 function mockTool(overrides: Partial<AgentTool>): AgentTool {
   return {
@@ -198,6 +200,11 @@ describe('needsConfirmation', () => {
       confirmationPolicy: 'always',
     });
     expect(needsConfirmation(post, { autoExecute: true })).toBe(true);
+  });
+
+  it.each([deleteAsset, deleteLibrary])('%s cannot delete in Auto mode without confirmation', (tool) => {
+    expect(needsConfirmation(tool, { autoExecute: true })).toBe(true);
+    expect(needsConfirmation(tool, { skipConfirmation: true })).toBe(true);
   });
 
   it('lets always-confirm policy take precedence over confirmationRequired false', () => {

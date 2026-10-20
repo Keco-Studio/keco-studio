@@ -27,6 +27,7 @@ export async function syncScriptDialogueDocument(input: {
   documentId: string;
   expected: DocumentStateToken;
   command: ScriptDialogueDocumentCommand;
+  originScriptFingerprint?: string;
 }): Promise<{
   state: Awaited<ReturnType<typeof replaceDocumentAsAgent>>;
   plotPlan?: SynchronizedStoryPlotPlan;
@@ -56,7 +57,8 @@ export async function syncScriptDialogueDocument(input: {
     ) {
       throw new Error('FORBIDDEN');
     }
-    includeScriptLibraries = originLibrary.document_export_type === 'table';
+    includeScriptLibraries = originLibrary.document_export_type === 'table'
+      || input.originScriptFingerprint !== undefined;
   }
   const derivedTableOperations = input.command.type === 'reorder'
     ? []
@@ -67,6 +69,9 @@ export async function syncScriptDialogueDocument(input: {
         command: input.command,
         includeScriptLibraries,
       });
+  if (input.originScriptFingerprint !== undefined && !derivedTableOperations.some(
+    (operation) => operation.libraryId === input.libraryId,
+  )) throw new Error('DERIVED_TABLE_MAPPING_AMBIGUOUS: origin Script operation missing');
   if (input.command.type === 'reorder') {
     const { data: library, error: libraryError } = await input.supabase
       .from('libraries')
@@ -106,6 +111,9 @@ export async function syncScriptDialogueDocument(input: {
     markdown: transformed.markdown,
     ...(scriptReorder ? { scriptReorder } : {}),
     ...(derivedTableOperations.length > 0 ? { derivedTableOperations } : {}),
+    ...(input.originScriptFingerprint !== undefined ? {
+      originScript: { libraryId: input.libraryId, expectedFingerprint: input.originScriptFingerprint },
+    } : {}),
   }, { current });
   return {
     state,

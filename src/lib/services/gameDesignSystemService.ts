@@ -677,6 +677,40 @@ export async function createGameDesignSystem(
   }
 }
 
+export async function createAgentStructuredGameDesignSystem(
+  supabase: SupabaseClient,
+  ownerId: string,
+  input: { idempotencyKey: string; title: string; summary?: string; rules: unknown },
+): Promise<GameDesignSystem> {
+  const rules = parseRuleSet(input.rules);
+  const document = buildCompatibilityGameDesignDocument(rules, { title: input.title });
+  const diff = createVersionDiff(null, { document, rules, artStyle: null });
+  const rendered = renderRuleSetMarkdown(rules, {
+    title: input.title,
+    version: GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,
+    document,
+  });
+  const { data, error } = await supabase.rpc('create_agent_game_design_system', {
+    p_actor_id: ownerId,
+    p_idempotency_key: input.idempotencyKey,
+    p_title: input.title,
+    p_summary: input.summary ?? null,
+    p_rules: rules,
+    p_document: document,
+    p_rendered_markdown: rendered,
+    p_diff: diff,
+    p_content_hash: hashJson({ document, rules, artStyle: null }),
+  });
+  if (error?.message?.includes('IDEMPOTENCY_CONFLICT')) throw new IdempotencyConflictError();
+  if (error?.message?.includes('IDEMPOTENCY_OUTPUT_DELETED')) {
+    throw new Error('The Game Design System from this request was deleted; use a new idempotency key.');
+  }
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('Game Design System creation returned no row.');
+  return row as GameDesignSystem;
+}
+
 export async function updateGameDesignSystem(
   supabase: SupabaseClient,
   id: string,

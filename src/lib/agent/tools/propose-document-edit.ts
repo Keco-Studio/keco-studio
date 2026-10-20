@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { escapeLiteralMdxBraces } from '@/lib/document-parser';
@@ -153,7 +154,7 @@ function canonicalApprovalPayload(
     'document-edit-approval-v1',
     ctx.userId,
     ctx.conversationId,
-    ctx.projectId,
+    requireProjectContext(ctx),
     preview.projectId,
     preview.documentId,
     params.documentId ?? null,
@@ -264,7 +265,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const resolution = await resolveDocumentForTool(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       selectorFromParams(parsed.data),
       ctx
     );
@@ -278,7 +279,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
     const { documentStateGateway } = await import('@/lib/documents/documentStateGateway');
     const state = await documentStateGateway.read(ctx.supabase, resolution.document.id);
-    if (state.projectId !== ctx.projectId || state.documentId !== resolution.document.id) {
+    if (state.projectId !== requireProjectContext(ctx) || state.documentId !== resolution.document.id) {
       return { success: false, error: 'Document not found in this project.' };
     }
 
@@ -378,8 +379,8 @@ async function executeImport(
     const currentUpdateIds = current.updateTail.map((update) => update.id);
     if (
       current.documentId !== preview.data.documentId ||
-      current.projectId !== ctx.projectId ||
-      preview.data.projectId !== ctx.projectId ||
+      current.projectId !== requireProjectContext(ctx) ||
+      preview.data.projectId !== requireProjectContext(ctx) ||
       !sameToken(current.token, expectedToken) ||
       contentHash(current.markdown) !== preview.data.baseHash ||
       !sameStringArray(currentUpdateIds, preview.data.baseUpdateIds)
@@ -395,7 +396,7 @@ async function executeImport(
     const { replaceDocumentAsAgent } = await import('@/lib/server/documentAgentEditService');
     const replaced = await replaceDocumentAsAgent({
       actorUserId: ctx.userId,
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       documentId: preview.data.documentId,
       expected: expectedToken,
       expectedUpdateIds: preview.data.baseUpdateIds,
@@ -412,7 +413,7 @@ async function executeImport(
       .then(({ reindexProjectDocumentAsActor }) =>
         reindexProjectDocumentAsActor({
           actorUserId: ctx.userId,
-          projectId: ctx.projectId,
+          projectId: requireProjectContext(ctx),
           documentId: replaced.documentId,
           usageBinding: ctx.usageBinding,
         })
@@ -445,7 +446,7 @@ async function executeImport(
       },
       invalidations: [{
         type: 'documents',
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         documentId: replaced.documentId,
       }],
     };

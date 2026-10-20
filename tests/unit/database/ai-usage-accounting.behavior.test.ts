@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   RLS_DB_TESTS_ENABLED,
+  localPostgresUrl,
   buildProjectFixture,
   teardownProjectFixture,
   type ProjectFixture,
@@ -10,7 +11,7 @@ import {
 jest.setTimeout(120_000);
 
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
-const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const postgresUrl = localPostgresUrl();
 
 type Usage = { inputTokens: number; outputTokens: number; totalTokens: number } | null;
 
@@ -24,21 +25,9 @@ function queryJson(sql: string): Record<string, unknown> | null {
     '-c',
     sql,
   ];
-  let result = spawnSync('psql', args, { encoding: 'utf8' });
-  if (result.error?.code === 'ENOENT') {
-    result = spawnSync('docker', [
-      'exec',
-      'supabase_db_keco-studio',
-      'psql',
-      '-U',
-      'postgres',
-      '-d',
-      'postgres',
-      ...args.slice(1),
-    ], { encoding: 'utf8' });
-  }
+  const result = spawnSync('psql', args, { encoding: 'utf8' });
   if (result.status !== 0) {
-    throw new Error(`psql failed: ${(result.stderr ?? result.error?.message ?? '').trim()}`);
+    throw new Error(`psql failed: ${result.stderr?.trim() || result.error?.message || 'no error details'}`);
   }
   const output = (result.stdout ?? '').trim();
   return output ? JSON.parse(output) as Record<string, unknown> : null;

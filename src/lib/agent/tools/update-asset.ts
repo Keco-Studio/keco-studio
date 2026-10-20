@@ -2,6 +2,7 @@
  * update_asset — modify an asset's fields (pre_execute confirmation).
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { updateAsset as updateAssetService } from '@/lib/services/libraryAssetsService';
 import {
@@ -56,7 +57,7 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
     };
   }
 
-  const libraryResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, libraryName, ctx);
+  const libraryResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), libraryName, ctx);
   const libraryLookupError = errorFromLookupResult(libraryResult);
   if (libraryLookupError !== undefined) {
     return { success: false, error: libraryLookupError };
@@ -162,7 +163,7 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
     await updateAssetService(ctx.supabase, assetId, name ?? assetRow.name, resolvedWithReferences);
     scheduleReindexForAssetFields(
       ctx.supabase,
-      ctx.projectId,
+      requireProjectContext(ctx),
       assetId,
       Object.keys(resolvedWithReferences)
     );

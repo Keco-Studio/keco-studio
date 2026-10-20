@@ -8,6 +8,7 @@ type DeleteProjectWithServerBoundaryInput = {
   projectId: string;
   userId: string;
   serviceClient?: SupabaseClient;
+  expectedDeletionFingerprint?: string;
 };
 
 async function resolveServiceClient(explicitClient?: SupabaseClient): Promise<SupabaseClient> {
@@ -187,6 +188,7 @@ export async function deleteProjectWithServerBoundary({
   projectId,
   userId,
   serviceClient,
+  expectedDeletionFingerprint,
 }: DeleteProjectWithServerBoundaryInput): Promise<{
   cleanupJobId: string | null;
   cleanupJobIds: string[];
@@ -194,9 +196,15 @@ export async function deleteProjectWithServerBoundary({
   await verifyProjectDeletionPermission(authClient, projectId, userId);
 
   const resolvedServiceClient = await resolveServiceClient(serviceClient);
-  const { data, error } = await resolvedServiceClient.rpc('delete_project_and_enqueue_storage_cleanup', {
-    p_project_id: projectId,
-  });
+  const { data, error } = expectedDeletionFingerprint !== undefined
+    ? await resolvedServiceClient.rpc('agent_delete_project_cascade_if_current', {
+      p_project_id: projectId,
+      p_user_id: userId,
+      p_expected_fingerprint: expectedDeletionFingerprint,
+    })
+    : await resolvedServiceClient.rpc('delete_project_and_enqueue_storage_cleanup', {
+      p_project_id: projectId,
+    });
   if (error) throw error;
   if (!Array.isArray(data)) throw new Error('Invalid project deletion response');
   const cleanupJobIds = data.map((value) => {

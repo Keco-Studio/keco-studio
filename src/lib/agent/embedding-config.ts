@@ -24,7 +24,6 @@ const parseBoolEnv = (key: string, fallback: boolean): boolean => {
 
 export const EMBEDDING_API_URL = (
   process.env.EMBEDDING_API_URL ||
-  process.env.LLM_API_URL ||
   'https://api.minimax.io'
 ).replace(/\/+$/, '');
 
@@ -32,13 +31,16 @@ export const EMBEDDING_API_KEY = process.env.EMBEDDING_API_KEY || process.env.LL
 export const MINIMAX_GROUP_ID = process.env.MINIMAX_GROUP_ID || '';
 
 export function getEmbeddingApiKey(): string {
-  return process.env.EMBEDDING_API_KEY || process.env.LLM_API_KEY || '';
+  // Do not silently send an LLM key to an unrelated chat endpoint. Reusing the
+  // LLM key is allowed only when an embedding endpoint was explicitly set.
+  return process.env.EMBEDDING_API_KEY || (
+    process.env.EMBEDDING_API_URL ? process.env.LLM_API_KEY || '' : ''
+  );
 }
 
 export function getEmbeddingApiUrl(): string {
   return (
     process.env.EMBEDDING_API_URL ||
-    process.env.LLM_API_URL ||
     'https://api.minimax.io'
   ).replace(/\/+$/, '');
 }
@@ -94,7 +96,8 @@ export function getEmbeddingRateLimitCooldownMs(): number {
 }
 
 export const AGENT_INDEXING_ENABLED = parseBoolEnv('AGENT_INDEXING_ENABLED', true);
-export const AGENT_RETRIEVAL_ENABLED = parseBoolEnv('AGENT_RETRIEVAL_ENABLED', true);
+export const AGENT_RETRIEVAL_ENABLED = parseBoolEnv('AGENT_RETRIEVAL_ENABLED', true)
+  && Boolean(process.env.EMBEDDING_API_URL && getEmbeddingApiKey());
 export const AGENT_RETRIEVAL_MIN_SCORE = parseFloatEnv('AGENT_RETRIEVAL_MIN_SCORE', 0.72);
 export const AGENT_RETRIEVAL_MAX_CHARS = parseIntEnv('AGENT_RETRIEVAL_MAX_CHARS', 32000);
 export const AGENT_RETRIEVAL_RECENCY_WEIGHT = parseFloatEnv('AGENT_RETRIEVAL_RECENCY_WEIGHT', 0.2);

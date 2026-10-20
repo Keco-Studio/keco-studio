@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { AgentTool, ToolContext, ToolResult } from '@/lib/agent/types';
 import { executeAgentTool } from '@/lib/agent/tool-execution-stream';
+import { ProjectContextRequiredError } from '@/lib/agent/workspace';
 
 describe('streamed agent tool execution', () => {
   it('forwards progress events and preserves the final tool result', async () => {
@@ -34,5 +35,13 @@ describe('streamed agent tool execution', () => {
 
     expect(await iterator.next()).toEqual({ done: true, value: finalResult });
     expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a recoverable tool result when the conversation has no project', async () => {
+    const tool = { execute: jest.fn(async () => { throw new ProjectContextRequiredError('Select a project.'); }) } as unknown as AgentTool;
+    expect(await executeAgentTool(tool, {}, {} as ToolContext).next()).toEqual({
+      done: true,
+      value: { success: false, error: 'PROJECT_CONTEXT_REQUIRED: Select a project.' },
+    });
   });
 });

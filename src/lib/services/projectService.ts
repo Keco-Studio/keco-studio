@@ -244,6 +244,7 @@ export async function checkProjectNameExists(
 type UpdateProjectInput = {
   name: string;
   description?: string;
+  expectedUpdatedAt?: string;
 };
 
 export async function updateProject(
@@ -280,7 +281,7 @@ export async function updateProject(
     throw new Error(`Project name ${name} already exists`);
   }
 
-  const { error } = await supabase
+  const updateQuery = supabase
     .from('projects')
     .update({
       name,
@@ -289,8 +290,13 @@ export async function updateProject(
     })
     .eq('id', projectId);
 
-  if (error) {
-    throw error;
+  if (input.expectedUpdatedAt) {
+    const { data, error } = await updateQuery.eq('updated_at', input.expectedUpdatedAt).select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('Project changed after approval; review it again.');
+  } else {
+    const { error } = await updateQuery;
+    if (error) throw error;
   }
 
 }

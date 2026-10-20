@@ -93,6 +93,32 @@ function renderDashboard() {
 }
 
 describe('Keco Admin dashboard', () => {
+  let getComputedStyleSpy: jest.SpyInstance;
+
+  beforeAll(() => {
+    const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+    getComputedStyleSpy = jest
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((element) => nativeGetComputedStyle(element));
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: jest.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      })),
+    });
+  });
+
+  afterAll(() => {
+    getComputedStyleSpy.mockRestore();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -144,6 +170,30 @@ describe('Keco Admin dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Invite administrator' }));
 
     expect(screen.getByRole('dialog', { name: 'Invite administrator' })).toBeTruthy();
+  });
+
+  it('opens the administrator members dialog with profile details from the header command', async () => {
+    global.fetch = jest.fn(async (input: string) => input === '/api/keco-admin/admins'
+      ? response(200, {
+        administrators: [{
+          id: '11111111-1111-4111-8111-111111111111',
+          displayName: 'Target User',
+          email: 'target@example.com',
+          avatarUrl: 'https://cdn.example/target.png',
+          grantedAt: '2026-09-28T12:00:00.000Z',
+        }],
+      })
+      : response(200, overviewBody())) as never;
+
+    renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View administrators' }));
+
+    expect(screen.getByRole('dialog', { name: 'Administrators' })).toBeTruthy();
+    expect(await screen.findByText('Target User')).toBeTruthy();
+    expect(screen.getByText('target@example.com')).toBeTruthy();
+    expect(screen.getByText('Granted Sep 28, 2026')).toBeTruthy();
+    expect(screen.getByAltText('Target User')).toBeTruthy();
   });
 
   it('filters users by email search', async () => {

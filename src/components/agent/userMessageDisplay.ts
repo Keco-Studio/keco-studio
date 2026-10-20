@@ -31,11 +31,18 @@ function fileNameFromUrl(url: string): string {
 export function deriveUserDisplay(
   message: string,
   imageUrls?: string[],
-  selectionContext?: AgentSelectionContext
+  selectionContext?: AgentSelectionContext,
+  gameMediaFileName?: string,
 ): UserDisplay {
   const selectionAttachments: ChatAttachment[] = selectionContext
     ? [{ kind: 'selection', fileName: selectionContext.selectionLabel }]
     : [];
+
+  if (gameMediaFileName) {
+    return { text: message, attachments: [
+      { kind: 'file', fileName: gameMediaFileName }, ...selectionAttachments,
+    ] };
+  }
 
   const design = parseDesignMessage(message);
   if (design) {

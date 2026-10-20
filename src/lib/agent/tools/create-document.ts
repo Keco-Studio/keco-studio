@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   createDocument,
@@ -24,7 +25,7 @@ function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
     .then(({ reindexProjectDocumentAsActor }) =>
       reindexProjectDocumentAsActor({
         actorUserId: ctx.userId,
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         documentId,
         usageBinding: ctx.usageBinding,
       })
@@ -63,7 +64,7 @@ export const createDocumentTool: AgentTool = {
       const canonicalFolderId = parsed.data.folderId?.toLowerCase();
       const existingDocuments = await listResolvedProjectDocuments(
         ctx.supabase,
-        ctx.projectId
+        requireProjectContext(ctx)
       );
       const duplicates = existingDocuments.filter(
         (document) =>
@@ -86,7 +87,7 @@ export const createDocumentTool: AgentTool = {
         };
       }
       const doc = await createDocument(ctx.supabase, {
-        projectId: ctx.projectId,
+        projectId: requireProjectContext(ctx),
         name: canonicalName,
         content: parsed.data.content,
         folderId: canonicalFolderId,
@@ -102,7 +103,7 @@ export const createDocumentTool: AgentTool = {
         success: true,
         displayHint: 'text',
         data: { documentId: doc.id, name: doc.name },
-        invalidations: [{ type: 'documents', projectId: ctx.projectId, documentId: doc.id }],
+        invalidations: [{ type: 'documents', projectId: requireProjectContext(ctx), documentId: doc.id }],
       };
     } catch (error) {
       if (createdDocumentId) {
@@ -111,7 +112,7 @@ export const createDocumentTool: AgentTool = {
             '@/lib/documents/documentStateGateway'
           );
           const current = await documentStateGateway.read(ctx.supabase, createdDocumentId);
-          if (current.projectId === ctx.projectId && current.mode === 'collaborative') {
+          if (current.projectId === requireProjectContext(ctx) && current.mode === 'collaborative') {
             queueDocumentReindex(ctx, createdDocumentId);
             return {
               success: true,
@@ -119,12 +120,12 @@ export const createDocumentTool: AgentTool = {
               data: { documentId: createdDocumentId, name: createdDocumentName },
               invalidations: [{
                 type: 'documents',
-                projectId: ctx.projectId,
+                projectId: requireProjectContext(ctx),
                 documentId: createdDocumentId,
               }],
             };
           }
-          if (current.projectId === ctx.projectId && current.mode === 'legacy') {
+          if (current.projectId === requireProjectContext(ctx) && current.mode === 'legacy') {
             await deleteDocument(ctx.supabase, createdDocumentId).catch(() => undefined);
           }
         } catch {

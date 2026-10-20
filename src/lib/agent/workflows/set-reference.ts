@@ -12,6 +12,7 @@
  * "incomplete references" failure.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import { updateAsset as updateAssetService } from '@/lib/services/libraryAssetsService';
 import { sortAssetsForUiRow, type ReferenceFieldLite } from '@/lib/utils/assetEmptiness';
@@ -94,14 +95,14 @@ async function executeSetReference(params: unknown, ctx: ToolContext): Promise<T
     };
   }
 
-  const sourceResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, sourceLibrary, ctx);
+  const sourceResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), sourceLibrary, ctx);
   const sourceLookupError = errorFromLookupResult(sourceResult);
   if (sourceLookupError !== undefined) {
     return { success: false, error: `Source library error: ${sourceLookupError}` };
   }
   const source = libraryFromLookupResult(sourceResult);
 
-  const targetResult = await resolveLibraryForTool(ctx.supabase, ctx.projectId, targetLibraryName, ctx);
+  const targetResult = await resolveLibraryForTool(ctx.supabase, requireProjectContext(ctx), targetLibraryName, ctx);
   const targetLookupError = errorFromLookupResult(targetResult);
   if (targetLookupError !== undefined) {
     return { success: false, error: `Target library error: ${targetLookupError}` };

@@ -23,7 +23,7 @@ import { deriveAiUsageBinding, type AiUsageBinding } from '@/lib/ai-usage/types'
 import { buildSystemPrompt } from './prompts';
 import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
 import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
-import { getToolsForLlmAsync, resolveTool, allTools } from './tools';
+import { createTurnToolSchema, resolveAllowedTool } from './tools';
 import {
   loadConversationHistory,
   saveMessage,
@@ -37,7 +37,7 @@ import {
   prepareMessagesForLlm,
 } from './tool-result-for-llm';
 import { augmentUserMessageForLlm, stripContextAugmentation } from './context-message';
-import { AGENT_RETRIEVAL_ENABLED } from './embedding-config';
+import { AGENT_RETRIEVAL_ENABLED, SCOPE_QUOTAS, type RetrievalScope } from './embedding-config';
 import { embedQuery } from './embedding-client';
 import {
   formatRetrievedContext,
@@ -72,6 +72,9 @@ import {
 } from './turn-budget';
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
 import { normalizeToolCallForReplay } from './tool-call-recovery';
+import { requireProjectContext } from './workspace';
+import { gameMediaAttachmentRecord } from './game-media-attachment';
+import { mapReferenceAttachmentRecord } from './map-reference-attachment';
 import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import {
@@ -80,6 +83,7 @@ import {
 } from '@/lib/game-design-system/agentEvidence';
 
 const MAX_ITERATIONS = 50;
+const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
@@ -92,8 +96,13 @@ function summarizeConversationTitle(raw: string): string {
 }
 
 function publicToolResult(result: ToolResult): ToolResult {
-  const { internalData: _internalData, ...publicResult } = result;
-  return publicResult;
+  const { internalData: _internalData, navigation: _navigation, ...publicResult } = result;
+  const event = navigationEvent(result);
+  return event ? { ...publicResult, navigation: event.destination } : publicResult;
+}
+
+function repeatedToolFailureMessage(toolName: string): string {
+  return `Agent stopped after ${MAX_CONSECUTIVE_TOOL_FAILURES} consecutive failures from ${toolName}. The request was not applied; send a narrower request or provide the exact fields required by the tool.`;
 }
 
 function cacheInvalidatedEvent(
@@ -164,23 +173,26 @@ export async function buildAgentSystemContext(
   let gameDesignPolicy: GameDesignPolicyContext | undefined;
   let artStyleContext: string | undefined;
 
-  try {
-    const { data: project } = await ctx.supabase
-      .from('projects')
-      .select('name')
-      .eq('id', ctx.projectId)
-      .single();
-    projectName = project?.name;
-  } catch {
-    // best-effort
+  if (ctx.projectId) {
+    try {
+      const { data: project } = await ctx.supabase
+        .from('projects')
+        .select('name')
+        .eq('id', ctx.projectId)
+        .single();
+      projectName = project?.name;
+    } catch {
+      // best-effort
+    }
   }
 
-  if (ctx.currentLibraryId && !currentLibraryName) {
+  if (ctx.projectId && ctx.currentLibraryId && !currentLibraryName) {
     try {
       const { data: lib } = await ctx.supabase
         .from('libraries')
         .select('name')
         .eq('id', ctx.currentLibraryId)
+        .eq('project_id', ctx.projectId)
         .single();
       currentLibraryName = lib?.name ?? currentLibraryName;
     } catch {
@@ -188,12 +200,13 @@ export async function buildAgentSystemContext(
     }
   }
 
-  if (ctx.currentFolderId && !currentFolderName) {
+  if (ctx.projectId && ctx.currentFolderId && !currentFolderName) {
     try {
       const { data: folder } = await ctx.supabase
         .from('folders')
         .select('name')
         .eq('id', ctx.currentFolderId)
+        .eq('project_id', ctx.projectId)
         .single();
       currentFolderName = folder?.name ?? currentFolderName;
     } catch {
@@ -201,39 +214,41 @@ export async function buildAgentSystemContext(
     }
   }
 
-  try {
-    const { data: binding } = await ctx.supabase
-      .from('project_game_design_systems')
-      .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules, art_style)')
-      .eq('project_id', ctx.projectId)
-      .maybeSingle();
-    const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
-    const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
-    const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
-    if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
-      const system = rawSystem as Record<string, unknown>;
-      const version = rawVersion as Record<string, unknown>;
-      if (
-        system.migration_status === 'ready'
-        && typeof version.version_number === 'number'
-        && typeof row?.design_system_id === 'string'
-        && typeof row.version_id === 'string'
-      ) {
-        const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
-        const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
-        artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
-        gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
-        gameDesignPolicy = {
-          systemId: row.design_system_id,
-          versionId: row.version_id,
-          version: version.version_number,
-          includedRuleIds: policy.appliedRuleIds,
-          omittedRuleIds: policy.omittedRuleIds,
-        };
+  if (ctx.projectId) {
+    try {
+      const { data: binding } = await ctx.supabase
+        .from('project_game_design_systems')
+        .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules, art_style)')
+        .eq('project_id', ctx.projectId)
+        .maybeSingle();
+      const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
+      const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
+      const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
+      if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
+        const system = rawSystem as Record<string, unknown>;
+        const version = rawVersion as Record<string, unknown>;
+        if (
+          system.migration_status === 'ready'
+          && typeof version.version_number === 'number'
+          && typeof row?.design_system_id === 'string'
+          && typeof row.version_id === 'string'
+        ) {
+          const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
+          const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
+          artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
+          gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
+          gameDesignPolicy = {
+            systemId: row.design_system_id,
+            versionId: row.version_id,
+            version: version.version_number,
+            includedRuleIds: policy.appliedRuleIds,
+            omittedRuleIds: policy.omittedRuleIds,
+          };
+        }
       }
+    } catch {
+      // A missing binding must never block the normal agent turn.
     }
-  } catch {
-    // A missing binding must never block the normal agent turn.
   }
 
   const basePrompt = buildSystemPrompt({
@@ -245,6 +260,7 @@ export async function buildAgentSystemContext(
       currentDocumentName: ctx.currentDocumentName,
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
+      workspace: ctx.workspace,
       userRole: ctx.userRole,
       gameDesignSystem,
       artStyleContext,
@@ -270,6 +286,12 @@ export async function buildAgentSystemMessage(
   return (await buildAgentSystemContext(ctx, retrievedContextBlock)).message;
 }
 
+export function retrievalScopesForContext(ctx: ToolContext): RetrievalScope[] {
+  return ctx.projectId
+    ? Object.keys(SCOPE_QUOTAS) as RetrievalScope[]
+    : ['chat_same_conversation'];
+}
+
 async function loadRetrievedContextBlock(
   ctx: ToolContext,
   conversationId: string,
@@ -289,9 +311,10 @@ async function loadRetrievedContextBlock(
     const chunks = await retrieveRelevantChunks({
       supabase: ctx.supabase,
       queryEmbedding,
-      projectId: ctx.projectId,
+      projectId: ctx.projectId || undefined,
       userId: ctx.userId,
       conversationId,
+      scopes: retrievalScopesForContext(ctx),
     });
     const block = formatRetrievedContext(chunks);
     if (block) {
@@ -314,7 +337,7 @@ function indexingContext(
   ctx: ToolContext,
   usageBinding?: AiUsageBinding,
 ): SaveMessageIndexingContext {
-  return { projectId: ctx.projectId, userId: ctx.userId, usageBinding };
+  return { projectId: ctx.projectId || null, userId: ctx.userId, usageBinding };
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -357,6 +380,12 @@ export function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext
 /** Permission gate run before any write tool executes. */
 function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | null {
   if (tool.category !== 'write') return null;
+  if (tool.permissionScope === 'account' || tool.permissionScope === 'explicit-project') {
+    return ctx.userId ? null : { success: false, error: 'Authentication required.' };
+  }
+  if (!ctx.userRole) {
+    return { success: false, error: 'Select a project before using this operation.' };
+  }
   if (ctx.userRole === 'viewer') {
     return { success: false, error: 'Viewer role cannot perform write operations.' };
   }
@@ -364,6 +393,14 @@ function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | nu
     return { success: false, error: `This operation requires the admin role (current role: ${ctx.userRole}).` };
   }
   return null;
+}
+
+function navigationEvent(result: ToolResult): Extract<SSEEvent, { type: 'navigation_requested' }> | null {
+  const destination = result.navigation;
+  if (!result.success || destination?.kind !== 'project' ||
+      typeof destination.projectId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(destination.projectId)) return null;
+  return { type: 'navigation_requested', destination: { kind: 'project', projectId: destination.projectId } };
 }
 
 async function* executeToolWithProgress(
@@ -411,6 +448,24 @@ async function* continueLoop(
   let iterations = startIterations;
   let usedTokenTotal = startTokenUsageTotal;
   let messages = initialMessages;
+  const toolSchema = createTurnToolSchema(ctx);
+  let llmTools = await toolSchema.get();
+  let lastFailedTool: string | undefined;
+  let consecutiveToolFailures = 0;
+
+  const noteToolFailure = (toolName: string): boolean => {
+    if (lastFailedTool === toolName) consecutiveToolFailures += 1;
+    else {
+      lastFailedTool = toolName;
+      consecutiveToolFailures = 1;
+    }
+    return consecutiveToolFailures >= MAX_CONSECUTIVE_TOOL_FAILURES;
+  };
+
+  const clearToolFailure = (): void => {
+    lastFailedTool = undefined;
+    consecutiveToolFailures = 0;
+  };
 
   while (iterations++ < MAX_ITERATIONS) {
     throwIfAborted(signal);
@@ -439,7 +494,6 @@ async function* continueLoop(
     const llmStartMs = Date.now();
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
-    const llmTools = await getToolsForLlmAsync(ctx);
     const iterationUsageBinding = usageBinding
       ? deriveAiUsageBinding(usageBinding, { metadata: { iteration: iterations } })
       : undefined;
@@ -530,8 +584,32 @@ async function* continueLoop(
       tool_calls: [normalizeToolCallForReplay(call)],
     };
 
-    const tool = resolveTool(call.function.name);
+    const tool = resolveAllowedTool(call.function.name, ctx.workspace);
     const parsed = parseArgs(call.function.arguments);
+
+    if (!tool) {
+      const errorResult: ToolResult = {
+        success: false,
+        error: 'TOOL_NOT_AVAILABLE_IN_WORKSPACE',
+      };
+      trace?.recordToolCall({
+        tool: call.function.name,
+        args: {},
+        success: false,
+        error: errorResult.error,
+      });
+      messages.push(assistantMessage);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      await persistMessage(ctx, conversationId, assistantMessage);
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      if (noteToolFailure(call.function.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(call.function.name) };
+        yield { type: 'done' };
+        return;
+      }
+      continue;
+    }
 
     // Malformed / truncated tool arguments -> feed the parse error back so the
     // model can re-emit a valid call instead of silently receiving {}.
@@ -551,29 +629,15 @@ async function* continueLoop(
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      if (noteToolFailure(call.function.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(call.function.name) };
+        yield { type: 'done' };
+        return;
+      }
       continue;
     }
 
     const parsedArgs = parsed.args;
-
-    // Unknown tool -> feed an error back to the LLM.
-    if (!tool) {
-      const errorResult: ToolResult = {
-        success: false,
-        error: `Unknown tool "${call.function.name}". Available: ${allTools.map((t) => t.name).join(', ')}`,
-      };
-      trace?.recordToolCall({
-        tool: call.function.name,
-        args: parsedArgs,
-        success: false,
-        error: errorResult.error,
-      });
-      messages.push(assistantMessage);
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      await persistMessage(ctx, conversationId, assistantMessage);
-      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      continue;
-    }
 
     // Permission gate.
     const permError = checkToolPermission(tool, ctx);
@@ -589,6 +653,11 @@ async function* continueLoop(
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
       yield { type: 'tool_result', tool: tool.name, data: undefined, displayHint: 'text', success: false, error: permError.error };
+      if (noteToolFailure(tool.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+        yield { type: 'done' };
+        return;
+      }
       continue;
     }
 
@@ -634,6 +703,11 @@ async function* continueLoop(
               success: false,
               error: preparation.error,
             };
+            if (noteToolFailure(tool.name)) {
+              yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+              yield { type: 'done' };
+              return;
+            }
             continue;
           }
           confirmationArgs = preparation.args;
@@ -702,9 +776,15 @@ async function* continueLoop(
           messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           await persistMessage(ctx, conversationId, assistantMessage);
           await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
-          yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
+          yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint, success: false, error: result.error };
+          if (noteToolFailure(tool.name)) {
+            yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+            yield { type: 'done' };
+            return;
+          }
           continue;
         }
+        clearToolFailure();
         const actionId = crypto.randomUUID();
         if (assistantContent || assistantReasoning) {
           await persistMessage(ctx, conversationId, {
@@ -789,11 +869,23 @@ async function* continueLoop(
       if (finalResult.invalidations && finalResult.invalidations.length > 0) {
         yield cacheInvalidatedEvent(finalResult.invalidations);
       }
+      const finalNavigation = navigationEvent(finalResult);
+      if (finalNavigation) yield finalNavigation;
       messages.push(assistantMessage);
       const publicResult = publicToolResult(finalResult);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+      if (finalResult.success) clearToolFailure();
+      else if (noteToolFailure(tool.name)) {
+        yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+        yield { type: 'done' };
+        return;
+      }
+      if (finalResult.success && finalResult.schemaChanged === true) {
+        toolSchema.invalidate();
+        llmTools = await toolSchema.get();
+      }
       continue;
     }
 
@@ -819,12 +911,24 @@ async function* continueLoop(
     if (result.invalidations && result.invalidations.length > 0) {
       yield cacheInvalidatedEvent(result.invalidations);
     }
+    const navigation = navigationEvent(result);
+    if (navigation) yield navigation;
 
     messages.push(assistantMessage);
     const publicResult = publicToolResult(result);
     messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
     await persistMessage(ctx, conversationId, assistantMessage);
     await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
+    if (result.success) clearToolFailure();
+    else if (noteToolFailure(tool.name)) {
+      yield { type: 'error', message: repeatedToolFailureMessage(tool.name) };
+      yield { type: 'done' };
+      return;
+    }
+    if (result.success && result.schemaChanged === true) {
+      toolSchema.invalidate();
+      llmTools = await toolSchema.get();
+    }
   }
 
   yield { type: 'error', message: 'Agent reached maximum iterations.' };
@@ -841,6 +945,51 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
   });
 
   try {
+    if (input.gameMediaAttachment && input.mapReferenceAttachment) {
+      yield { type: 'error', message: 'Only one upload attachment is allowed per message.' };
+      yield { type: 'done' };
+      return;
+    }
+    if (input.gameMediaAttachment) {
+      if (!input.gameMediaSubmissionId || !toolContext.projectId) {
+        yield { type: 'error', message: 'Game-media submission is missing its project binding.' };
+        yield { type: 'done' };
+        return;
+      }
+      const { data: claimed, error: claimError } = await toolContext.supabase.rpc(
+        'claim_agent_game_media_submission', {
+          p_submission_id: input.gameMediaSubmissionId,
+          p_project_id: toolContext.projectId,
+          p_conversation_id: conversationId,
+        }
+      );
+      if (claimError || claimed !== true) {
+        yield { type: 'error', message: 'This game-media submission was already received or could not be claimed.' };
+        yield { type: 'done' };
+        return;
+      }
+    }
+    if (input.mapReferenceAttachment) {
+      if (!input.mapReferenceSubmissionId || !toolContext.projectId
+        || toolContext.workspace !== 'create-map') {
+        yield { type: 'error', message: 'Map reference submission is missing its project binding.' };
+        yield { type: 'done' };
+        return;
+      }
+      const { data: claimed, error: claimError } = await toolContext.supabase.rpc(
+        'claim_agent_map_reference_submission', {
+          p_submission_id: input.mapReferenceSubmissionId,
+          p_project_id: toolContext.projectId,
+          p_conversation_id: conversationId,
+          p_sha256: input.mapReferenceAttachment.sha256,
+        }
+      );
+      if (claimError || claimed !== true) {
+        yield { type: 'error', message: 'This Map reference submission was already received or could not be claimed.' };
+        yield { type: 'done' };
+        return;
+      }
+    }
     const retrievedContextBlock = await loadRetrievedContextBlock(
       toolContext,
       conversationId,
@@ -866,10 +1015,42 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const savedUserMessage = await saveMessage(
       toolContext.supabase,
       conversationId,
-      { role: 'user', content: userContentForDb },
+      {
+        role: 'user', content: userContentForDb,
+        ...(input.gameMediaAttachment
+          ? { game_media_attachment: gameMediaAttachmentRecord(input.gameMediaAttachment) }
+          : {}),
+        ...(input.gameMediaSubmissionId
+          ? { game_media_submission_id: input.gameMediaSubmissionId }
+          : {}),
+        ...(input.mapReferenceAttachment
+          ? { map_reference_attachment: mapReferenceAttachmentRecord(input.mapReferenceAttachment) }
+          : {}),
+        ...(input.mapReferenceSubmissionId
+          ? { map_reference_submission_id: input.mapReferenceSubmissionId }
+          : {}),
+      },
       indexingContext(toolContext, input.usageBinding)
     );
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
+    if (input.gameMediaSubmissionId) {
+      const { data: bound, error: bindError } = await toolContext.supabase.rpc(
+        'bind_agent_game_media_submission', {
+          p_submission_id: input.gameMediaSubmissionId,
+          p_message_id: savedUserMessage.id,
+        }
+      );
+      if (bindError || bound !== true) throw new Error('Failed to bind the game-media submission to its user message.');
+    }
+    if (input.mapReferenceSubmissionId) {
+      const { data: bound, error: bindError } = await toolContext.supabase.rpc(
+        'bind_agent_map_reference_submission', {
+          p_submission_id: input.mapReferenceSubmissionId,
+          p_message_id: savedUserMessage.id,
+        }
+      );
+      if (bindError || bound !== true) throw new Error('Failed to bind the Map reference submission to its user message.');
+    }
     const conversationForTitle = await getConversation(toolContext.supabase, conversationId);
     if (conversationForTitle && !conversationForTitle.title) {
       await touchConversation(toolContext.supabase, conversationId, {
@@ -884,6 +1065,18 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
         messageId: savedUserMessage.id,
         content: input.userMessage,
       },
+      ...(input.gameMediaAttachment
+        ? { authoritativeGameMedia: {
+          ...input.gameMediaAttachment, messageId: savedUserMessage.id,
+          submissionId: input.gameMediaSubmissionId!,
+        } }
+        : {}),
+      ...(input.mapReferenceAttachment
+        ? { authoritativeMapReference: {
+          ...input.mapReferenceAttachment, messageId: savedUserMessage.id,
+          submissionId: input.mapReferenceSubmissionId!,
+        } }
+        : {}),
     };
 
     yield* continueLoop(
@@ -963,7 +1156,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     // system prompt and the user message disagreeing within the same turn.
     refreshLastUserContext(messages, turnContext);
 
-    const tool = resolveTool(pending.toolName);
+    const tool = resolveAllowedTool(pending.toolName, turnContext.workspace);
     const permissionError =
       input.decision === 'approve' && tool
         ? checkToolPermission(tool, toolContext)
@@ -978,7 +1171,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     if (input.decision === 'reject') {
       result = { success: false, error: 'User cancelled this action.' };
     } else if (!tool) {
-      result = { success: false, error: `Tool "${pending.toolName}" is no longer available.` };
+      result = { success: false, error: 'TOOL_NOT_AVAILABLE_IN_WORKSPACE' };
     } else if (permissionError) {
       yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
       result = permissionError;
@@ -1016,7 +1209,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       result = toolResultFromClientCompletion(
         pending.args,
         input.clientCompletedResult,
-        turnContext.projectId
+        requireProjectContext(turnContext)
       );
       trace?.recordToolCall({
         tool: tool.name,
@@ -1055,6 +1248,8 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     if (result.invalidations && result.invalidations.length > 0) {
       yield cacheInvalidatedEvent(result.invalidations);
     }
+    const navigation = navigationEvent(result);
+    if (navigation) yield navigation;
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.
     const assistantMessage: ChatMessage = {

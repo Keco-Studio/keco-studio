@@ -8,6 +8,7 @@ import {
   setDraft,
   setLastConversation,
 } from '../../../src/components/agent/agentChatStorage';
+import { agentRuntimeScopeKey } from '../../../src/components/agent/agentChatRuntimeStore';
 
 const USER = 'user-abc';
 const PROJECT_A = 'project-a';
@@ -70,6 +71,21 @@ describe('agentChatStorage draft', () => {
     setDraft('user-xyz', 'user-b draft');
     expect(getDraft(USER)).toBe('user-a draft');
     expect(getDraft('user-xyz')).toBe('user-b draft');
+  });
+
+  it('isolates composer drafts by workspace and project', () => {
+    const projects = agentRuntimeScopeKey({ userId: USER, workspace: 'projects' });
+    const map = agentRuntimeScopeKey({ userId: USER, workspace: 'create-map' });
+    const studio = agentRuntimeScopeKey({ userId: USER, workspace: 'studio', projectId: PROJECT_A });
+    setDraft(USER, 'projects text', projects);
+    setDraft(USER, 'map text', map);
+    setDraft(USER, 'studio text', studio);
+
+    expect(getDraft(USER, projects)).toBe('projects text');
+    expect(getDraft(USER, map)).toBe('map text');
+    expect(getDraft(USER, studio)).toBe('studio text');
+    clearDraft(USER, projects);
+    expect(getDraft(USER, map)).toBe('map text');
   });
 });
 

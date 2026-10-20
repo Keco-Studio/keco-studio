@@ -1,3 +1,4 @@
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
 import {
   summarizeVisiblePlotGraph,
@@ -24,7 +25,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   try {
     const snapshot = await loadStoryGraphSnapshot(ctx.supabase, {
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       userId: ctx.userId,
       accessCache: ctx.accessCache,
       libraryId: parsed.data.libraryId,
@@ -73,6 +74,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         plotEdges: summarizedPlots.edges,
         ...(selectedPlot ? { selectedPlot: publicPlotNode(selectedPlot) } : {}),
         nodes: storyNodes.map((node) => ({
+          id: node.assetId,
+          nodeId: node.assetId,
           label: node.label,
           title: node.plotTitle,
           rowIndex: node.rowIndex + 1,
@@ -106,7 +109,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const readStoryGraph: AgentTool = {
   name: 'read_story_graph',
   description:
-    'Read the visible Plot tree and canonical executable nodes of a document-derived Script library. Use exact plotTitle when the user refers to a visible tree title; the result provides firstLabel and lastLabel for safe writes. Select by libraryId first, exact libraryName second, or omit both for the active Script library.',
+    'Read the visible Plot tree and canonical executable nodes of a document-derived Script library. Each node includes its persisted nodeId UUID for structural targeting. For dialogue block IDs use query_script_lines. Use exact plotTitle when the user refers to a visible tree title; the result provides firstLabel and lastLabel for safe structural writes. Select by libraryId first, exact libraryName second, or omit both for the active Script library.',
   category: 'read',
   confirmationMode: 'pre_execute',
   parameters: {

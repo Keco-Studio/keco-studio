@@ -59,6 +59,7 @@ type CreateLibraryInput = {
   description?: string;
   folderId?: string;
   documentSource?: DocumentLibrarySource;
+  agentCreate?: { key: string; hash: string };
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -147,6 +148,10 @@ export async function createLibrary(
       folder_id: placement?.folderId ?? folderId,
       name,
       description,
+      ...(input.agentCreate ? {
+        agent_create_key: input.agentCreate.key,
+        agent_create_hash: input.agentCreate.hash,
+      } : {}),
       ...(placement
         ? {
             source_document_id: placement.sourceDocumentId,

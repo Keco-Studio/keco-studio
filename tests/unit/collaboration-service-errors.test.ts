@@ -113,4 +113,37 @@ describe('collaboration service error convention (issue #218)', () => {
       'recipient-id'
     );
   });
+
+  it('removes an undelivered invitation before reporting email failure', async () => {
+    const generateTokenMock = generateInvitationToken as jest.MockedFunction<typeof generateInvitationToken>;
+    const sendEmailMock = sendInvitationEmail as jest.MockedFunction<typeof sendInvitationEmail>;
+    generateTokenMock.mockResolvedValue('signed-token');
+    sendEmailMock.mockRejectedValueOnce(new Error('Delivery failed'));
+    let profileRead = 0;
+    const profileQuery = {
+      select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn(async () => ({ data: ++profileRead === 1
+        ? { email: 'owner@example.com' } : { id: 'recipient-id' }, error: null })),
+    };
+    const collaboratorQuery = {
+      select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(), not: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+    };
+    const deleteInvitation = jest.fn().mockReturnThis();
+    const invitationQuery = {
+      select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(), is: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+      insert: jest.fn(() => ({ select: () => ({ single: async () => ({ data: { id: 'invitation-id' }, error: null }) }) })),
+      delete: deleteInvitation,
+      then: (onfulfilled: (value: { error: null }) => unknown) => Promise.resolve({ error: null }).then(onfulfilled),
+    };
+    const supabase = { from: jest.fn((table: string) => table === 'profiles' ? profileQuery
+      : table === 'project_collaborators' ? collaboratorQuery : invitationQuery) } as unknown as SupabaseClient;
+    await expect(sendInvitation(supabase, { projectId: 'project-id', recipientEmail: 'user@example.com', role: 'viewer' },
+      'owner-id', 'Owner', 'Project')).rejects.toMatchObject({ code: 'EMAIL_DELIVERY_FAILED' });
+    expect(deleteInvitation).toHaveBeenCalledTimes(1);
+    expect(invitationQuery.eq).toHaveBeenCalledWith('id', 'invitation-id');
+    expect(invitationQuery.eq).toHaveBeenCalledWith('project_id', 'project-id');
+  });
 });

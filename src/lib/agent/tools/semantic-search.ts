@@ -2,8 +2,9 @@
  * semantic_search — agent tool for deeper semantic retrieval over project knowledge.
  */
 
+import { requireProjectContext } from '../workspace';
 import { z } from 'zod';
-import { embedQuery } from '../embedding-client';
+import { embedQuery, EmbeddingError } from '../embedding-client';
 import { semanticSearchChunks } from '../embedding-retrieval';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { deriveAiUsageBinding } from '@/lib/ai-usage/types';
@@ -31,7 +32,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     const results = await semanticSearchChunks({
       supabase: ctx.supabase,
       queryEmbedding,
-      projectId: ctx.projectId,
+      projectId: requireProjectContext(ctx),
       userId: ctx.userId,
       conversationId: ctx.conversationId,
       scope: parsed.data.scope,
@@ -54,6 +55,18 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Semantic search failed.';
+    if ((typeof EmbeddingError === 'function' && e instanceof EmbeddingError)
+      || /Embedding API error|embedding provider|fetch failed|network|ECONN|ETIMEDOUT|ECONNRESET/i.test(message)) {
+      return {
+        success: true,
+        displayHint: 'list',
+        data: {
+          results: [],
+          degradationReason: 'embedding_unavailable',
+          note: 'Semantic search is unavailable because the embedding provider is not configured or returned an error. Use exact Script reads (read_story_graph or query_script_lines) to locate editable rows; do not retry semantic search in this turn.',
+        },
+      };
+    }
     return { success: false, error: message };
   }
 }

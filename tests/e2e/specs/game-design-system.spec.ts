@@ -13,6 +13,8 @@ import type {
   GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
 import { LoginPage } from '../pages/login.page';
+import { AgentPage } from '../pages/agent.page';
+import { agentStream, captureAssistantShell, mockEmptyAgentHistory, toolEvents } from '../helpers/global-assistant';
 import {
   createProjectFixture,
   createTemporaryUser,
@@ -29,7 +31,7 @@ const ART_DIRECTION = 'Favor compact village silhouettes and clear traversal lan
 const VISUAL_REFERENCE_NAME = 'Into the Breach';
 const VISUAL_REFERENCE_BORROW = 'Borrow its immediate board-state readability and restrained effects.';
 const ART_AVOID = 'Avoid noisy outlines, muddy values, and oversized combat effects.';
-const EVIDENCE_DIR = path.resolve(process.cwd(), '.superpowers/evidence/game-art-style/task-6');
+const EVIDENCE_DIR = path.resolve(process.cwd(), 'test-results/game-art-style');
 const hasGameDesignSystemLlm = Boolean(process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY?.trim());
 const SUPABASE_ORIGIN = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321';
 const MOCK_USER_ID = '10000000-0000-4000-8000-000000000061';
@@ -477,6 +479,57 @@ async function createAuthenticatedClient(user: TemporaryUser): Promise<SupabaseC
 test.describe('Game Design System mocked Art Style acceptance', () => {
   test.describe.configure({ timeout: 90_000 });
 
+  test('global assistant lists/reads/generates/copies/applies and confirms paid GDD in Auto mode', async ({ page }) => {
+    await loginWithMockBackend(page, new GameArtStyleMockBackend());
+    await mockEmptyAgentHistory(page);
+    const conversationId = crypto.randomUUID();
+    const actionId = crypto.randomUUID();
+    const warning = 'Professional GDD generation may automatically submit up to three paid map images.';
+    const operations = ['list_game_design_systems', 'read_game_design_system', 'generate_game_design_system', 'copy_game_design_system', 'apply_game_design_system', 'generate_gdd'];
+    const calls: string[] = [];
+    let approvals = 0;
+    await page.route('**/api/agent-chat', async (route) => {
+      const body = route.request().postDataJSON();
+      expect(body.workspace).toBe('game-design-systems');
+      expect(body.projectId).toBeFalsy();
+      const tool = operations[calls.length]; calls.push(tool);
+      const data = tool === 'generate_game_design_system'
+        ? { jobType: 'game-design-system', jobId: MOCK_INITIAL_JOB_ID, status: 'queued' }
+        : { designSystemId: MOCK_SYSTEM_ID, versionId: MOCK_CURRENT_VERSION_ID, projectId: MOCK_PROJECT_ID };
+      await agentStream(route, conversationId, tool === 'generate_gdd'
+        ? [{ type: 'confirmation_request', actionId, tool, confirmationMode: 'pre_execute', args: { ...data, mode: 'professional', warning } }]
+        : [...toolEvents(tool, data), { type: 'text_delta', content: `${tool} accepted.` }]);
+    });
+    await page.route('**/api/agent-chat/confirm', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({ actionId, decision: 'approve' });
+      approvals += 1;
+      await agentStream(route, conversationId, toolEvents('generate_gdd', { jobType: 'gdd', jobId: MOCK_RETRY_JOB_ID, status: 'queued' }));
+    });
+    const agent = new AgentPage(page); await agent.open(); await agent.enableAutoMode();
+    for (const tool of operations.slice(0, -1)) {
+      await agent.send(tool);
+      await expect(page.getByTestId('agent-message-assistant').last()).toContainText(`${tool} accepted.`);
+    }
+    await expect(page.getByTestId('generation-job-status')).toContainText('queued');
+    await agent.send('Generate professional GDD for my selected project');
+    const card = page.getByTestId('agent-confirmation');
+    for (const text of [warning, MOCK_PROJECT_ID, MOCK_SYSTEM_ID, MOCK_CURRENT_VERSION_ID, 'professional']) await expect(card).toContainText(text);
+    expect(approvals).toBe(0);
+    await card.getByTestId('agent-confirm').click();
+    await expect(page.getByTestId('generation-job-status').last()).toContainText(MOCK_RETRY_JOB_ID);
+    await expect(page.getByTestId('generation-job-status').last()).toContainText('queued');
+    expect(approvals).toBe(1);
+    expect(calls).toEqual(operations);
+  });
+
+  for (const mobile of [false, true]) {
+    test(`global GDS shared shell ${mobile ? '@mobile' : 'desktop'}`, async ({ page }, testInfo) => {
+      await loginWithMockBackend(page, new GameArtStyleMockBackend());
+      await mockEmptyAgentHistory(page);
+      await captureAssistantShell(page, testInfo, 'game-design-systems');
+    });
+  }
+
   test('covers create, retry, current, historical, and legacy Art Style states', async ({ page }) => {
     await mkdir(EVIDENCE_DIR, { recursive: true });
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -812,7 +865,8 @@ test.describe('Game Design System real workflow', () => {
     await expect(page.getByRole('button', { name: 'System', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('tab', { name: /My Systems/ })).toBeVisible();
     await page.getByRole('tab', { name: /Official/ }).click();
-    await expect(page.getByText('No official systems yet.', { exact: true })).toBeVisible();
+    // Local environments may contain official systems; this flow owns only its temporary user data.
+    await expect(page.getByRole('tab', { name: /Official/ })).toHaveAttribute('aria-selected', 'true');
 
     const workspaceUrl = page.url();
     await page.getByRole('button', { name: 'Create Game Design System' }).click();
@@ -911,7 +965,7 @@ test.describe('Game Design System real workflow', () => {
     await page.goto('/game-design-systems');
     await expect(page.getByRole('heading', { name: 'Game Design System', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: /Official/ }).click();
-    await expect(page.getByText('No official systems yet.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Official/ })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('tab', { name: /My Systems/ }).click();
 
     const title = `E2E Tactical Rules ${Date.now()}`;
@@ -928,9 +982,8 @@ test.describe('Game Design System real workflow', () => {
     )).toEqual(['Foundation', 'Art Style', 'Sources', 'Review']);
     await page.getByRole('button', { name: 'Continue to art style' }).click();
     await expect(page.getByRole('tab', { name: 'Art Style' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('region', { name: 'No Art Style selected' })).toBeVisible();
-    await page.getByRole('radio', { name: /Pixel Art/ }).click();
     await expect(page.getByRole('radio', { name: /Pixel Art/ })).toBeChecked();
+    await expect(page.getByRole('radio', { name: /Pixel Art/ })).not.toBeDisabled();
     await expectLoadedArtStyleImages(page);
     const desktopCatalog = await page.getByLabel('Art style catalog').boundingBox();
     const desktopPreview = await page.getByRole('region', { name: 'Pixel Art preview' }).boundingBox();
@@ -998,9 +1051,10 @@ test.describe('Game Design System real workflow', () => {
     expect(generationPayload.artStyle).not.toHaveProperty('specification');
     expect(generationPayload.artStyle).not.toHaveProperty('previewAssetSet');
 
-    await expect(page.getByRole('heading', { name: /Generating|Generation incomplete/ })).toBeVisible();
+    // Wait for the durable outcome; the queued view can render late or complete
+    // before observation when the provider is a fast local mock.
     await Promise.race([
-      page.getByRole('heading', { name: title, exact: true }).waitFor({ state: 'visible', timeout: 240_000 }),
+      page.getByRole('heading', { name: 'Design document', exact: true }).waitFor({ state: 'visible', timeout: 240_000 }),
       page.getByRole('heading', { name: 'Generation incomplete' }).waitFor({ state: 'visible', timeout: 240_000 }).then(async () => {
         throw new Error(`Generation failed: ${await page.locator('main').innerText()}`);
       }),
@@ -1066,8 +1120,19 @@ test.describe('Game Design System real workflow', () => {
     expect(firstVersion.rendered_markdown).not.toContain(ART_AVOID);
 
     const editedRules = firstVersion.rules as GameDesignRuleSet;
+    await page.getByRole('button', { name: 'Start version iteration' }).click();
+    const versionEditor = page.getByRole('region', { name: 'Create Game Design System version' });
+    const editorBounds = await versionEditor.boundingBox();
+    const libraryBounds = await page.getByRole('complementary', { name: 'Game Design System library' }).boundingBox();
+    expect(editorBounds!.x).toBeGreaterThanOrEqual(libraryBounds!.x + libraryBounds!.width);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoDocumentOverflow(page);
+    await expect(versionEditor).toBeVisible();
+    const mobileEditorBounds = await versionEditor.boundingBox();
+    expect(mobileEditorBounds!.x + mobileEditorBounds!.width).toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('tab', { name: 'Rules' }).click();
-    await page.getByRole('button', { name: 'New version' }).click();
+    await page.getByRole('button', { name: editedRules.rules[0].title, exact: true }).click();
     const ruleStatement = page.getByLabel('Rule statement');
     await ruleStatement.fill(`${editedRules.rules[0].statement} Preserve the original cost signal.`);
     await page.getByRole('button', { name: 'Review changes' }).click();
@@ -1107,13 +1172,15 @@ test.describe('Game Design System real workflow', () => {
     expect(boundSystemMessage.content).toContain(editedRules.rules[0].id);
     expect(boundSystemMessage.content).not.toContain('"source_snapshots"');
     expect(boundSystemMessage.content).not.toContain('"excerpt"');
-    expect(boundSystemMessage.content).not.toContain(ART_DIRECTION);
-    expect(boundSystemMessage.content).not.toContain(VISUAL_REFERENCE_BORROW);
-    expect(boundSystemMessage.content).not.toContain(ART_AVOID);
+    const boundArtData = boundSystemMessage.content.split('BEGIN_UNTRUSTED_GAME_ART_STYLE_DATA')[1]?.split('END_UNTRUSTED_GAME_ART_STYLE_DATA')[0];
+    expect(boundArtData).toContain(ART_DIRECTION);
+    expect(boundArtData).toContain(VISUAL_REFERENCE_BORROW);
+    expect(boundArtData).toContain(ART_AVOID);
     for (const snapshot of snapshots) expect(boundSystemMessage.content).not.toContain(snapshot.contentHash);
 
+    await page.getByRole('button', { name: 'Start version iteration' }).click();
     await page.getByRole('tab', { name: 'Rules' }).click();
-    await page.getByRole('button', { name: 'New version' }).click();
+    await page.getByRole('button', { name: editedRules.rules[0].title, exact: true }).click();
     await ruleStatement.fill(`${await ruleStatement.inputValue()} ${VERSION_THREE_ONLY}`);
     await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('button', { name: 'Create version' }).click();
@@ -1133,9 +1200,8 @@ test.describe('Game Design System real workflow', () => {
     });
     expect(afterNewVersionMessage.content).toContain('pinned to Game Design System version 2');
     expect(afterNewVersionMessage.content).not.toContain(VERSION_THREE_ONLY);
-    expect(afterNewVersionMessage.content).not.toContain(ART_DIRECTION);
-    expect(afterNewVersionMessage.content).not.toContain(VISUAL_REFERENCE_BORROW);
-    expect(afterNewVersionMessage.content).not.toContain(ART_AVOID);
+    const pinnedArtData = afterNewVersionMessage.content.split('BEGIN_UNTRUSTED_GAME_ART_STYLE_DATA')[1]?.split('END_UNTRUSTED_GAME_ART_STYLE_DATA')[0];
+    expect(pinnedArtData).toBe(boundArtData);
 
     const { error: viewerBindingError } = await admin.from('project_game_design_systems').insert({
       project_id: viewerProjectId,
@@ -1221,7 +1287,7 @@ test.describe('Game Design System real workflow', () => {
       owner_id: owner.id,
       status: 'failed',
       phase: 'failed',
-      error: 'DeepSeek temporarily unavailable.',
+      error: { code: 'GDS_GENERATION_FAILED', message: 'DeepSeek temporarily unavailable.' },
       attempt_count: 1,
       max_attempts: 3,
       available_at: new Date(Date.now() + 60_000).toISOString(),

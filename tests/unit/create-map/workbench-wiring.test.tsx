@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CreateMapWorkbench } from '@/features/create-map/CreateMapWorkbench';
 import { savedPlanResponseIsCurrent } from '@/features/create-map/DirectMapWorkbench';
 
@@ -113,7 +114,9 @@ describe('Create Map V3 direct workbench', () => {
   });
 
   it('renders the Map Generator shell with browse and plan controls', () => {
-    const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}><CreateMapWorkbench /></QueryClientProvider>
+    );
 
     expect(markup).toContain('data-testid="create-map-workbench"');
     expect(markup).toContain('data-mode="direct"');
@@ -151,6 +154,13 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
     expect(direct).toContain('<MapChatPanel');
+    expect(direct).toContain('chatMessages');
+    expect(direct).toContain('onAsk={(prompt) => void createPlan(prompt)}');
+    expect(direct).toContain('generationHistory={generationHistory}');
+    expect(direct).toContain('mapPlan={draft.identity');
+    expect(direct).toContain('mapImage={workspaceImage');
+    expect(direct).toContain('createMapAgentRefreshKey');
+    expect(direct).toContain('void openSavedMap(target, true)');
     expect(direct).toContain('onAttachFile=');
     expect(direct).toContain('onAttachKecoDocument=');
     expect(direct).toContain('<SelectDocumentModal');
@@ -162,7 +172,8 @@ describe('Create Map V3 direct workbench', () => {
       'utf8'
     );
     expect(css).toContain('grid-template-columns: 300px minmax(0, 1fr)');
-    expect(css).toContain('.chatAttachMenu');
+    expect(css).toContain('.chatPanel');
+    expect(css).toContain('.chatComposer');
   });
 
   it('requires every draft consumer to provide an explicit versioned adapter', () => {

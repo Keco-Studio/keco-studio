@@ -9,7 +9,9 @@ import { sseResponse } from '@/lib/agent/sse';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
 import { verifyDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
-import type { AgentWorkspace, ToolContext } from '@/lib/agent/types';
+import { contextFieldsFromScope } from '@/lib/agent/scope';
+import { workspaceAllowsAccountScope } from '@/lib/agent/workspace';
+import type { ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
 
@@ -22,11 +24,6 @@ export const POST = withAuth(async function POST(
     actionId?: string;
     decision?: 'approve' | 'reject';
     currentDocumentId?: string;
-    currentFolderId?: string;
-    currentFolderName?: string;
-    currentLibraryId?: string;
-    currentLibraryName?: string;
-    workspace?: AgentWorkspace;
     clientCompletedResult?: unknown;
   };
   try {
@@ -56,7 +53,13 @@ export const POST = withAuth(async function POST(
     }
 
     const boundMeta = resolveConversationMeta(conversation.meta);
-    const userRole = await resolveUserRole(supabase, conversation.project_id, user.id);
+    const contextFields = contextFieldsFromScope(boundMeta.scope, conversation.project_id);
+    if (!contextFields.projectId && !workspaceAllowsAccountScope(contextFields.workspace)) {
+      return NextResponse.json({ error: 'Select a project before using Studio.' }, { status: 400 });
+    }
+    const userRole = contextFields.projectId
+      ? await resolveUserRole(supabase, contextFields.projectId, user.id)
+      : undefined;
     if (boundMeta.documentExport && userRole !== 'admin') {
       throw new AgentAccessError('Only admin users can export project content');
     }
@@ -75,26 +78,22 @@ export const POST = withAuth(async function POST(
         return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
       }
     }
-    const currentDocumentContext = await resolveCurrentDocumentContext(
-      supabase,
-      conversation.project_id,
-      typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
-    );
+    const currentDocumentContext = contextFields.projectId
+      ? await resolveCurrentDocumentContext(
+          supabase,
+          contextFields.projectId,
+          typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
+        )
+      : {};
 
     const toolContext: ToolContext = {
       userId: user.id,
-      projectId: conversation.project_id,
       conversationId: conversation.id,
-      currentFolderId: body.currentFolderId,
-      currentFolderName: body.currentFolderName,
-      currentLibraryId: body.currentLibraryId,
-      currentLibraryName: body.currentLibraryName,
       supabase,
       userRole,
       documentExport: boundMeta.documentExport,
+      ...contextFields,
       ...currentDocumentContext,
-      workspace:
-        boundMeta.scope?.workspace ?? (body.workspace === 'script' ? 'script' : 'studio'),
     };
 
     const abortController = new AbortController();
@@ -110,7 +109,7 @@ export const POST = withAuth(async function POST(
             usageBinding: {
               context: {
                 actorUserId: user.id,
-                projectId: conversation.project_id,
+                ...(conversation.project_id ? { projectId: conversation.project_id } : {}),
                 feature: 'agent_chat',
                 operation: 'confirmation_resume',
                 correlationId: `agent_turn:${turnId}`,

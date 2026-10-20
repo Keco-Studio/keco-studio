@@ -44,6 +44,7 @@ type CreateFolderInput = {
   name: string;
   description?: string;
   parentFolderId?: string | null;
+  agentCreate?: { key: string; hash: string };
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -104,6 +105,10 @@ export async function createFolder(
       name,
       description,
       parent_folder_id: parentFolderId,
+      ...(input.agentCreate ? {
+        agent_create_key: input.agentCreate.key,
+        agent_create_hash: input.agentCreate.hash,
+      } : {}),
     })
     .select('id')
     .single();

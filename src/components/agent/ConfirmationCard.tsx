@@ -17,6 +17,8 @@ interface Props {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  generate_gdd: 'Generate GDD',
+  apply_game_design_system: 'Apply Game Design System',
   create_asset: 'Create asset',
   update_asset: 'Update asset',
   delete_asset: 'Delete asset',
@@ -400,6 +402,12 @@ function summarizeChangeParts(
     return { kind: 'pair', from: String(fromValue), to: String(toValue) };
   }
 
+  if ((label === 'Generate GDD' || label === 'Apply Game Design System') &&
+      typeof asRecord.projectId === 'string' && typeof asRecord.designSystemId === 'string' && typeof asRecord.versionId === 'string') {
+    const target = `Project: ${asRecord.projectId}. Game Design System: ${asRecord.designSystemId}. Version: ${asRecord.versionId}.`;
+    return { kind: 'text', text: label === 'Generate GDD' && typeof asRecord.warning === 'string'
+      ? `${target} Mode: ${String(asRecord.mode)}. ${asRecord.warning}` : target };
+  }
   if (typeof asRecord.name === 'string') return { kind: 'text', text: asRecord.name };
   return { kind: 'text', text: `Please confirm: ${label}` };
 }

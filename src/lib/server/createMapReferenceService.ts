@@ -190,19 +190,33 @@ export async function uploadCreateMapReference(
   return referenceRecord(row, null);
 }
 
-export async function listCreateMapReferences(projectId: string): Promise<MapReferenceRecord[]> {
+export async function listCreateMapReferences(
+  projectId: string,
+  page?: { offset: number; limit: number },
+  options?: { includePreviewUrls?: boolean },
+): Promise<MapReferenceRecord[]> {
   const admin = getSupabaseServiceRoleClient();
-  const { data, error } = await admin
+  if (page && (!Number.isSafeInteger(page.offset) || page.offset < 0
+    || !Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 51)) {
+    throw new CreateMapReferenceError('reference_list_failed', 400);
+  }
+  let query = admin
     .from('map_reference_images')
     .select('id, project_id, name, storage_path, sha256, width, height, content_type, byte_size')
     .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
-    .limit(REFERENCE_LIST_LIMIT);
+    .order('created_at', { ascending: false });
+  query = page ? query.order('id', { ascending: false }).range(page.offset, page.offset + page.limit - 1)
+    : query.limit(REFERENCE_LIST_LIMIT);
+  const { data, error } = await query;
   if (error) throw new CreateMapReferenceError('reference_list_failed', 502);
 
   const rows = (data as MapReferenceImageRow[] ?? []);
   if (rows.some((row) => !hasExpectedReferencePath(row, projectId))) {
     throw new CreateMapReferenceError('reference_preview_failed', 502);
+  }
+
+  if (options?.includePreviewUrls === false) {
+    return rows.map((row) => referenceRecord(row, null));
   }
 
   return Promise.all(rows.map(async (row) => {
@@ -214,4 +228,16 @@ export async function listCreateMapReferences(projectId: string): Promise<MapRef
     }
     return referenceRecord(row, signed.signedUrl);
   }));
+}
+
+export async function getCreateMapReference(projectId: string, assetId: string): Promise<MapReferenceRecord | null> {
+  const admin = getSupabaseServiceRoleClient();
+  const { data, error } = await admin.from('map_reference_images')
+    .select('id, project_id, name, storage_path, sha256, width, height, content_type, byte_size')
+    .eq('project_id', projectId).eq('id', assetId).maybeSingle();
+  if (error) throw new CreateMapReferenceError('reference_list_failed', 502);
+  if (!data) return null;
+  const row = data as MapReferenceImageRow;
+  if (!hasExpectedReferencePath(row, projectId)) throw new CreateMapReferenceError('reference_preview_failed', 502);
+  return referenceRecord(row, null);
 }

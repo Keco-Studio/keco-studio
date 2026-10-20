@@ -23,6 +23,14 @@ export type KecoAdminStorageUsage = {
   usedBytes: number;
 };
 
+export type KecoAdministrator = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  avatarUrl: string | null;
+  grantedAt: string | null;
+};
+
 export type KecoAdminUser = KecoAdminUserCreditUsage & {
   id: string;
   email: string | null;

@@ -115,6 +115,21 @@ describe('structured Game Design System generation', () => {
     expect(JSON.stringify(messages)).not.toContain('/game-art-styles/');
   });
 
+  it('bounds large source context before sending a generation request', () => {
+    const messages = buildStructuredGenerationMessages({
+      ...input,
+      pastedMarkdown: 'P'.repeat(20_000),
+      sourceSnapshots: Array.from({ length: 10 }, (_, index) => ({
+        ...input.sourceSnapshots[0],
+        label: `Source ${index}`,
+        excerpt: `${index}:${'S'.repeat(20_000)}`,
+      })),
+    });
+    expect(String(messages[1].content).length).toBeLessThan(45_000);
+    expect(String(messages[1].content)).toContain('Source 0');
+    expect(String(messages[1].content)).toContain('truncated for generation context');
+  });
+
   it('requests Simplified Chinese when the normalized GDS input is Chinese', () => {
     const messages = buildStructuredGenerationMessages({
       ...input,
@@ -175,6 +190,17 @@ describe('structured Game Design System generation', () => {
     expect(result.document.coreLoop).toContain('Scout');
     expect(result.rules.rules[0].id).toBe('readable-state');
     expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds the repair request after a large first response', async () => {
+    const complete = jest.fn(async () => complete.mock.calls.length === 1
+      ? 'X'.repeat(30_000)
+      : JSON.stringify(validOutput));
+    await generateGameDesignSystemOutput({ ...input, pastedMarkdown: 'P'.repeat(30_000) }, complete);
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const repair = (calls[1][0] as ChatMessage[])[1];
+    expect(String(repair.content).length).toBeLessThanOrEqual(40_000);
+    expect(String(repair.content)).toContain('Invalid response:');
   });
 
   it('retains a rules-only compatibility wrapper', async () => {

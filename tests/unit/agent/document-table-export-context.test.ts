@@ -10,6 +10,7 @@ const listProjectLibraries = jest.fn();
 const resolveDocumentLibrarySourceDisplay = jest.fn();
 const addLibraryField = jest.fn();
 const scheduleLibrarySchemaReindex = jest.fn();
+const replayStudioCreate = jest.fn();
 
 jest.mock('@/lib/agent/data-access', () => ({
   createLibraryServer: (...args: unknown[]) => createLibraryServer(...args),
@@ -26,6 +27,10 @@ jest.mock('@/lib/services/libraryAssetsService', () => ({
 }));
 jest.mock('@/lib/agent/embedding-index', () => ({
   scheduleLibrarySchemaReindex: (...args: unknown[]) => scheduleLibrarySchemaReindex(...args),
+}));
+jest.mock('@/lib/agent/studio-create-idempotency-service', () => ({
+  replayStudioCreate: (...args: unknown[]) => replayStudioCreate(...args),
+  studioCreateInputHash: () => 'request-hash',
 }));
 
 import { metaForSave, resolveConversationMeta } from '@/lib/agent/conversation-meta';
@@ -58,6 +63,7 @@ describe('document table export conversation context', () => {
       folderId: FOLDER_ID,
       folderName: 'Design',
     });
+    replayStudioCreate.mockResolvedValue(null);
   });
 
   it('persists and resolves the server-validated binding', () => {
@@ -129,13 +135,14 @@ describe('document table export conversation context', () => {
     if (!prepareConfirmation) return;
 
     const preparation = await prepareConfirmation(
-      { name: 'Locations', folderName: 'LLM supplied folder' },
+      { name: 'Locations', folderName: 'LLM supplied folder',
+        idempotencyKey: '66666666-6666-4666-8666-666666666666' },
       { ...ctx, documentExport }
     );
 
     expect(preparation).toEqual({
       success: true,
-      args: { name: 'Locations' },
+      args: { name: 'Locations', idempotencyKey: '66666666-6666-4666-8666-666666666666' },
       preview: {
         libraryName: 'Locations',
         folderId: FOLDER_ID,
@@ -144,7 +151,8 @@ describe('document table export conversation context', () => {
       },
     });
 
-    const result = await createLibrary.execute({ name: 'Locations', folderName: 'LLM supplied folder' }, {
+    const result = await createLibrary.execute({ name: 'Locations', folderName: 'LLM supplied folder',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666' }, {
       ...ctx,
       documentExport,
     });
@@ -156,7 +164,8 @@ describe('document table export conversation context', () => {
       'Locations',
       FOLDER_ID,
       undefined,
-      documentExport
+      documentExport,
+      { key: '66666666-6666-4666-8666-666666666666', hash: 'request-hash' }
     );
     expect(result.invalidations).toEqual([{
       type: 'library',

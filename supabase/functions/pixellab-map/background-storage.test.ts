@@ -17,6 +17,9 @@ const IDS = {
   generation: "44444444-4444-4444-8444-444444444444",
   source: "55555555-5555-4555-8555-555555555555",
   background: "66666666-6666-4666-8666-666666666666",
+  actor: "77777777-7777-4777-8777-777777777777",
+  reservation: "88888888-8888-4888-8888-888888888888",
+  file: "99999999-9999-4999-8999-999999999999",
 };
 
 function mapPlan() {
@@ -95,6 +98,11 @@ async function fixture(downloadedSource?: Uint8Array) {
       copy.set(bytes);
       return { data: new Blob([copy]), error: null };
     },
+    async remove(paths: string[]) {
+      paths.forEach((path) => objects.delete(path));
+      calls.push({ name: "remove", args: { paths } });
+      return { data: paths, error: null };
+    },
   };
   const client = {
     from() {
@@ -107,6 +115,28 @@ async function fixture(downloadedSource?: Uint8Array) {
     storage: { from() { return bucket; } },
     async rpc(name: string, args: Record<string, unknown>) {
       calls.push({ name, args });
+      if (name === "service_reserve_project_storage_upload_v2") {
+        return { data: {
+          reservationId: IDS.reservation,
+          ownerId: IDS.actor,
+          projectId: IDS.project,
+          expectedBytes: args.p_expected_bytes,
+          reused: false,
+        }, error: null };
+      }
+      if (name === "service_finalize_project_storage_upload_v2") {
+        return { data: {
+          fileId: IDS.file,
+          ownerId: IDS.actor,
+          projectId: IDS.project,
+          sizeBytes: args.p_actual_bytes,
+          reservationId: IDS.reservation,
+          reused: false,
+        }, error: null };
+      }
+      if (name === "service_release_project_storage_upload") {
+        return { data: { reservationId: IDS.reservation, reused: false }, error: null };
+      }
       return { data: [{ status: args.p_next_status }], error: null };
     },
   } as unknown as SupabaseClient;
@@ -114,7 +144,7 @@ async function fixture(downloadedSource?: Uint8Array) {
   const authorized = {
     userClient: client,
     serviceClient: client,
-    userId: "user",
+    userId: IDS.actor,
     projectId: IDS.project,
     mapId: IDS.map,
     revisionId: IDS.revision,

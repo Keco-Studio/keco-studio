@@ -29,6 +29,7 @@ import lightningIcon from '@/assets/images/simulator/ilightning.svg';
 import lightningActiveIcon from '@/assets/images/simulator/lightning-active.svg';
 import mapPlanIcon from '@/assets/images/simulator/map-plan.svg';
 import mapPlanActiveIcon from '@/assets/images/simulator/map-plan-active.svg';
+import botIcon from '@/assets/images/bot.svg';
 import styles from './LeftNav.module.css';
 
 function IconGrid({ active }: { active: boolean }) {
@@ -132,7 +133,14 @@ function IconExpand() {
   );
 }
 
-export function LeftNav({ userId }: { userId?: string }) {
+type LeftNavProps = {
+  userId?: string;
+  assistantAvailable?: boolean;
+  assistantOpen?: boolean;
+  onAssistantToggle?: () => void;
+};
+
+export function LeftNav({ userId, assistantAvailable = false, assistantOpen = false, onAssistantToggle }: LeftNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -307,6 +315,22 @@ export function LeftNav({ userId }: { userId?: string }) {
         </button>
       </div>
       <div className={styles.footer}>
+        {assistantAvailable && (
+          <button
+            type="button"
+            className={`${styles.item} ${assistantOpen ? styles.itemActive : ''}`}
+            aria-label="Keco Assistant"
+            aria-pressed={assistantOpen}
+            data-testid="agent-launcher"
+            title="Keco Assistant"
+            onClick={onAssistantToggle}
+          >
+            <span className={`${styles.iconWrap} ${styles.assistantIconWrap}`}>
+              <Image src={botIcon} alt="" width={32} height={32} aria-hidden="true" />
+            </span>
+            <span className={styles.label}>AI</span>
+          </button>
+        )}
         <button
           type="button"
           className={styles.collapseButton}

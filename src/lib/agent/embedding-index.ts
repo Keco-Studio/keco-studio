@@ -40,7 +40,7 @@ const MIN_CHAT_CHUNK_CHARS = 20;
 const LIBRARY_REINDEX_DEBOUNCE_MS = 2000;
 
 interface ChunkUpsertRow {
-  project_id: string;
+  project_id: string | null;
   user_id: string | null;
   source_type: 'chat_message' | 'library_cell' | 'library_row' | 'library_schema' | 'design_document' | 'project_document';
   source_id: string;
@@ -140,7 +140,7 @@ export async function loadIndexableChatMessages(
 async function indexChatTurnGroup(
   supabase: SupabaseClient,
   params: {
-    projectId: string;
+    projectId: string | null;
     userId: string;
     conversationId: string;
     group: ChatTurnGroup;
@@ -195,7 +195,7 @@ async function indexChatTurnGroup(
 
 export async function reindexConversationTail(
   supabase: SupabaseClient,
-  params: { conversationId: string; projectId: string; userId: string; usageBinding?: AiUsageBinding }
+  params: { conversationId: string; projectId: string | null; userId: string; usageBinding?: AiUsageBinding }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED) return;
   if (isEmbeddingInCooldown()) {
@@ -272,7 +272,7 @@ export async function reindexConversationTail(
 
 export function scheduleConversationTailReindex(
   supabase: SupabaseClient,
-  params: { conversationId: string; projectId: string; userId: string; usageBinding?: AiUsageBinding }
+  params: { conversationId: string; projectId: string | null; userId: string; usageBinding?: AiUsageBinding }
 ): void {
   if (!AGENT_INDEXING_ENABLED) return;
   const key = params.conversationId;
@@ -925,7 +925,7 @@ export function triggerConversationIndexing(
   supabase: SupabaseClient,
   params: {
     conversationId: string;
-    projectId: string;
+    projectId: string | null;
     userId: string;
     role: string;
     messageText?: string;
@@ -944,6 +944,7 @@ export function triggerConversationIndexing(
     });
   }
   if (
+    params.projectId !== null &&
     params.role === 'user' &&
     params.messageText &&
     params.messageId &&

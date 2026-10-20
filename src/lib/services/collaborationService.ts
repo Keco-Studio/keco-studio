@@ -186,9 +186,21 @@ export async function sendInvitation(
       console.log('[sendInvitation] Invitation email sent successfully to', recipientEmail);
     } catch (emailError) {
       console.error('Error sending invitation email:', emailError);
+      const { error: cleanupError } = await supabase
+        .from('collaboration_invitations')
+        .delete()
+        .eq('id', invitation.id)
+        .eq('project_id', projectId);
+      if (cleanupError) {
+        console.error('Failed to clean up undelivered invitation:', cleanupError);
+        throw new CollaborationServiceError(
+          'EMAIL_DELIVERY_FAILED',
+          'Invitation email failed and the pending invitation could not be removed. Ask a project admin to review it before retrying.'
+        );
+      }
       throw new CollaborationServiceError(
         'EMAIL_DELIVERY_FAILED',
-        'Invitation created but email failed to send. Please try resending.'
+        'Invitation email failed to send. Please try again.'
       );
     }
 

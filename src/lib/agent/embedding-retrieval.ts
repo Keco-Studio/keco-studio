@@ -251,7 +251,7 @@ export { AGENT_RETRIEVAL_MIN_SCORE, AGENT_RETRIEVAL_MAX_CHARS, SCOPE_QUOTAS };
 export interface RetrieveChunksParams {
   supabase: SupabaseClient;
   queryEmbedding: number[];
-  projectId: string;
+  projectId?: string;
   userId: string;
   conversationId: string;
   scopeQuotas?: Record<RetrievalScope, number>;
@@ -277,7 +277,7 @@ async function fetchScopeCandidates(
 ): Promise<RetrievalCandidate[]> {
   const { data, error } = await supabase.rpc('match_agent_embedding_chunks', {
     p_query_embedding: params.queryEmbedding,
-    p_project_id: params.projectId,
+    p_project_id: params.projectId || null,
     p_user_id: params.userId,
     p_conversation_id: params.conversationId,
     p_scope: scope,
@@ -304,20 +304,20 @@ export async function retrieveRelevantChunks(
   params: RetrieveChunksParams
 ): Promise<RankedRetrievalCandidate[]> {
   const quotas = params.scopeQuotas ?? SCOPE_QUOTAS;
-  const scopes = params.scopes ?? (Object.keys(quotas) as RetrievalScope[]);
-  const candidates: RetrievalCandidate[] = [];
-
-  for (const scope of scopes) {
-    const quota = quotas[scope] ?? 0;
-    if (quota <= 0) continue;
-    const scopeCandidates = await fetchScopeCandidates(
-      params.supabase,
-      params,
-      scope,
-      quota * 2
-    );
-    candidates.push(...scopeCandidates);
-  }
+  const scopes: RetrievalScope[] = params.projectId
+    ? params.scopes ?? (Object.keys(quotas) as RetrievalScope[])
+    : ['chat_same_conversation'];
+  const batches = await Promise.all(
+    scopes
+      .filter((scope) => (quotas[scope] ?? 0) > 0)
+      .map((scope) => fetchScopeCandidates(
+        params.supabase,
+        params,
+        scope,
+        (quotas[scope] ?? 0) * 2,
+      )),
+  );
+  const candidates = batches.flat();
 
   const ranked = rankCandidates(candidates);
   const quotaApplied = applyScopeQuotas(ranked, quotas);

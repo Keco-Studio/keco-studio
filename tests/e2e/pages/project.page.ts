@@ -66,7 +66,7 @@ export class ProjectPage {
   async goto(): Promise<void> {
     await this.page.goto('/projects', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    // /projects may auto-redirect into the first project's Recent page when projects exist.
+    // Projects stays at account scope even when the selector contains existing projects.
     await expect(
       this.page
         .getByTestId('project-selector-trigger')
@@ -80,7 +80,7 @@ export class ProjectPage {
     const selectorTrigger = this.page.getByTestId('project-selector-trigger');
     const selectorCreate = this.page.getByTestId('project-selector-create');
 
-    // Prefer the compact project selector (available after /projects auto-redirects to Recent).
+    // Prefer the compact project selector, also available in the account workspace.
     if (await selectorTrigger.isVisible({ timeout: 5000 }).catch(() => false)) {
       await selectorTrigger.click();
       await expect(selectorCreate).toBeVisible({ timeout: 10000 });
