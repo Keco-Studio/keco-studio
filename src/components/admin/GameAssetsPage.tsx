@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { App, Button, Spin } from 'antd';
+import { App, Button, Modal, Spin } from 'antd';
 import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
@@ -228,7 +228,6 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   }, [contextAsset]);
 
   const removeAsset = useCallback(async (asset: ProjectGameAsset) => {
-    if (!window.confirm(`Remove "${asset.name}" from this project's Assets library? This does not delete the original resource.`)) return;
     try {
       const response = await fetch(`/api/projects/${projectId}/game-assets`, {
         method: 'DELETE',
@@ -246,6 +245,18 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
       message.error("Couldn't remove asset");
     }
   }, [message, projectId, queryClient]);
+
+  const confirmRemoveAsset = useCallback((asset: ProjectGameAsset) => {
+    Modal.confirm({
+      title: 'Confirm deletion',
+      content: `Remove "${asset.name}" from this project's Assets library? This does not delete the original resource.`,
+      okText: 'Delete',
+      cancelText: 'Cancel',
+      okButtonProps: { danger: true },
+      onOk: () => removeAsset(asset),
+      onCancel: () => undefined,
+    });
+  }, [removeAsset]);
 
   const selectedPreview = useMemo(() => {
     if (!selected) return null;
@@ -309,7 +320,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                 onClick={() => {
                   const asset = contextAsset.asset;
                   setContextAsset(null);
-                  void removeAsset(asset);
+                  confirmRemoveAsset(asset);
                 }}
               >
                 Delete
