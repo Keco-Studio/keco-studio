@@ -23,6 +23,7 @@ export type RealtimeSubscriptionConfig = {
   onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
   onReconnect?: () => void | Promise<void>;
   onVersionChange?: (payload: any) => void;
+  onSchemaChange?: () => void;
 };
 
 export type ConnectionStatus =

@@ -144,11 +144,17 @@ export function useLibraryBroadcasts(
     await sendLibraryBroadcast(channel, 'roworder:change', event);
   }, [currentUserId, currentUserName, runtime.channelRef]);
 
+  const broadcastSchemaChange = useCallback(async () => {
+    const channel = runtime.channelRef.current;
+    if (channel) await sendLibraryBroadcast(channel, 'schema:change', { userId: currentUserId });
+  }, [currentUserId, runtime.channelRef]);
+
   return {
     broadcastCellUpdate,
     broadcastAssetCreate,
     broadcastAssetDelete,
     broadcastCellsBatchUpdate,
     broadcastRowOrderChange,
+    broadcastSchemaChange,
   };
 }

@@ -10,10 +10,11 @@ describe('agent turn budget core wiring', () => {
     expect(coreSource).not.toMatch(/maxTokens\s*:/);
   });
 
-  it('checks the per-turn token budget between ReAct iterations', () => {
+  it('checks the per-turn token budget only when a deployment configures one', () => {
     expect(coreSource).toContain('isOverTokenBudget');
     expect(coreSource).toContain('tokenBudgetExceededMessage');
     expect(coreSource).toContain('addTokenUsageTotal');
+    expect(coreSource).toMatch(/AGENT_TURN_TOKEN_BUDGET\s*!==\s*undefined/);
   });
 
   it('checks a fresh wall-clock deadline for new and resumed turns', () => {

@@ -6,6 +6,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RowContextMenu } from '@/components/libraries/components/RowContextMenu';
 import { TableHeader } from '@/components/libraries/components/TableHeader';
+import { DndContext } from '@dnd-kit/core';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
@@ -102,5 +103,22 @@ describe('table column actions', () => {
     fireEvent.click(within(menu!).getByRole('button', { name: 'Insert column right' }));
 
     expect(onInsertColumnRight).toHaveBeenCalledWith('field-1');
+  });
+
+  it('only exposes a draggable column header when reordering is enabled', () => {
+    const property = {
+      id: 'field-1', key: 'field-1', name: 'Name', valueType: 'string' as const,
+      dataType: 'string' as const, orderIndex: 0,
+    };
+    const { container, rerender } = render(
+      <table><TableHeader properties={[property]} allRowsSelected={false}
+        hasSomeRowsSelected={false} onToggleSelectAll={() => undefined} /></table>,
+    );
+    expect(container.querySelector('[data-reorder-handle="column"]')).toBeNull();
+    rerender(
+      <DndContext><table><TableHeader properties={[property]} allRowsSelected={false}
+        hasSomeRowsSelected={false} onToggleSelectAll={() => undefined} canReorder /></table></DndContext>,
+    );
+    expect(container.querySelector('[data-reorder-handle="column"]')).not.toBeNull();
   });
 });

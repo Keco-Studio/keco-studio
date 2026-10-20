@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image';
 import { Checkbox } from 'antd';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { type DragEndEvent, type DragMoveEvent, type DragOverEvent, useDndMonitor } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getFirstUserColor } from '@/components/collaboration/StackedAvatars';
@@ -24,6 +26,7 @@ import styles from '../LibraryAssetsTable.module.css';
 import type { TableIndexes } from '../utils/tableIndexes';
 import type { TableCellScrollTarget } from '../hooks/useLibraryTableFindReplaceWiring';
 import { showErrorToast } from '@/lib/utils/toast';
+import { type DropEdge } from '../utils/tableReorder';
 
 const REFERENCED_ROW_HIGHLIGHT_MS = 2_000;
 const REFERENCED_ROW_TIMEOUT_MS = 5_000;
@@ -144,7 +147,45 @@ type LibraryAssetsTableBodyProps = {
   handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
   handleAddRowDirect: () => void;
+  canReorder?: boolean;
+  onReorderRows?: (activeId: string, overId: string, edge: DropEdge) => void;
 };
+
+function getRowDropEdge(event: DragMoveEvent | DragOverEvent | DragEndEvent): DropEdge {
+  const translated = event.active.rect.current.translated;
+  const overRect = event.over?.rect;
+  if (!translated || !overRect) return 'before';
+  return translated.top + translated.height / 2 < overRect.top + overRect.height / 2
+    ? 'before'
+    : 'after';
+}
+
+function SortableRowNumberCell({
+  rowId,
+  disabled,
+  children,
+}: {
+  rowId: string;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+    id: `row:${rowId}`,
+    disabled,
+  });
+  return (
+    <td
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      data-reorder-handle={disabled ? undefined : 'row'}
+      aria-label={disabled ? undefined : 'Drag row to reorder'}
+      className={`${styles.numberCell} ${disabled ? '' : styles.rowDragHandle} ${isDragging ? styles.rowDragging : ''}`}
+    >
+      {children}
+    </td>
+  );
+}
 
 function findVerticalScrollElement(element: HTMLElement): HTMLElement | null {
   let parent = element.parentElement;
@@ -229,6 +270,8 @@ export function LibraryAssetsTableBody({
   handleSaveEditedCell,
   handleCancelEditing,
   handleAddRowDirect,
+  canReorder = false,
+  onReorderRows,
 }: LibraryAssetsTableBodyProps) {
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -274,6 +317,30 @@ export function LibraryAssetsTableBody({
   const [highlightedReferencedAssetId, setHighlightedReferencedAssetId] = useState<string | null>(
     null
   );
+  const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
+  const updateRowDropTarget = useCallback((event: DragMoveEvent | DragOverEvent) => {
+      if (!String(event.active.id).startsWith('row:') || !event.over || !String(event.over.id).startsWith('row:') || event.active.id === event.over.id) {
+        setDropTarget(null);
+        return;
+      }
+      setDropTarget({ id: String(event.over.id).slice(4), edge: getRowDropEdge(event) });
+  }, []);
+  useDndMonitor({
+    onDragMove: updateRowDropTarget,
+    onDragOver: updateRowDropTarget,
+    onDragCancel() {
+      setDropTarget(null);
+    },
+    onDragEnd(event) {
+      const activeId = String(event.active.id);
+      const overId = event.over && String(event.over.id).startsWith('row:') ? String(event.over.id).slice(4) : null;
+      const edge = getRowDropEdge(event);
+      setDropTarget(null);
+      if (activeId.startsWith('row:') && overId && activeId.slice(4) !== overId) {
+        onReorderRows?.(activeId.slice(4), overId, edge);
+      }
+    },
+  });
   const referencedScrollRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -372,7 +439,7 @@ export function LibraryAssetsTableBody({
             data-index={virtualRow.index}
             key={row.id}
             data-row-id={row.id}
-            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${isReferencedRow ? styles.referencedRowHighlight : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''} ${expandedTextCell?.rowId === row.id || editingCell?.rowId === row.id ? styles.rowTextExpanded : ''}`}
+            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${isReferencedRow ? styles.referencedRowHighlight : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''} ${expandedTextCell?.rowId === row.id || editingCell?.rowId === row.id ? styles.rowTextExpanded : ''} ${dropTarget?.id === row.id && dropTarget.edge === 'before' ? styles.rowDropBefore : ''} ${dropTarget?.id === row.id && dropTarget.edge === 'after' ? styles.rowDropAfter : ''}`}
             style={getRowHeightStyle(row.id)}
             onContextMenu={(event) => {
               onRowContextMenu(event, row);
@@ -380,7 +447,7 @@ export function LibraryAssetsTableBody({
             onMouseEnter={() => setHoveredRowId(row.id)}
             onMouseLeave={() => setHoveredRowId(null)}
           >
-            <td className={styles.numberCell}>
+            <SortableRowNumberCell rowId={row.id} disabled={!canReorder}>
               {isRowHovered || isRowSelected ? (
                 <div className={styles.checkboxContainer}>
                   <Checkbox
@@ -392,6 +459,7 @@ export function LibraryAssetsTableBody({
                     onClick={(event) => {
                       event.stopPropagation();
                     }}
+                    onPointerDown={(event) => event.stopPropagation()}
                   />
                 </div>
               ) : (
@@ -410,8 +478,9 @@ export function LibraryAssetsTableBody({
                     startRowResize(row.id, event.clientY, tableRow);
                   }
                 }}
+                onPointerDown={(event) => event.stopPropagation()}
               />
-            </td>
+            </SortableRowNumberCell>
             {activeProperties.map((property) => {
               const globalPropertyIndex = tableIndexes.propertyIndexByKey.get(property.key) ?? -1;
               const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;

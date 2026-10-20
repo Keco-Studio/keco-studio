@@ -848,22 +848,11 @@ async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
   await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
-  await savePlan(page, 1);
+  await expect(page.getByRole('button', { name: 'Save plan', exact: true })).toHaveCount(0);
 }
 
-async function savePlan(page: Page, expectedVersion?: number): Promise<void> {
-  await page.getByRole('button', { name: 'Save plan', exact: true }).click();
-  const inspector = page.getByRole('heading', { name: 'Map plan details' }).locator('..');
-  if (expectedVersion == null) {
-    await expect(inspector).not.toContainText('Draft');
-  } else {
-    await expect(inspector).toContainText(`Plan V${expectedVersion}`);
-  }
-}
-
-async function editAndSavePlan(page: Page, version: number): Promise<void> {
+async function editPlan(page: Page, version: number): Promise<void> {
   await page.getByLabel('PixelLab description').fill(`An opaque map Plan ${version}.`);
-  await savePlan(page, version);
 }
 
 async function openMapHistory(page: Page, mapVersion: string): Promise<void> {
@@ -1063,7 +1052,6 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByLabel('PixelLab description').fill(exactDescription);
     await expect.poll(() => backend.maps.get(MAP_ID)?.revisions.get(backend.maps.get(MAP_ID)?.currentRevisionId ?? '')?.plan.description)
       .toBe(exactDescription);
-    await savePlan(page);
     await generateReadyMap(page);
     const conversation = page.getByRole('region', { name: 'Map conversation' });
     await expect(conversation.getByRole('link', { name: 'Download map' })).toBeVisible();
@@ -1098,24 +1086,29 @@ test.describe('Create Map V3 mocked workflow', () => {
     expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
   });
 
-  test('keeps Map V1 bound to Plan V1 after later saved plans', async ({ page }) => {
+  test('keeps Map V1 bound to Plan V1 after later generations', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     await askForMapPlan(page, 'A quiet top-down village market with open paths.');
-    await savePlan(page, 1); // Plan V1
     await generateReadyMap(page); // Map V1 -> Plan V1
     await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Draft');
-    await editAndSavePlan(page, 2);
-    await editAndSavePlan(page, 3);
+    await editPlan(page, 2);
+    await generateReadyMap(page); // Map V2 -> Plan V2
+    await editPlan(page, 3);
+    await generateReadyMap(page); // Map V3 -> Plan V3
 
     await openMapHistory(page, 'MAP V1');
     await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Plan V1');
 
-    expect(backend.readyAssets()).toHaveLength(1);
+    expect(backend.readyAssets()).toHaveLength(3);
     expect(backend.planVersionsForMap(MAP_ID)).toHaveLength(3);
-    expect(backend.mapVersionBindings(MAP_ID)).toEqual([{ mapVersionNumber: 1, planVersionNumber: 1 }]);
+    expect(backend.mapVersionBindings(MAP_ID)).toEqual([
+      { mapVersionNumber: 1, planVersionNumber: 1 },
+      { mapVersionNumber: 2, planVersionNumber: 2 },
+      { mapVersionNumber: 3, planVersionNumber: 3 },
+    ]);
   });
 
   test('surfaces technical validation failure and retries the same immutable asset', async ({ page }) => {
@@ -1179,7 +1172,6 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
-    await savePlan(page);
     const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
     await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
     await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();

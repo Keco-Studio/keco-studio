@@ -143,6 +143,7 @@ function setup(
     draftRevisionId: '10000000-0000-4000-8000-000000000030',
     draftSaveVersion: 0,
   },
+  ensureSavedPlan = jest.fn(async () => savedPlanSelection),
 ) {
   runtime = new HookRuntime();
   let generationId = '';
@@ -207,9 +208,10 @@ function setup(
       reloadDraftAfterPreparation: async () => null,
       onSceneMaterialized: jest.fn(),
       savedPlanSelection,
+      ensureSavedPlan,
     } as never);
   });
-  return { get latest() { return latest; }, render };
+  return { get latest() { return latest; }, render, ensureSavedPlan };
 }
 
 beforeEach(() => {
@@ -218,16 +220,28 @@ beforeEach(() => {
 });
 
 describe('useDirectMapGeneration preparation guards', () => {
-  it('requires a saved current Plan version before preparation', async () => {
+  it('automatically creates the current Plan snapshot before preparation', async () => {
+    const savedPlan = {
+      id: 'plan-v2',
+      versionNumber: 2,
+      draftRevisionId: '10000000-0000-4000-8000-000000000030',
+      draftSaveVersion: 1,
+    };
+    const ensureSavedPlan = jest.fn(async () => savedPlan);
     const state = setup(jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',
       publishedRevisionId: '10000000-0000-4000-8000-000000000030',
       saveVersion: 0,
-    })), null);
+    })), null, ensureSavedPlan);
     state.render();
 
-    await expect(state.latest.prepare()).rejects.toThrow('Save the current Plan version before generating.');
-    expect(mockService.prepareMapGeneration).not.toHaveBeenCalled();
+    await state.latest.prepare();
+
+    expect(ensureSavedPlan).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      planVersionId: 'plan-v2',
+      saveVersion: 1,
+    }));
   });
 
   it('prepares and submits exactly once through the confirmed App route', async () => {
@@ -252,6 +266,36 @@ describe('useDirectMapGeneration preparation guards', () => {
     expect(publish).not.toHaveBeenCalled();
     expect(mockService.createAssetPlanV3).not.toHaveBeenCalled();
     expect(mockService.invokePixelLab).not.toHaveBeenCalledWith(expect.objectContaining({ operation: 'submit' }));
+  });
+
+  it('creates one automatic Plan snapshot when preparation is requested concurrently', async () => {
+    const pendingPlan = deferred<{
+      id: string;
+      versionNumber: number;
+      draftRevisionId: string;
+      draftSaveVersion: number;
+    } | null>();
+    const ensureSavedPlan = jest.fn(() => pendingPlan.promise);
+    const state = setup(jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
+    })), null, ensureSavedPlan);
+    state.render();
+
+    const first = state.latest.prepare();
+    const second = state.latest.prepare();
+    await waitForMockCalls(ensureSavedPlan, 1);
+    pendingPlan.resolve({
+      id: 'plan-v1',
+      versionNumber: 1,
+      draftRevisionId: '10000000-0000-4000-8000-000000000030',
+      draftSaveVersion: 0,
+    });
+    await Promise.all([first, second]);
+
+    expect(ensureSavedPlan).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
   });
 
   it('atomically prepares one asset plan when prepare is called twice concurrently', async () => {

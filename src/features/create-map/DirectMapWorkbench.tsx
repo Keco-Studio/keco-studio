@@ -149,14 +149,50 @@ export function DirectMapWorkbench() {
   currentDraft.current = { identity: draft.identity, payloadKey: draftPayloadKey };
   const hasCurrentSavedPlan = savedPlanSelectionIsCurrent(savedPlanSelection, draft.identity)
     && savedPlanPayloadKey.current === draftPayloadKey;
+  const saveCurrentPlan = useCallback(async (): Promise<SavedPlanSelection | null> => {
+    if (readOnly || historicalWorkspace || planSaveActive.current) return null;
+    planSaveActive.current = true;
+    const requestEpoch = ++planSaveEpoch.current;
+    const requestPayloadKey = draftPayloadKey;
+    setError(null);
+    setPlanSavePending(true);
+    try {
+      const settledDraft = await draft.saveNow();
+      if (!settledDraft) return null;
+      const saved = await service.savePlanV3(settledDraft, plan);
+      const latest = currentDraft.current;
+      if (requestEpoch !== planSaveEpoch.current
+        || !savedPlanResponseIsCurrent(requestPayloadKey, settledDraft, saved, latest)) return null;
+      savedPlanPayloadKey.current = requestPayloadKey;
+      const selection = {
+        id: saved.id,
+        versionNumber: saved.versionNumber,
+        draftRevisionId: saved.draftRevisionId,
+        draftSaveVersion: saved.draftSaveVersion,
+      };
+      setSavedPlanSelection(selection);
+      return selection;
+    } catch (cause) {
+      if (requestEpoch === planSaveEpoch.current) {
+        setError(cause instanceof Error ? cause.message : 'Could not save the map Plan.');
+      }
+      return null;
+    } finally {
+      if (requestEpoch === planSaveEpoch.current) {
+        planSaveActive.current = false;
+        setPlanSavePending(false);
+      }
+    }
+  }, [draft, draftPayloadKey, historicalWorkspace, plan, readOnly, service]);
   const mapGenerationHistory = useMapGenerationHistory(draft.identity?.mapId ?? null);
   const generation = useDirectMapGeneration({
     projectId,
     plan,
     scene,
-    canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty && draft.isValid && hasCurrentSavedPlan,
+    canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty && draft.isValid,
     draftIdentity: draft.identity,
     savedPlanSelection: hasCurrentSavedPlan ? savedPlanSelection : null,
+    ensureSavedPlan: saveCurrentPlan,
     reloadDraftAfterPreparation: draft.reload,
     onSceneMaterialized: setScene,
   });
@@ -165,7 +201,7 @@ export function DirectMapWorkbench() {
     || generation.phase === 'preparing' || generation.phase === 'submitting';
   const mapSwitchBlocked = savedMapSwitchBlocked(draft);
   const canGenerate = !readOnly && !historicalWorkspace && Boolean(draft.identity) && validation.success && draft.isValid
-    && !draft.isDirty && draft.status === 'saved' && hasCurrentSavedPlan && !busy;
+    && !draft.isDirty && draft.status === 'saved' && !busy;
   const historicalReadOnly = Boolean(historicalWorkspace);
   const workspaceReadOnly = readOnly || historicalReadOnly;
 
@@ -240,39 +276,6 @@ export function DirectMapWorkbench() {
     }
     setPlan(nextPlan);
   }, [generation, historicalWorkspace, scene.size.height, scene.size.width]);
-
-  const savePlan = useCallback(async () => {
-    if (readOnly || historicalWorkspace || busy || planSaveActive.current) return;
-    planSaveActive.current = true;
-    const requestEpoch = ++planSaveEpoch.current;
-    const requestPayloadKey = draftPayloadKey;
-    setError(null);
-    setPlanSavePending(true);
-    try {
-      const settledDraft = await draft.saveNow();
-      if (!settledDraft) return;
-      const saved = await service.savePlanV3(settledDraft, plan);
-      const latest = currentDraft.current;
-      if (requestEpoch !== planSaveEpoch.current
-        || !savedPlanResponseIsCurrent(requestPayloadKey, settledDraft, saved, latest)) return;
-      savedPlanPayloadKey.current = requestPayloadKey;
-      setSavedPlanSelection({
-        id: saved.id,
-        versionNumber: saved.versionNumber,
-        draftRevisionId: saved.draftRevisionId,
-        draftSaveVersion: saved.draftSaveVersion,
-      });
-    } catch (cause) {
-      if (requestEpoch === planSaveEpoch.current) {
-        setError(cause instanceof Error ? cause.message : 'Could not save the map Plan.');
-      }
-    } finally {
-      if (requestEpoch === planSaveEpoch.current) {
-        planSaveActive.current = false;
-        setPlanSavePending(false);
-      }
-    }
-  }, [busy, draft, draftPayloadKey, historicalWorkspace, plan, readOnly, service]);
 
   const handleProjectChange = (nextProjectId: string) => {
     if (nextProjectId === projectId) return;
@@ -689,7 +692,6 @@ export function DirectMapWorkbench() {
             plan={workspacePlan}
             issues={workspaceIssues}
             onChange={changePlan}
-            onSavePlan={() => void savePlan()}
             disabled={busy || workspaceReadOnly}
             onClose={() => {
               setPlanDetailsOpen(false);

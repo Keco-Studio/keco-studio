@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Tooltip, App } from 'antd';
@@ -446,8 +447,15 @@ export function MediaFileUpload({
       )}
 
       {/* Image Preview Modal */}
-      {showImagePreview && value && isImageFile(value.fileType) && (
-        <div className={styles.modalOverlay} onClick={() => setShowImagePreview(false)}>
+      {showImagePreview && value && isImageFile(value.fileType) && typeof document !== 'undefined'
+        ? createPortal(
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label={value.fileName}
+          onClick={() => setShowImagePreview(false)}
+        >
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <Tooltip title={value.fileName} placement="topLeft" mouseEnterDelay={0.5}>
@@ -489,8 +497,9 @@ export function MediaFileUpload({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  AGENT_TURN_TOKEN_BUDGET,
   addTokenUsageTotal,
   compactLargeUserContentInMessages,
   createTurnDeadline,
@@ -11,6 +12,10 @@ import {
 import type { ChatMessage } from '../../../src/lib/agent/types';
 
 describe('agent turn budget helpers', () => {
+  it('does not impose a cumulative token limit unless the deployment configures one', () => {
+    expect(AGENT_TURN_TOKEN_BUDGET).toBeUndefined();
+  });
+
   it('calculates token usage from provider totals or prompt/completion fallback', () => {
     expect(tokenUsageTotal({ total_tokens: 42, prompt_tokens: 20, completion_tokens: 22 })).toBe(42);
     expect(tokenUsageTotal({ prompt_tokens: 20, completion_tokens: 22 })).toBe(42);

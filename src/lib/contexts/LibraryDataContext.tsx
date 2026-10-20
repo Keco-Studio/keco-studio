@@ -23,7 +23,7 @@ import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useR
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { PresenceState } from '@/lib/types/collaboration';
-import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
+import { getLibraryAssetsWithProperties, normalizeRowIndices } from '@/lib/services/libraryAssetsService';
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
 import {
@@ -36,7 +36,7 @@ import { runLatestLibraryHydration } from '@/lib/library/loadInitialLibraryData'
 import { useLibraryAssetMutations } from '@/components/libraries/hooks/useLibraryAssetMutations';
 import { useLibraryRealtimeHandlers } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { invalidateLibraryAssetsData, invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { LIBRARY_RECONCILE_EVENT } from '@/lib/realtime/cell-replacement-broadcast';
 
 interface LibraryDataContextValue {
@@ -50,6 +50,8 @@ interface LibraryDataContextValue {
   updateAssetName: (assetId: string, newName: string, options?: { skipBroadcast?: boolean }) => Promise<void>;
   createAsset: (name: string, propertyValues: Record<string, any>, options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<string>;
   deleteAsset: (assetId: string) => Promise<void>;
+  reorderRows: (orderedRows: Array<{ id: string }>) => Promise<void>;
+  broadcastSchemaChange: () => Promise<void>;
   refreshAssetsFromServer: () => Promise<void>;
   applySnapshot: (snapshotData: LibrarySnapshotData) => void;
   invalidateFormulaFieldMeta: () => void;
@@ -81,6 +83,8 @@ type LibraryActionsContextValue = Pick<
   | 'updateAssetName'
   | 'createAsset'
   | 'deleteAsset'
+  | 'reorderRows'
+  | 'broadcastSchemaChange'
   | 'refreshAssetsFromServer'
   | 'applySnapshot'
   | 'invalidateFormulaFieldMeta'
@@ -223,6 +227,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [libraryId, loadInitialData, queryClient]);
 
   // Initialize realtime subscription
+  const handleSchemaChange = useCallback(() => {
+    void invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+  }, [libraryId, queryClient]);
   const realtimeConfig = useMemo(() => ({
       libraryId: profileUserId ? libraryId : '',
       currentUserId: profileUserId ?? '',
@@ -237,11 +244,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
       onReconnect: loadInitialData,
       onVersionChange: handleVersionChange,
-  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange]);
+      onSchemaChange: handleSchemaChange,
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange, handleSchemaChange]);
 
   const realtimeSubscription = useRealtimeSubscription(realtimeConfig);
 
-  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange } =
+  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange, broadcastSchemaChange } =
     realtimeSubscription;
 
   // Presence tracking - use useMemo to avoid recreating config on every render
@@ -281,6 +289,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       broadcastRowOrderChange,
     },
   });
+
+  const reorderRows = useCallback(async (orderedRows: Array<{ id: string }>) => {
+    await normalizeRowIndices(supabase, libraryId, orderedRows);
+    assetStore.transact(() => {
+      orderedRows.forEach(({ id }, index) => {
+        const asset = assetStore.get(id);
+        if (asset) assetStore.set({ ...asset, rowIndex: index + 1 });
+      });
+    });
+    await broadcastRowOrderChange({
+      insertedRows: [],
+      rowIndexUpdates: orderedRows.map(({ id }, index) => ({ assetId: id, rowIndex: index + 1 })),
+    });
+    await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: false });
+  }, [assetStore, broadcastRowOrderChange, libraryId, queryClient, supabase]);
 
   const refreshAssetsFromServer = useCallback(async () => {
     await loadInitialData();
@@ -329,6 +352,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     updateAssetName,
     createAsset,
     deleteAsset,
+    reorderRows,
+    broadcastSchemaChange,
     refreshAssetsFromServer,
     applySnapshot: applySnapshotToStore,
     invalidateFormulaFieldMeta,
@@ -340,6 +365,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     applySnapshotToStore,
     createAsset,
     deleteAsset,
+    reorderRows,
+    broadcastSchemaChange,
     getAsset,
     getUsersEditingField,
     invalidateFormulaFieldMeta,

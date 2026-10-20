@@ -348,6 +348,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   return (
     <LibraryAssetsTable
       {...restProps}
+      isVersionPreview={overrideRows != null}
       rows={rows}
       onSaveAsset={handleSaveAsset}
       onUpdateAsset={handleUpdateAsset}
