@@ -27,14 +27,7 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({ useSavedMaps: () 
   savedMapSwitchBlocked: (state: { isDirty: boolean }) => state.isDirty }));
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({ createMapDraftAdapterV3: () => ({}), useMapDraft: () => mockDraft }));
 jest.mock('@/features/create-map/hooks/useMapGenerationHistory', () => ({ useMapGenerationHistory: () => mockHistory }));
-jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
-  savedPlanSelectionIsCurrent: (selection: { draftRevisionId: string; draftSaveVersion: number } | null, identity: { revisionId: string; saveVersion: number } | null) => Boolean(
-    selection && identity
-    && selection.draftRevisionId === identity.revisionId
-    && selection.draftSaveVersion === identity.saveVersion,
-  ),
-  useDirectMapGeneration: () => mockGeneration,
-}));
+jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({ useDirectMapGeneration: () => mockGeneration }));
 jest.mock('@/features/create-map/hooks/useDirectMapCollisionGrid', () => ({ useDirectMapCollisionGrid: () => ({}) }));
 jest.mock('@/features/create-map/components/DirectMapCanvas', () => ({ DirectMapCanvas: () => <div data-testid="map-canvas" /> }));
 jest.mock('@/features/create-map/components/DirectMapPlanInspector', () => ({ DirectMapPlanInspector: () => <div /> }));

@@ -31,9 +31,8 @@ export type MapChatAttachedDocument = {
 };
 
 export type MapGenerationHistoryEntry = {
-  mapRevisionId: string;
-  mapVersionNumber: number;
-  planVersionNumber: number;
+  revisionId: string;
+  label: string;
   isCurrent: boolean;
 };
 
@@ -63,7 +62,6 @@ type MapChatPanelProps = {
   onAttachFile?: (file: File) => void;
   onAttachKecoDocument?: () => void;
   generationHistory?: MapGenerationHistoryEntry[];
-  onSelectMapVersion?: (mapRevisionId: string) => void;
   mapPlan?: MapPlanCard | null;
   mapImage?: MapImageCard | null;
   onViewMapPlan?: () => void;
@@ -99,7 +97,6 @@ export function MapChatPanel({
   onAttachFile,
   onAttachKecoDocument,
   generationHistory = [],
-  onSelectMapVersion,
   mapPlan = null,
   mapImage = null,
   onViewMapPlan,
@@ -233,21 +230,15 @@ export function MapChatPanel({
             <div id="map-generation-history" className={styles.mapHistoryMenu} hidden={!historyOpen}>
               <p className={styles.mapHistoryLabel}>Map</p>
               {generationHistory.map((entry) => (
-                <button
-                  key={entry.mapRevisionId}
-                  type="button"
+                <div
+                  key={entry.revisionId}
                   className={entry.isCurrent ? styles.mapHistoryItemCurrent : styles.mapHistoryItem}
                   aria-current={entry.isCurrent || undefined}
-                  aria-label={`Open Map V${entry.mapVersionNumber} with Plan V${entry.planVersionNumber}`}
-                  disabled={!onSelectMapVersion}
-                  onClick={() => onSelectMapVersion?.(entry.mapRevisionId)}
+                  data-history-version={entry.label}
                 >
                   <Image src={mapPlanIcon} width={21} height={21} alt="" aria-hidden="true" />
-                  <span className={styles.mapHistoryItemCopy}>
-                    <strong>{`MAP V${entry.mapVersionNumber}`}</strong>
-                    <small>{`Plan V${entry.planVersionNumber}`}</small>
-                  </span>
-                </button>
+                  <span>{entry.label}</span>
+                </div>
               ))}
             </div>
           </div>

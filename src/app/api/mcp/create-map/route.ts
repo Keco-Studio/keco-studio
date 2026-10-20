@@ -61,14 +61,6 @@ const PrepareGeneration = z.object({
   mapId: Uuid,
   revisionId: Uuid,
   saveVersion: z.number().int().nonnegative(),
-  planVersionId: Uuid,
-}).strict();
-const PrepareExistingGeneration = z.object({
-  action: z.literal('prepare_existing_map_generation'),
-  ...Project,
-  mapId: Uuid,
-  revisionId: Uuid,
-  saveVersion: z.number().int().nonnegative(),
 }).strict();
 const StartGeneration = z.object({
   action: z.literal('start_map_generation'),
@@ -91,7 +83,6 @@ const RequestBody = z.discriminatedUnion('action', [
   CreateDraft,
   UpdateDraft,
   PrepareGeneration,
-  PrepareExistingGeneration,
   StartGeneration,
   GetGeneration,
   AdvanceGeneration,
@@ -128,7 +119,6 @@ type ValidatedRequest =
   | ({ action: 'create_map_draft' } & Parameters<CreateMapMcpService['createDraft']>[0])
   | ({ action: 'update_map_draft' } & Parameters<CreateMapMcpService['updateDraft']>[0])
   | ({ action: 'prepare_map_generation' } & Parameters<CreateMapMcpService['prepareGeneration']>[0])
-  | ({ action: 'prepare_existing_map_generation' } & Parameters<CreateMapMcpService['prepareExistingGeneration']>[0])
   | ({ action: 'start_map_generation' } & Parameters<CreateMapMcpService['startGeneration']>[0])
   | ({ action: 'get_map_generation' } & Parameters<CreateMapMcpService['getGeneration']>[0])
   | ({ action: 'advance_map_generation' } & Parameters<CreateMapMcpService['advanceGeneration']>[0]);
@@ -164,9 +154,6 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
         break;
       case 'prepare_map_generation':
         result = await service.prepareGeneration(withoutAction(body));
-        break;
-      case 'prepare_existing_map_generation':
-        result = await service.prepareExistingGeneration(withoutAction(body));
         break;
       case 'start_map_generation':
         result = await service.startGeneration(withoutAction(body));

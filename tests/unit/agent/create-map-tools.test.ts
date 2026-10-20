@@ -173,16 +173,6 @@ describe('Create Map agent tools', () => {
     expect(backend.invokeProvider).not.toHaveBeenCalled();
   });
 
-  it('prepares assistant generation from an existing generation record', async () => {
-    const prepareExisting = jest.spyOn(service, 'prepareExistingGeneration');
-    const prepareNew = jest.spyOn(service, 'prepareGeneration');
-
-    await expect(generateMapImageTool.prepareConfirmation!(generateArgs, ctx)).resolves.toMatchObject({ success: true });
-
-    expect(prepareExisting).toHaveBeenCalledWith({ ...generateArgs, projectId: ctx.projectId });
-    expect(prepareNew).not.toHaveBeenCalled();
-  });
-
   it.each([generateMapImageTool, retryMapGenerationTool])('$name always requires confirmation including Auto and legacy skip modes', (tool) => {
     for (const meta of [{ autoExecute: true }, { autoExecute: false }, { skipConfirmation: true }]) expect(needsConfirmation(tool, meta)).toBe(true);
   });

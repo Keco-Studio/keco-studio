@@ -17,7 +17,7 @@ export const generateMapImageTool: AgentTool = {
     const projectId = requireProjectContext(ctx);
     try {
       const input = paramsSchema.parse(params);
-      const prepared = await (await mapService(ctx)).prepareExistingGeneration({ mapId: input.mapId, revisionId: input.revisionId, saveVersion: input.saveVersion, projectId });
+      const prepared = await (await mapService(ctx)).prepareGeneration({ mapId: input.mapId, revisionId: input.revisionId, saveVersion: input.saveVersion, projectId });
       if (prepared.confirmationPurpose !== 'submit') return { success: false, error: 'Use retry_map_generation and acknowledge duplicate billing for this attempt.' };
       const { confirmationToken: _confirmationToken, ...preview } = prepared;
       return {

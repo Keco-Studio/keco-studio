@@ -1,8 +1,6 @@
 /** @jest-environment jsdom */
 import React from 'react';
-import { describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { MapChatPanel } from '@/features/create-map/components/MapChatPanel';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
@@ -13,7 +11,6 @@ jest.mock('next/image', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => React.createElement('img', props),
 }));
-jest.mock('@/assets/images/paper.svg', () => 'paper');
 
 const messages = [
   { id: '1', role: 'user' as const, text: 'Make a village map' },
@@ -31,7 +28,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof MapChatPanel
     canAsk: true,
     mapPlan: { title: 'Village map plan', versionLabel: 'Version1' },
     mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: '/map.png' },
-    generationHistory: [{ mapRevisionId: 'revision-1', mapVersionNumber: 1, planVersionNumber: 1, isCurrent: true }],
+    generationHistory: [{ revisionId: 'revision-1', label: 'V1', isCurrent: true }],
     onViewMapPlan: jest.fn(),
     ...overrides,
   };
@@ -40,52 +37,13 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof MapChatPanel
 }
 
 describe('MapChatPanel', () => {
-  it('renders version history alongside searchable chat cards', () => {
-    const markup = renderToStaticMarkup(React.createElement(MapChatPanel, {
-      mapTitle: 'Village map',
-      messages,
-      onBack: jest.fn(),
-      onCreate: jest.fn(),
-      onAsk: jest.fn(),
-      canAsk: true,
-      mapPlan: { title: 'Village map plan', versionLabel: 'Version1' },
-      mapImage: { title: 'Village map', versionLabel: 'Version1', downloadUrl: 'https://example.test/map.png' },
-      onViewMapPlan: jest.fn(),
-      generationHistory: [
-        { mapRevisionId: 'revision-2', mapVersionNumber: 2, planVersionNumber: 4, isCurrent: true },
-        { mapRevisionId: 'revision-1', mapVersionNumber: 1, planVersionNumber: 1, isCurrent: false },
-      ],
-      onSelectMapVersion: jest.fn(),
-    } as never));
-
-    expect(markup).toContain('Village map');
-    expect(markup).toContain('aria-label="Create map"');
-    expect(markup).toContain('aria-label="Show map generation history"');
-    expect(markup).not.toMatch(/aria-label="Show map generation history"[^>]*disabled/);
-    expect(markup).not.toContain('aria-label="Filter messages"');
-    expect(markup).toContain('aria-label="Search messages"');
-    expect(markup).toContain('Make a village map');
-    expect(markup).not.toContain('Generate Map');
-    expect(markup).toContain('Village map plan');
-    expect(markup).toContain('aria-label="View map plan"');
-    expect(markup).toContain('MAP V1');
-    expect(markup).toContain('MAP V2');
-    expect(markup).toContain('Plan V1');
-    expect(markup).toContain('Plan V4');
-    expect(markup).toContain('aria-label="Open Map V1 with Plan V1"');
-    expect(markup).toContain('aria-label="Open Map V2 with Plan V4"');
-    expect(markup).toContain('aria-label="Download map"');
-    expect(markup).toContain('Ask AI to help...');
-    expect(markup).toMatch(/aria-label="Send"[^>]*>[\s\S]*?anticon-arrow-up/);
-  });
-
   it('renders searchable messages, plan and image cards, and generation history', () => {
     renderPanel();
     expect(screen.getByRole('region', { name: 'Map conversation' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'View map plan' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Download map' }).getAttribute('href')).toBe('/map.png');
     fireEvent.click(screen.getByRole('button', { name: 'Show map generation history' }));
-    expect(screen.getByText('MAP V1')).toBeTruthy();
+    expect(screen.getByText('V1')).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search messages' }), { target: { value: 'village' } });
     expect(screen.getByText('Make a village map')).toBeTruthy();
     expect(screen.queryByText('Here is the created map plan')).toBeNull();

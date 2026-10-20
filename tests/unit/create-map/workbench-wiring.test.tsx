@@ -5,7 +5,6 @@ import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CreateMapWorkbench } from '@/features/create-map/CreateMapWorkbench';
-import { savedPlanResponseIsCurrent } from '@/features/create-map/DirectMapWorkbench';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   __esModule: true,
@@ -39,11 +38,6 @@ jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
   }),
 }));
 jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
-  savedPlanSelectionIsCurrent: (selection: { draftRevisionId: string; draftSaveVersion: number } | null, identity: { revisionId: string; saveVersion: number } | null) => Boolean(
-    selection && identity
-    && selection.draftRevisionId === identity.revisionId
-    && selection.draftSaveVersion === identity.saveVersion,
-  ),
   useDirectMapGeneration: () => ({
     phase: 'idle',
     asset: null,
@@ -85,34 +79,6 @@ jest.mock('@/features/create-map/services/createMapService', () => ({
 }));
 
 describe('Create Map V3 direct workbench', () => {
-  it('discards an older Save plan response after the Draft changes', () => {
-    const identity = {
-      mapId: '10000000-0000-4000-8000-000000000001',
-      revisionId: '10000000-0000-4000-8000-000000000002',
-      revisionNumber: 1,
-      saveVersion: 3,
-    };
-    const saved = {
-      id: '10000000-0000-4000-8000-000000000003',
-      versionNumber: 1,
-      draftRevisionId: identity.revisionId,
-      draftSaveVersion: identity.saveVersion,
-    };
-
-    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
-      identity,
-      payloadKey: 'draft-a',
-    })).toBe(true);
-    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
-      identity,
-      payloadKey: 'draft-b',
-    })).toBe(false);
-    expect(savedPlanResponseIsCurrent('draft-a', identity, saved, {
-      identity: { ...identity, saveVersion: 4 },
-      payloadKey: 'draft-a',
-    })).toBe(false);
-  });
-
   it('renders the Map Generator shell with browse and plan controls', () => {
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}><CreateMapWorkbench /></QueryClientProvider>
@@ -158,7 +124,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).toContain('onAsk={(prompt) => void createPlan(prompt)}');
     expect(direct).toContain('generationHistory={generationHistory}');
     expect(direct).toContain('mapPlan={draft.identity');
-    expect(direct).toContain('mapImage={workspaceImage');
+    expect(direct).toContain('mapImage={image');
     expect(direct).toContain('createMapAgentRefreshKey');
     expect(direct).toContain('void openSavedMap(target, true)');
     expect(direct).toContain('onAttachFile=');
@@ -297,26 +263,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(workbench).toContain("searchParams?.get('viewer') === '1'");
     expect(workbench).toContain('openedRequestedMapId');
     expect(workbench).toContain('void openSavedMap(requestedMap)');
-    expect(workbench).toContain('onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}');
+    expect(workbench).toContain('onPaintCell={readOnly ? undefined : collision.paintCell}');
     expect(workbench).toContain('readOnly={readOnly}');
-  });
-
-  it('loads selected map versions with their bound Plans as a read-only workspace', () => {
-    const workbench = readFileSync(
-      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
-      'utf8',
-    );
-
-    expect(workbench).toContain('service.loadMapVersionV3(');
-    expect(workbench).toContain('onSelectMapVersion={selectMapVersion}');
-    expect(workbench).toContain('const historicalReadOnly = Boolean(historicalWorkspace);');
-    expect(workbench).toContain('const invalidateHistoricalSelection = useCallback(() => {');
-    expect(workbench).toContain('historicalSelectionEpoch.current += 1;');
-    expect(workbench).toContain('invalidateHistoricalSelection();');
-    expect(workbench).toContain('disabled={busy || workspaceReadOnly}');
-    expect(workbench).toContain('readOnly={workspaceReadOnly}');
-    expect(workbench).toContain('onPaintCell={workspaceReadOnly ? undefined : collision.paintCell}');
-    expect(workbench).toContain('<MapSourcePanel');
-    expect(workbench).toContain('readOnly={workspaceReadOnly}');
   });
 });

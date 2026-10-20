@@ -135,15 +135,7 @@ function plannedRecord(generationId: string, fingerprint: string): MapAssetRecor
   };
 }
 
-function setup(
-  publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string; saveVersion: number }>,
-  savedPlanSelection: unknown = {
-    id: 'plan-v1',
-    versionNumber: 1,
-    draftRevisionId: '10000000-0000-4000-8000-000000000030',
-    draftSaveVersion: 0,
-  },
-) {
+function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string; saveVersion: number }>) {
   runtime = new HookRuntime();
   let generationId = '';
   let fingerprint = '';
@@ -173,22 +165,6 @@ function setup(
       feeNotice: 'Paid generation consumes credits.',
       };
     }),
-    prepareExistingMapGeneration: jest.fn(async (input: { mapId: string; revisionId: string; saveVersion: number }) => {
-      generationId = '10000000-0000-4000-8000-000000000032';
-      fingerprint = await directMapPlanFingerprint(makeValidMapPlanV3());
-      return {
-        mapId: input.mapId,
-        revisionId: input.revisionId,
-        assetId: '10000000-0000-4000-8000-000000000031',
-        status: 'planned',
-        generationId,
-        planFingerprint: fingerprint,
-        saveVersion: input.saveVersion,
-        confirmationToken: 'signed-confirmation',
-        confirmationPurpose: 'submit',
-        feeNotice: 'Paid generation consumes credits.',
-      };
-    }),
     startMapGeneration: jest.fn(async () => ({ status: 'generating' })),
   };
   let latest!: HookResult;
@@ -206,8 +182,7 @@ function setup(
       },
       reloadDraftAfterPreparation: async () => null,
       onSceneMaterialized: jest.fn(),
-      savedPlanSelection,
-    } as never);
+    });
   });
   return { get latest() { return latest; }, render };
 }
@@ -218,18 +193,6 @@ beforeEach(() => {
 });
 
 describe('useDirectMapGeneration preparation guards', () => {
-  it('requires a saved current Plan version before preparation', async () => {
-    const state = setup(jest.fn(async () => ({
-      mapId: '10000000-0000-4000-8000-000000000029',
-      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
-      saveVersion: 0,
-    })), null);
-    state.render();
-
-    await expect(state.latest.prepare()).rejects.toThrow('Save the current Plan version before generating.');
-    expect(mockService.prepareMapGeneration).not.toHaveBeenCalled();
-  });
-
   it('prepares and submits exactly once through the confirmed App route', async () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',
@@ -241,9 +204,7 @@ describe('useDirectMapGeneration preparation guards', () => {
 
     await state.latest.generate();
 
-    expect(mockService.prepareMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
-      planVersionId: 'plan-v1',
-    }));
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
     expect(mockService.startMapGeneration).toHaveBeenCalledTimes(1);
     expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
       confirmationToken: 'signed-confirmation',
@@ -361,7 +322,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     await state.latest.prepare();
     state.render(plan);
     mockService.startMapGeneration.mockClear();
-    mockService.prepareExistingMapGeneration.mockRejectedValueOnce(new Error('Confirmation unavailable'));
+    mockService.prepareMapGeneration.mockRejectedValueOnce(new Error('Confirmation unavailable'));
 
     await expect(state.latest.confirm()).resolves.toBeUndefined();
     state.render(plan);
@@ -448,7 +409,7 @@ describe('useDirectMapGeneration preparation guards', () => {
       hasTransparency: null,
       signedUrl: null,
     };
-    mockService.prepareExistingMapGeneration.mockResolvedValueOnce({
+    mockService.prepareMapGeneration.mockResolvedValueOnce({
       mapId,
       revisionId,
       assetId: failedAsset.id,
@@ -478,7 +439,7 @@ describe('useDirectMapGeneration preparation guards', () => {
 
     await state.latest.retry();
 
-    expect(mockService.prepareExistingMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
     expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
       confirmationToken: 'retry-confirmation',
       confirmPaidGeneration: true,

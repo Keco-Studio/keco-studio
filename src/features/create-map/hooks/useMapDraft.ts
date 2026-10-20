@@ -79,13 +79,6 @@ export class SerializedMapDraftWriter<TPayload = MapDraftPayloadV3> {
     return this.frozen;
   }
 
-  async waitForIdle(): Promise<void> {
-    const running = this.running;
-    if (!running) return;
-    await running;
-    if (this.running) await this.waitForIdle();
-  }
-
   enqueue(payload: TPayload): Promise<void> {
     if (!this.identity || this.frozen) return Promise.resolve();
     this.pending = { epoch: this.epoch, payload };
@@ -137,7 +130,7 @@ export type MapDraftAdapter<P, S, W extends DraftWorkspace<P, S>> = {
   validate(plan: P, scene: S): boolean;
   create(projectId: string, source: MapSourceToken | null, plan: P, scene: S): Promise<MapDraftIdentity>;
   save(identity: MapDraftIdentity, plan: P, scene: S): Promise<number>;
-  publish(identity: MapDraftIdentity, planVersionId: string): Promise<{ publishedRevisionId: string; nextDraftRevisionId: string }>;
+  publish(identity: MapDraftIdentity): Promise<{ publishedRevisionId: string; nextDraftRevisionId: string }>;
   load(mapId: string): Promise<W>;
 };
 
@@ -148,8 +141,8 @@ export function createMapDraftAdapterV3(service: MapService): MapDraftAdapter<Ma
     validate: (plan, scene) => validateMapDraftPayloadV3(plan, scene).success,
     create: (projectId, source, plan, scene) => service.createProjectV3(projectId, plan, scene, source),
     save: (identity, plan, scene) => service.saveDraftV3(identity, plan, scene),
-    publish: async (identity, planVersionId) => {
-      const result = await service.publishV3(identity, planVersionId);
+    publish: async (identity) => {
+      const result = await service.publishV3(identity);
       return {
         publishedRevisionId: result.published_revision_id,
         nextDraftRevisionId: result.next_draft_revision_id,
@@ -262,31 +255,24 @@ export function useMapDraft<
     setError(null);
   }, [writer]);
 
-  const saveNow = useCallback(async (): Promise<MapDraftIdentity | null> => {
-    const target = writer.currentIdentity();
-    if (!target) return null;
+  const saveNow = useCallback(async () => {
+    if (!writer.currentIdentity()) return;
     if (!adapter.validate(plan, scene)) {
       setStatus('error');
       setError('Resolve the current Plan or Scene validation issues before saving.');
-      return null;
+      return;
     }
     await writer.enqueue({ plan, scene });
-    await writer.waitForIdle();
-    const settled = writer.currentIdentity();
-    return settled && settled.mapId === target.mapId && settled.revisionId === target.revisionId
-      && settled.saveVersion > target.saveVersion
-      ? settled
-      : null;
   }, [adapter, plan, scene, writer]);
 
-  const publishForGeneration = useCallback(async (planVersionId: string) => {
+  const publishForGeneration = useCallback(async () => {
     const target = writer.currentIdentity();
     if (!target) throw new CreateMapServiceError('missing_draft', 'Create and save a map plan first.');
     if (currentPayloadKey !== lastSaved || status !== 'saved' || writer.isRunning()) {
       throw new CreateMapServiceError('draft_not_saved', 'Wait for the current map draft to finish saving.');
     }
     const requestEpoch = writer.currentEpoch();
-    const published = await adapter.publish(target, planVersionId);
+    const published = await adapter.publish(target);
     const nextDraft = await adapter.load(target.mapId);
     if (writer.currentEpoch() !== requestEpoch) {
       return {
