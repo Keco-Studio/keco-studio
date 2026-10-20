@@ -855,9 +855,9 @@ async function editPlan(page: Page, version: number): Promise<void> {
   await page.getByLabel('PixelLab description').fill(`An opaque map Plan ${version}.`);
 }
 
-async function openMapHistory(page: Page, mapVersion: string): Promise<void> {
+async function openMapHistory(page: Page, mapVersion: number): Promise<void> {
   await page.getByRole('button', { name: 'Show map generation history' }).click();
-  await page.getByRole('button', { name: new RegExp(`Open ${mapVersion} with Plan V\\d+`) }).click();
+  await page.getByRole('button', { name: new RegExp(`^Open Map V${mapVersion} with Plan V\\d+$`) }).click();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
@@ -1099,7 +1099,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await editPlan(page, 3);
     await generateReadyMap(page); // Map V3 -> Plan V3
 
-    await openMapHistory(page, 'MAP V1');
+    await openMapHistory(page, 1);
     await expect(page.getByLabel('Map canvas').getByText('Map V1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Map plan details' }).locator('..')).toContainText('Plan V1');
 
