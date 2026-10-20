@@ -1057,7 +1057,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     const conversation = page.getByRole('region', { name: 'Map conversation' });
     await expect(conversation.getByRole('link', { name: 'Download map' })).toBeVisible();
     await conversation.getByRole('button', { name: 'Show map generation history' }).click();
-    await expect(conversation.locator('[data-history-version]')).toHaveCount(1);
+    await expect(conversation.getByRole('button', { name: 'Open Map V1 with Plan V1' })).toBeVisible();
 
     await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
 
