@@ -8,3 +8,4 @@ export {
   projectAssetExtensionMatches,
 } from '../../../shared/project-asset-upload-contract';
 export type { ProjectAssetMimeType } from '../../../shared/project-asset-upload-contract';
+export { uploadProjectAssets } from './projectAssetBrowserUpload';

@@ -55,6 +55,7 @@ import {
   type DocumentPresenceUpdateDetail,
 } from '@/components/documents/documentPresenceEvents';
 import { useKecoAdminAccess } from '@/lib/hooks/useKecoAdminAccess';
+import { uploadProjectAssets } from '@/lib/services/projectAssetUploadContract';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -1200,28 +1201,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const handleTopbarUploadAssets = useCallback(async (files: FileList) => {
     if (!currentProjectId || !files.length) return;
-    const form = new FormData();
-    Array.from(files).forEach((file) => form.append('files', file));
     try {
-      const response = await fetch(`/api/projects/${currentProjectId}/game-assets`, {
-        method: 'POST',
-        body: form,
+      const result = await uploadProjectAssets({
+        projectId: currentProjectId,
+        files: Array.from(files),
       });
-      const result = await response.json() as {
-        failedCount?: number;
-        completedCount?: number;
-        error?: string;
-        items?: Array<{ ok?: boolean; name?: string; error?: string }>;
-      };
-      if (!response.ok) {
-        throw new Error(result.error ?? 'Upload failed');
-      }
       if ((result.failedCount ?? 0) > 0) {
-        const firstFailure = result.items?.find((item) => item && item.ok === false);
-        const detail = firstFailure?.error ? `: ${firstFailure.error}` : '';
-        showErrorToast(
-          `${result.failedCount} file(s) failed to upload${detail}`
-        );
+        showErrorToast(`${result.failedCount} file(s) failed to upload`);
       } else {
         showSuccessToast(
           (result.completedCount ?? files.length) > 1
