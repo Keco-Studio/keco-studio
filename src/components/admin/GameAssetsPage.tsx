@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { App, Button, Modal, Spin } from 'antd';
+import { App, Button, Spin } from 'antd';
 import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
+import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
 import {
   ASSET_GRID_SIZES,
   DEFAULT_ASSET_GRID_SIZE_INDEX,
@@ -129,6 +130,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const [selected, setSelected] = useState<ProjectGameAsset | null>(null);
+  const [assetPendingRemoval, setAssetPendingRemoval] = useState<ProjectGameAsset | null>(null);
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const [contextAsset, setContextAsset] = useState<{ asset: ProjectGameAsset; x: number; y: number } | null>(null);
   const [measuredAspects, setMeasuredAspects] = useState<Record<string, number>>({});
@@ -246,18 +248,6 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     }
   }, [message, projectId, queryClient]);
 
-  const confirmRemoveAsset = useCallback((asset: ProjectGameAsset) => {
-    Modal.confirm({
-      title: 'Confirm deletion',
-      content: `Remove "${asset.name}" from this project's Assets library? This does not delete the original resource.`,
-      okText: 'Delete',
-      cancelText: 'Cancel',
-      okButtonProps: { danger: true },
-      onOk: () => removeAsset(asset),
-      onCancel: () => undefined,
-    });
-  }, [removeAsset]);
-
   const selectedPreview = useMemo(() => {
     if (!selected) return null;
     return resolveSizedAsset(selected, measuredAspects).previewSrc;
@@ -320,13 +310,26 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                 onClick={() => {
                   const asset = contextAsset.asset;
                   setContextAsset(null);
-                  confirmRemoveAsset(asset);
+                  setAssetPendingRemoval(asset);
                 }}
               >
                 Delete
               </button>
             </div>
           ) : null}
+          <DeleteConfirmDialog
+            open={!!assetPendingRemoval}
+            title="Confirm deletion"
+            content={assetPendingRemoval
+              ? `Remove "${assetPendingRemoval.name}" from this project's Assets library? This does not delete the original resource.`
+              : ''}
+            onConfirm={() => {
+              const asset = assetPendingRemoval;
+              setAssetPendingRemoval(null);
+              if (asset) void removeAsset(asset);
+            }}
+            onCancel={() => setAssetPendingRemoval(null)}
+          />
           <div className={styles.zoomControls} aria-label="Asset size" data-testid="asset-size-controls">
             <button
               type="button"
