@@ -19,7 +19,7 @@ export async function runLatestLibraryHydration({
   setIsLoading,
   setIsSynced,
   onError,
-}: RunLatestLibraryHydrationArgs): Promise<void> {
+}: RunLatestLibraryHydrationArgs): Promise<boolean> {
   const generation = generationRef.current + 1;
   generationRef.current = generation;
 
@@ -31,15 +31,17 @@ export async function runLatestLibraryHydration({
 
   try {
     const assetRows = await fetchAssetRows();
-    if (!isLatestMountedGeneration()) return;
+    if (!isLatestMountedGeneration()) return false;
 
     hydrate(assetRows);
     setIsSynced(true);
+    return true;
   } catch (error) {
-    if (!isLatestMountedGeneration()) return;
+    if (!isLatestMountedGeneration()) return false;
 
     setIsSynced(false);
     onError(error);
+    return false;
   } finally {
     if (isLatestMountedGeneration()) {
       setIsLoading(false);

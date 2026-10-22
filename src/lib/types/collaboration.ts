@@ -177,12 +177,19 @@ export type CellsBatchUpdateEvent = {
   }>;
 };
 
+export type LibraryReconcileEvent = {
+  type: 'library:reconcile';
+  userId: string;
+  timestamp: number;
+};
+
 export type RealtimeEvent =
   | CellUpdateEvent
   | AssetCreateEvent
   | AssetDeleteEvent
   | RowOrderChangeEvent
-  | CellsBatchUpdateEvent;
+  | CellsBatchUpdateEvent
+  | LibraryReconcileEvent;
 
 // ============================================================================
 // API Request/Response Types

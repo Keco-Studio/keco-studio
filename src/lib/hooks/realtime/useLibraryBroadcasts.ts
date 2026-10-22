@@ -149,6 +149,16 @@ export function useLibraryBroadcasts(
     if (channel) await sendLibraryBroadcast(channel, 'schema:change', { userId: currentUserId });
   }, [currentUserId, runtime.channelRef]);
 
+  const broadcastReconcile = useCallback(async () => {
+    const channel = runtime.channelRef.current;
+    if (!channel) return;
+    await sendLibraryBroadcast(channel, 'library:reconcile', {
+      type: 'library:reconcile',
+      userId: currentUserId,
+      timestamp: Date.now(),
+    });
+  }, [currentUserId, runtime.channelRef]);
+
   return {
     broadcastCellUpdate,
     broadcastAssetCreate,
@@ -156,5 +166,6 @@ export function useLibraryBroadcasts(
     broadcastCellsBatchUpdate,
     broadcastRowOrderChange,
     broadcastSchemaChange,
+    broadcastReconcile,
   };
 }
