@@ -10,10 +10,12 @@ function createClientPair(): {
   received: () => boolean;
   signedInEmails: () => string[];
   channelOptions: () => unknown[];
+  removedChannels: () => number;
 } {
   let broadcastReceived = false;
   const signedInEmails: string[] = [];
   const channelOptions: unknown[] = [];
+  let removedChannels = 0;
   const listeners: Array<(payload: { payload: unknown }) => void> = [];
 
   const createClient = (): RealtimePreflightClient => ({
@@ -51,6 +53,9 @@ function createClientPair(): {
       };
       return channel;
     },
+    removeChannel: async () => {
+      removedChannels += 1;
+    },
   });
 
   return {
@@ -58,6 +63,7 @@ function createClientPair(): {
     received: () => broadcastReceived,
     signedInEmails: () => signedInEmails,
     channelOptions: () => channelOptions,
+    removedChannels: () => removedChannels,
   };
 }
 
@@ -109,6 +115,7 @@ describe('Realtime CI preflight', () => {
       { config: { private: true, broadcast: { ack: true, self: false } } },
     ]);
     expect(cleanupCalled).toBe(true);
+    expect(pair.removedChannels()).toBe(2);
   });
 
   it('stops before creating a private topic when authentication fails', async () => {
@@ -123,6 +130,7 @@ describe('Realtime CI preflight', () => {
       channel: () => {
         throw new Error('must not create channel');
       },
+      removeChannel: async () => undefined,
     };
 
     await expect(

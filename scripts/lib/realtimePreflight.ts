@@ -32,6 +32,7 @@ export type RealtimePreflightClient = {
     topic: string,
     options: { config: { private: true; broadcast: { ack: boolean; self: boolean } } }
   ) => RealtimePreflightChannel;
+  removeChannel: (channel: RealtimePreflightChannel) => Promise<unknown>;
 };
 
 export type RealtimePreflightPrivateTopic = {
@@ -190,6 +191,10 @@ export async function runRealtimePreflight(
     await Promise.all([
       senderChannel?.unsubscribe(),
       receiverChannel?.unsubscribe(),
+    ]);
+    await Promise.all([
+      senderChannel ? sender.removeChannel(senderChannel) : undefined,
+      receiverChannel ? receiver.removeChannel(receiverChannel) : undefined,
       privateTopic?.cleanup(),
     ]);
   }
