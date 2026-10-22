@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -56,6 +56,7 @@ import {
 } from '@/components/documents/documentPresenceEvents';
 import { useKecoAdminAccess } from '@/lib/hooks/useKecoAdminAccess';
 import { uploadProjectAssets } from '@/lib/services/projectAssetUploadContract';
+import { parseGameAssetsCategoryParam } from '@/lib/services/gameAssetsService';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -126,6 +127,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const router = useRouter();
   const queryClient = useQueryClient();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const onSimulationSystem = pathname?.startsWith('/simulation-system') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
   const onCreateMap = isCreateMapPath(pathname);
@@ -1201,9 +1203,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const handleTopbarUploadAssets = useCallback(async (files: FileList) => {
     if (!currentProjectId || !files.length) return;
+    const selectedCategory = parseGameAssetsCategoryParam(searchParams?.get('category'));
     try {
       const result = await uploadProjectAssets({
         projectId: currentProjectId,
+        category: selectedCategory === 'all' ? 'media' : selectedCategory,
         files: Array.from(files),
       });
       if ((result.failedCount ?? 0) > 0) {
@@ -1219,7 +1223,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : 'Upload failed');
     }
-  }, [currentProjectId, queryClient]);
+  }, [currentProjectId, queryClient, searchParams]);
 
   const handleTopbarImportTable = () => {
     if (typeof window !== 'undefined' && currentProjectId) {

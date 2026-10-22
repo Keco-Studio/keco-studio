@@ -1,4 +1,5 @@
 import { projectAssetMimeFromName } from '../../../shared/project-asset-upload-contract';
+import type { GameAssetCategory } from './gameAssetsService';
 
 type AssetMetadata = {
   fileName: string;
@@ -24,10 +25,12 @@ type UploadResponse = {
 
 export async function uploadProjectAssets({
   projectId,
+  category = 'media',
   files,
   fetcher = fetch,
 }: {
   projectId: string;
+  category?: GameAssetCategory;
   files: File[];
   fetcher?: typeof fetch;
 }): Promise<{ completedCount: number; failedCount: number }> {
@@ -40,7 +43,7 @@ export async function uploadProjectAssets({
   const prepareResponse = await fetcher(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'prepare', files: metadata }),
+    body: JSON.stringify({ action: 'prepare', category, files: metadata }),
   });
   const prepared = await prepareResponse.json() as UploadResponse;
   if (!prepareResponse.ok || !prepared.items) {
@@ -68,7 +71,7 @@ export async function uploadProjectAssets({
   const completeResponse = await fetcher(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'complete', items: completionItems }),
+    body: JSON.stringify({ action: 'complete', category, items: completionItems }),
   });
   const completed = await completeResponse.json() as UploadResponse;
   if (!completeResponse.ok) {

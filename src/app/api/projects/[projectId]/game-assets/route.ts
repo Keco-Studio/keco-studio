@@ -63,12 +63,24 @@ const fileMetadataSchema = z.object({
   fileType: z.string().min(1).max(200),
   fileSize: z.number().int().min(1),
 }).strict();
+const assetCategorySchema = z.enum([
+  'character',
+  'icon',
+  'ui',
+  'map',
+  'prop',
+  'vfx',
+  'spritesheet',
+  'media',
+]);
 const prepareUploadSchema = z.object({
   action: z.literal('prepare'),
+  category: assetCategorySchema.optional().default('media'),
   files: z.array(fileMetadataSchema).min(1).max(MAX_BATCH_SIZE),
 }).strict();
 const completeUploadSchema = z.object({
   action: z.literal('complete'),
+  category: assetCategorySchema.optional().default('media'),
   items: z.array(fileMetadataSchema.extend({
     path: z.string().min(1).max(2048),
     reservationId: UUID,
@@ -273,7 +285,7 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
           p_reservation_id: input.reservationId,
           p_project_id: projectId,
           p_name: file.fileName,
-          p_category: 'media',
+          p_category: completed.data.category,
           p_mime_type: file.fileType,
           p_storage_bucket: PROJECT_ASSET_BUCKET,
           p_storage_path: input.path,
