@@ -42,7 +42,7 @@ import { useLibraryTableFindReplaceWiring } from './hooks/useLibraryTableFindRep
 import { useLibraryAssetDetailDrawerUpdate } from './hooks/useLibraryAssetDetailDrawerUpdate';
 import { TableToast } from './components/TableToast';
 import { RowContextMenu } from './components/RowContextMenu';
-import { BatchEditMenu } from './components/BatchEditMenu';
+import { LibraryBatchEditMenu } from './components/LibraryBatchEditMenu';
 import { AssetCardPanel } from './components/AssetCardPanel';
 import { TableHeader } from './components/TableHeader';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
@@ -697,17 +697,6 @@ export function LibraryAssetsTable({
     },
   });
 
-  const selectedMediaCellsOnly = useMemo(() => {
-    if (selectedCells.size === 0) return false;
-    return [...selectedCells].every((cellKey) => {
-      const property = orderedProperties.find((item) => cellKey.endsWith(`-${item.key}`));
-      return property?.dataType === 'image'
-        || property?.dataType === 'file'
-        || property?.dataType === 'multimedia'
-        || property?.dataType === 'audio';
-    });
-  }, [orderedProperties, selectedCells]);
-
   // Keep wrapped display after saving long text (edit mode wraps; display defaults to nowrap).
   afterSaveEditRef.current = ({ rowId, propertyKey, editorEl }) => {
     if (!editorContentOverflows(editorEl)) return;
@@ -1343,30 +1332,22 @@ export function LibraryAssetsTable({
         }}
       />
 
-      <BatchEditMenu
+      <LibraryBatchEditMenu
         visible={batchEditMenuVisible && !!batchEditMenuPosition}
         position={batchEditMenuPosition ?? { x: 0, y: 0 }}
         userRole={userRole}
+        orderedProperties={orderedProperties}
+        selectedCells={selectedCells}
         onCut={handleCut}
         onCopy={handleCopy}
         onPaste={handlePaste}
         onInsertRowAbove={handleInsertRowAbove}
         onInsertRowBelow={handleInsertRowBelow}
-        onClearContents={() => {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          if (selectedMediaCellsOnly) {
-            void handleClearContents();
-          } else {
-            setClearContentsConfirmVisible(true);
-          }
-        }}
-        clearContentsLabel={selectedMediaCellsOnly ? 'Delete media' : undefined}
-        onDeleteRow={() => {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setDeleteRowConfirmVisible(true);
-        }}
+        onClearContents={handleClearContents}
+        setVisible={setBatchEditMenuVisible}
+        setPosition={setBatchEditMenuPosition}
+        setClearContentsConfirmVisible={setClearContentsConfirmVisible}
+        setDeleteRowConfirmVisible={setDeleteRowConfirmVisible}
       />
       <TableToast message={toastMessage?.message ?? null} type={toastMessage?.type ?? 'default'} />
       <DeleteAssetModal
