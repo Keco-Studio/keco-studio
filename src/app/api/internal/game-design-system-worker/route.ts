@@ -7,6 +7,7 @@ import { processNextDialogueJob } from '@/lib/gdd-generation/dialogueWorker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 import { processNextGddResourceJob } from '@/lib/gdd-generation/resources/worker';
 import { dispatchGddWorker, MAX_GDD_WORKER_DELAY_MS, type GddWorkerKind } from '@/lib/gdd-generation/worker-dispatch';
+import { cleanupExpiredLibraryTableOperations } from '@/lib/server/libraryTableOperationCleanup';
 
 export const maxDuration = 300;
 
@@ -50,6 +51,8 @@ export async function GET(request: Request) {
     }
     if (!claimed && index === 0) break;
   }
+  const tableOperationCleanup = await cleanupExpiredLibraryTableOperations({ serviceClient });
+  results.push({ type: 'library-table-cleanup', ...tableOperationCleanup });
   return NextResponse.json({ results });
 }
 
