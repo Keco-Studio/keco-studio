@@ -14,6 +14,13 @@ import {
 
 export type CellKey = `${string}-${string}`;
 
+export function hasSameCellSelection(
+  current: ReadonlySet<CellKey>,
+  next: ReadonlySet<CellKey>,
+): boolean {
+  return current.size === next.size && [...current].every((cellKey) => next.has(cellKey));
+}
+
 export type SelectionBounds = {
   minRowIndex: number;
   maxRowIndex: number;
@@ -745,7 +752,9 @@ export function useCellSelection({
           cellsToSelect.add(`${row.id}-${property.key}`);
         }
       }
-      setSelectedCells(cellsToSelect);
+      setSelectedCells((current) =>
+        hasSameCellSelection(current, cellsToSelect) ? current : cellsToSelect,
+      );
     }
   }, [dragStartCell, dragCurrentCell, getAllRowsForCellSelection, orderedProperties, tableIndexes]);
 
