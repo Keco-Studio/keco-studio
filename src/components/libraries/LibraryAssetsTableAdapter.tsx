@@ -29,6 +29,10 @@ import {
 } from '@/lib/script-system/scriptDialogueTableSync';
 import { synchronizeScriptDialogueTablePlan } from '@/lib/script-system/scriptDialogueTableSyncClient';
 import { showErrorToast } from '@/lib/utils/toast';
+import { applyLibraryTableOperation, redoLibraryTableOperation, undoLibraryTableOperation } from '@/lib/services/libraryTableOperationsService';
+import { buildCellUpdateOperation, buildRowCreateOperation, buildRowDeleteOperation } from '@/lib/library/tableOperationSnapshots';
+import { useTableOperationHistory } from './hooks/useTableOperationHistory';
+import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
@@ -108,6 +112,73 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     && sourceDocumentId
     && dialogueFields,
   );
+  const tableOperationHistory = useTableOperationHistory({
+    undoOperation: async (operationId) => {
+      await undoLibraryTableOperation(supabase, operationId);
+      await refreshAssetsFromServer();
+    },
+    redoOperation: async (operationId) => {
+      await redoLibraryTableOperation(supabase, operationId);
+      await refreshAssetsFromServer();
+    },
+  });
+
+  const applyTableCellUpdates = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>,
+  ) => {
+    const formulaFields = restProps.properties.map((property) => ({
+      id: property.id,
+      name: property.name,
+      dataType: property.dataType ?? 'string',
+      formulaExpression: property.formulaExpression ?? null,
+    }));
+    const normalizedUpdates = updates.map((update) => {
+      const row = allAssets.find((asset) => asset.id === update.assetId);
+      if (!row) throw new Error(`Table row ${update.assetId} no longer exists`);
+      const values = { ...update.propertyValues };
+      const computedFormulaValues = computeFormulaValuesForRow(formulaFields, values);
+      for (const field of formulaFields) {
+        if (field.dataType !== 'formula') continue;
+        const currentValue = values[field.id] ?? row.propertyValues[field.id];
+        const isCustom = typeof currentValue === 'string' && currentValue.trim().startsWith('=');
+        values[field.id] = isCustom ? currentValue : computedFormulaValues[field.id];
+      }
+      return { ...update, propertyValues: values };
+    });
+    const mediaFieldIds = new Set(
+      restProps.properties
+        .filter((property) => ['image', 'file', 'multimedia', 'audio'].includes(property.dataType ?? ''))
+        .map((property) => property.id),
+    );
+    const getMediaPath = (value: unknown): string | null => {
+      const parsed = typeof value === 'string'
+        ? (() => { try { return JSON.parse(value) as unknown; } catch { return null; } })()
+        : value;
+      return parsed && typeof parsed === 'object' && typeof (parsed as { path?: unknown }).path === 'string'
+        ? (parsed as { path: string }).path
+        : null;
+    };
+    const mediaPaths = normalizedUpdates.flatMap((update) => {
+      const row = allAssets.find((asset) => asset.id === update.assetId);
+      if (!row) return [];
+      return Object.entries(update.propertyValues).flatMap(([fieldId, nextValue]) => {
+        if (!mediaFieldIds.has(fieldId) || JSON.stringify(row.propertyValues[fieldId]) === JSON.stringify(nextValue)) return [];
+        const previousPath = getMediaPath(row.propertyValues[fieldId]);
+        const nextPath = getMediaPath(nextValue);
+        return [{ previousPath, nextPath }];
+      });
+    });
+    const operation = buildCellUpdateOperation(
+      allAssets,
+      normalizedUpdates,
+      mediaPaths.flatMap(({ previousPath }) => previousPath ? [previousPath] : []),
+      mediaPaths.flatMap(({ nextPath }) => nextPath ? [nextPath] : []),
+    );
+    if (!operation) return;
+    const result = await applyLibraryTableOperation(supabase, libraryId, operation);
+    tableOperationHistory.record(result.operationId);
+    await refreshAssetsFromServer();
+  }, [allAssets, libraryId, refreshAssetsFromServer, restProps.properties, supabase, tableOperationHistory]);
 
   const synchronizePlan = useCallback(async (
     plan: ScriptDialogueTableCommandPlan | null,
@@ -163,14 +234,41 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       });
       if (await synchronizePlan(plan)) return;
     }
-    // Pass options through unchanged to match LibraryDataContext.createAsset.
-    await createAsset(assetName, propertyValues, options);
+    const formulaFields = restProps.properties.map((property) => ({
+      id: property.id,
+      name: property.name,
+      dataType: property.dataType ?? 'string',
+      formulaExpression: property.formulaExpression ?? null,
+    }));
+    const values = { ...propertyValues };
+    const computedFormulaValues = computeFormulaValuesForRow(formulaFields, values);
+    for (const field of formulaFields) {
+      if (field.dataType === 'formula' && !(typeof values[field.id] === 'string' && values[field.id].trim().startsWith('='))) {
+        values[field.id] = computedFormulaValues[field.id];
+      }
+    }
+    const rowIndex = options?.rowIndex
+      ?? Math.max(0, ...allAssets.map((asset) => asset.rowIndex ?? 0)) + 1;
+    const operation = buildRowCreateOperation([{
+      id: globalThis.crypto.randomUUID(),
+      name: assetName,
+      createdAt: options?.createdAt?.toISOString() ?? new Date().toISOString(),
+      rowIndex,
+      values,
+    }]);
+    const result = await applyLibraryTableOperation(supabase, libraryId, operation);
+    tableOperationHistory.record(result.operationId);
+    await refreshAssetsFromServer();
   }, [
     allAssets,
     canSynchronizeDialogueTable,
-    createAsset,
     dialogueFields,
+    libraryId,
+    refreshAssetsFromServer,
     synchronizePlan,
+    supabase,
+    tableOperationHistory,
+    restProps.properties,
   ]);
   
   // Adapt updateAsset to onUpdateAsset format
@@ -202,27 +300,13 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       }
     }
     
-    // Update name if changed
-    if (asset.name !== assetName) {
-      await updateAssetName(assetId, assetName);
-    }
-    
-    // Update changed fields
-    const changedFields = Object.entries(propertyValues).filter(([key, value]) => {
-      const oldValue = asset.propertyValues[key];
-      return JSON.stringify(oldValue) !== JSON.stringify(value);
-    });
-    
-    for (const [fieldId, value] of changedFields) {
-      await updateAssetField(assetId, fieldId, value);
-    }
+    await applyTableCellUpdates([{ assetId, assetName, propertyValues }]);
   }, [
     allAssets,
     canSynchronizeDialogueTable,
     dialogueFields,
     synchronizePlan,
-    updateAssetName,
-    updateAssetField,
+    applyTableCellUpdates,
   ]);
   
   // Adapt deleteAsset
@@ -235,13 +319,19 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       });
       if (await synchronizePlan(plan)) return;
     }
-    await deleteAsset(assetId);
+    const operation = buildRowDeleteOperation(allAssets, [assetId]);
+    const result = await applyLibraryTableOperation(supabase, libraryId, operation);
+    tableOperationHistory.record(result.operationId);
+    await refreshAssetsFromServer();
   }, [
     allAssets,
     canSynchronizeDialogueTable,
-    deleteAsset,
     dialogueFields,
+    libraryId,
+    refreshAssetsFromServer,
     synchronizePlan,
+    supabase,
+    tableOperationHistory,
   ]);
 
   // Batch update: match delete-row behavior by using one multi-row path.
@@ -266,12 +356,12 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
         throw error;
       }
     }
-    await Promise.all(updates.map((u) => handleUpdateAsset(u.assetId, u.assetName, u.propertyValues)));
+    await applyTableCellUpdates(updates);
   }, [
     allAssets,
     canSynchronizeDialogueTable,
     dialogueFields,
-    handleUpdateAsset,
+    applyTableCellUpdates,
     synchronizePlan,
   ]);
 
@@ -280,8 +370,8 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     if (canSynchronizeDialogueTable) return handleUpdateAssets(updates);
-    await updateAssetsBatch(updates);
-  }, [canSynchronizeDialogueTable, handleUpdateAssets, updateAssetsBatch]);
+    await applyTableCellUpdates(updates);
+  }, [applyTableCellUpdates, canSynchronizeDialogueTable, handleUpdateAssets]);
 
   // Batch delete: the Context lacks a true batch API, so use Promise.all.
   const handleDeleteAssets = useCallback(async (assetIds: string[]) => {
@@ -303,13 +393,19 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       }
       return;
     }
-    await Promise.all(assetIds.map((id) => deleteAsset(id)));
+    const operation = buildRowDeleteOperation(allAssets, assetIds);
+    const result = await applyLibraryTableOperation(supabase, libraryId, operation);
+    tableOperationHistory.record(result.operationId);
+    await refreshAssetsFromServer();
   }, [
     allAssets,
     canSynchronizeDialogueTable,
-    deleteAsset,
     dialogueFields,
+    libraryId,
+    refreshAssetsFromServer,
     synchronizePlan,
+    supabase,
+    tableOperationHistory,
   ]);
   
   // Current user info
@@ -356,6 +452,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       onUpdateAssetsWithBatchBroadcast={handleUpdateAssetsWithBatchBroadcast}
       onDeleteAsset={handleDeleteAsset}
       onDeleteAssets={handleDeleteAssets}
+      tableOperationHistory={tableOperationHistory}
       currentUser={currentUser}
       enableRealtime={true}
       presenceTracking={presenceTracking}

@@ -23,6 +23,7 @@ import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelect
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import descriptionIcon from '@/assets/images/descriptionIcon.svg';
 import { type DropEdge } from '../utils/tableReorder';
+import type { NumericSortDirection } from '../utils/tableNumericSorting';
 
 function getDropEdge(event: DragMoveEvent | DragOverEvent | DragEndEvent): DropEdge {
   const translated = event.active.rect.current.translated;
@@ -199,6 +200,8 @@ export type TableHeaderProps = {
   /** Whether the user can drag columns to change the shared schema order. */
   canReorder?: boolean;
   onReorderProperties?: (activeId: string, overId: string, edge: DropEdge) => void;
+  numericSort?: { propertyId: string; direction: NumericSortDirection } | null;
+  onToggleNumericSort?: (propertyId: string) => void;
 };
 
 export function TableHeader({
@@ -222,6 +225,8 @@ export function TableHeader({
   onMergeAssetNamesCache,
   canReorder = false,
   onReorderProperties,
+  numericSort = null,
+  onToggleNumericSort,
 }: TableHeaderProps) {
   const supabase = useSupabase();
   const params = useParams();
@@ -433,6 +438,37 @@ export function TableHeader({
                       text={property.name}
                       className={styles.propertyHeaderText}
                     />
+                    {(property.dataType === 'int' || property.dataType === 'float') && onToggleNumericSort && (
+                      <Tooltip
+                        title={
+                          numericSort?.propertyId === property.id
+                            ? numericSort.direction === 'asc' ? 'Sorted ascending' : 'Sorted descending'
+                            : 'Sort by number'
+                        }
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          className={`${styles.columnFilterButton} ${
+                            numericSort?.propertyId === property.id ? styles.columnFilterButtonActive : ''
+                          }`}
+                          aria-label={`Sort ${property.name} ${
+                            numericSort?.propertyId === property.id ? numericSort.direction : 'none'
+                          }`}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleNumericSort(property.id);
+                          }}
+                        >
+                          <span aria-hidden="true" className={styles.columnNumericSortIcon}>
+                            {numericSort?.propertyId === property.id
+                              ? numericSort.direction === 'asc' ? <>&uarr;</> : <>&darr;</>
+                              : <>&#8597;</>}
+                          </span>
+                        </button>
+                      </Tooltip>
+                    )}
                     {onApplyColumnFilter && (
                       <Tooltip
                         title={isColumnFiltered?.(property.id) ? 'Column filter active' : 'Filter by values'}

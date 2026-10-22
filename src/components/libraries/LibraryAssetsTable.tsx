@@ -68,6 +68,8 @@ import { resolveTableUserRole, type TableUserRole } from './utils/tableUserRole'
 import { reorderLibraryFields } from '@/lib/services/libraryAssetsService';
 import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { moveItemAtEdge, orderItemsById, type DropEdge } from './utils/tableReorder';
+import { sortRowsByNumericColumn, type NumericSortDirection } from './utils/tableNumericSorting';
+import { useTableUndoShortcuts } from './hooks/useTableUndoShortcuts';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -91,6 +93,12 @@ export type LibraryAssetsTableProps = {
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
+  tableOperationHistory?: {
+    canUndo: boolean;
+    canRedo: boolean;
+    undo: () => Promise<void>;
+    redo: () => Promise<void>;
+  };
   /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
   onAddProperty?: (payload: AddColumnFormPayload) => Promise<void>;
   /** Project page role is authoritative when available. */
@@ -129,6 +137,7 @@ export function LibraryAssetsTable({
   onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
+  tableOperationHistory,
   onAddProperty,
   projectRole,
   isVersionPreview = false,
@@ -336,6 +345,13 @@ export function LibraryAssetsTable({
   );
   const { isLoading: libraryAssetsLoading, reorderRows, broadcastSchemaChange } = useLibraryData();
   const supabase = useSupabase();
+  useTableUndoShortcuts({
+    rootRef: tableContainerRef,
+    canUndo: tableOperationHistory?.canUndo ?? false,
+    canRedo: tableOperationHistory?.canRedo ?? false,
+    undo: () => tableOperationHistory?.undo() ?? Promise.resolve(),
+    redo: () => tableOperationHistory?.redo() ?? Promise.resolve(),
+  });
   const {
     hoveredAssetId,
     setHoveredAssetId,
@@ -486,6 +502,7 @@ export function LibraryAssetsTable({
 
   const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
   const [rowOrder, setRowOrder] = useState<string[] | null>(null);
+  const [numericSort, setNumericSort] = useState<{ propertyId: string; direction: NumericSortDirection } | null>(null);
   const [reordering, setReordering] = useState(false);
   const reorderPendingRef = useRef(false);
   const propertiesForDisplay = useMemo(
@@ -501,7 +518,7 @@ export function LibraryAssetsTable({
   const scriptViewMode = resolveLibraryViewMode(library?.documentExportType);
 
   const {
-    filteredRows: displayRows,
+    filteredRows,
     applyColumnFilter,
     isColumnFiltered,
     getCheckedFilterValues,
@@ -510,6 +527,20 @@ export function LibraryAssetsTable({
     orderedProperties,
     assetNamesCache,
   );
+  const displayRows = useMemo(
+    () => numericSort
+      ? sortRowsByNumericColumn(filteredRows, numericSort.propertyId, numericSort.direction)
+      : filteredRows,
+    [filteredRows, numericSort],
+  );
+
+  const handleToggleNumericSort = useCallback((propertyId: string) => {
+    setNumericSort((current) => {
+      if (current?.propertyId !== propertyId) return { propertyId, direction: 'asc' };
+      if (current.direction === 'asc') return { propertyId, direction: 'desc' };
+      return null;
+    });
+  }, []);
 
   useEffect(() => {
     if (detailDrawerRowId && !displayRows.some((r) => r.id === detailDrawerRowId)) {
@@ -1116,6 +1147,8 @@ export function LibraryAssetsTable({
               onMergeAssetNamesCache={mergeAssetNamesCache}
               canReorder={canReorder}
               onReorderProperties={handleColumnReorder}
+              numericSort={numericSort}
+              onToggleNumericSort={handleToggleNumericSort}
             />
             <LibraryAssetsTableBody
               displayRows={displayRows}

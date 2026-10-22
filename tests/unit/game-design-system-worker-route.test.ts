@@ -5,6 +5,7 @@ const processGdd = jest.fn();
 const processDialogue = jest.fn();
 const processResource = jest.fn();
 const processMap = jest.fn();
+const cleanupTableOperations = jest.fn();
 const availableAt = jest.fn();
 const query = {
   select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(),
@@ -21,6 +22,9 @@ jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: u
 jest.mock('@/lib/gdd-generation/dialogueWorker', () => ({ processNextDialogueJob: (...args: unknown[]) => processDialogue(...args) }));
 jest.mock('@/lib/gdd-generation/resources/worker', () => ({ processNextGddResourceJob: (...args: unknown[]) => processResource(...args) }));
 jest.mock('@/lib/gdd-generation/maps/worker', () => ({ processNextGddMapArtifact: (...args: unknown[]) => processMap(...args) }));
+jest.mock('@/lib/server/libraryTableOperationCleanup', () => ({
+  cleanupExpiredLibraryTableOperations: (...args: unknown[]) => cleanupTableOperations(...args),
+}));
 
 import { dispatchGddWorker } from '@/lib/gdd-generation/worker-dispatch';
 import { GET, POST, maxDuration } from '@/app/api/internal/game-design-system-worker/route';
@@ -35,6 +39,8 @@ describe('internal Game Design System worker route dispatch', () => {
     processDialogue.mockReset();
     processResource.mockReset();
     processMap.mockReset();
+    cleanupTableOperations.mockReset();
+    cleanupTableOperations.mockResolvedValue({ expired: 0, deletedPaths: [] });
     availableAt.mockReset();
     availableAt.mockResolvedValue({ data: { available_at: new Date(Date.now() - 1000).toISOString() }, error: null });
     jest.mocked(dispatchGddWorker).mockReset();
@@ -79,6 +85,7 @@ describe('internal Game Design System worker route dispatch', () => {
     expect(processGdd).toHaveBeenCalled();
     expect(processDialogue).toHaveBeenCalled();
     expect(processResource).toHaveBeenCalled();
+    expect(cleanupTableOperations).toHaveBeenCalledWith({ serviceClient });
   });
 
   it('does not dispatch either worker for an unauthorized invocation', async () => {
