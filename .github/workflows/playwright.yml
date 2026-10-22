@@ -304,6 +304,9 @@ jobs:
           exit 1
         fi
         echo "✅ All required environment variables are set"
+
+    - name: Verify authenticated Realtime delivery
+      run: npm run supabase:realtime-preflight
     
     # Cache Playwright browsers - significantly speeds up workflow
     - name: Get Playwright version

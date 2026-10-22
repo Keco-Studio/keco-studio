@@ -118,6 +118,14 @@ describe('CI workflow gates', () => {
     expect(deployWorkflow).not.toContain('version: latest');
   });
 
+  it('verifies authenticated Realtime broadcast delivery before Playwright starts', () => {
+    const preflight = playwrightWorkflow.indexOf('npm run supabase:realtime-preflight');
+    const playwright = playwrightWorkflow.indexOf('npx playwright test --shard=');
+
+    expect(preflight).toBeGreaterThan(-1);
+    expect(playwright).toBeGreaterThan(preflight);
+  });
+
   it('deploys MCP before Vercel and synchronizes the production codec secret', () => {
     expect(deployMcpFunctionJob).toContain('github.event_name == \'push\'');
     expect(deployMcpFunctionJob).toContain(
