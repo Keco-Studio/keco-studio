@@ -5,6 +5,7 @@ import {
   computeFormulaValueForField,
   type FormulaEvaluableField,
 } from '@/lib/utils/formula';
+import { collectFormulaFieldRecalculationRows } from '@/lib/services/libraryAssetsService';
 
 describe('target-only formula recalculation (issue #224)', () => {
   afterEach(() => {
@@ -39,6 +40,36 @@ describe('target-only formula recalculation (issue #224)', () => {
     expect(functionSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('writes an empty result after a prior formula value and writes again when its source recovers', () => {
+    const fields: FormulaEvaluableField[] = [
+      { id: 'source', name: 'source', dataType: 'int' },
+      {
+        id: 'target',
+        name: 'target',
+        dataType: 'formula',
+        formulaExpression: 'source * 2',
+      },
+    ];
+
+    expect(collectFormulaFieldRecalculationRows(fields, 'target', [
+      { id: 'asset-1', propertyValues: { source: 6, target: 12 } },
+    ])).toEqual([
+      { asset_id: 'asset-1', field_id: 'target', value_json: 12 },
+    ]);
+
+    expect(collectFormulaFieldRecalculationRows(fields, 'target', [
+      { id: 'asset-1', propertyValues: { source: '', target: 12 } },
+    ])).toEqual([
+      { asset_id: 'asset-1', field_id: 'target', value_json: null },
+    ]);
+
+    expect(collectFormulaFieldRecalculationRows(fields, 'target', [
+      { id: 'asset-1', propertyValues: { source: 7, target: null } },
+    ])).toEqual([
+      { asset_id: 'asset-1', field_id: 'target', value_json: 14 },
+    ]);
+  });
+
   it('wires service recalculation to the target-only evaluator', () => {
     const service = readFileSync(
       path.join(process.cwd(), 'src/lib/services/libraryAssetsService.ts'),
@@ -48,7 +79,7 @@ describe('target-only formula recalculation (issue #224)', () => {
     const end = service.indexOf('\n// Small helper', start);
     const implementation = service.slice(start, end);
 
-    expect(implementation).toContain('computeFormulaValueForField(');
+    expect(implementation).toContain('collectFormulaFieldRecalculationRows(');
     expect(implementation).not.toContain('computeFormulaValuesForRow(');
   });
 

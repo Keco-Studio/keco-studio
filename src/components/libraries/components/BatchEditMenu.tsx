@@ -13,6 +13,7 @@ export type BatchEditMenuProps = {
   onInsertRowAbove: () => void;
   onInsertRowBelow: () => void;
   onClearContents: () => void;
+  clearContentsLabel?: string;
   onDeleteRow: () => void;
 };
 
@@ -33,6 +34,7 @@ export function BatchEditMenu({
   onInsertRowAbove,
   onInsertRowBelow,
   onClearContents,
+  clearContentsLabel = 'Clear contents',
   onDeleteRow,
 }: BatchEditMenuProps) {
   if (!visible || typeof document === 'undefined') return null;
@@ -110,7 +112,7 @@ export function BatchEditMenu({
         onMouseLeave={(e) => hoverReset(e.currentTarget)}
         onClick={onClearContents}
       >
-        <span className={styles.batchEditMenuText}>Clear contents</span>
+        <span className={styles.batchEditMenuText}>{clearContentsLabel}</span>
       </div>
 
       <div className={styles.batchEditMenuDivider} />

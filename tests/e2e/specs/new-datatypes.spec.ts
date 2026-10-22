@@ -301,7 +301,7 @@ test.describe('New data types (array/audio/video)', () => {
       }) as typeof window.open;
     });
 
-    await uploadedAudio.click();
+    await uploadedAudio.dblclick();
     await expect
       .poll(
         async () =>
@@ -344,7 +344,7 @@ test.describe('New data types (array/audio/video)', () => {
       }) as typeof window.open;
     });
 
-    await uploadedVideo.click();
+    await uploadedVideo.dblclick();
     await expect
       .poll(
         async () =>

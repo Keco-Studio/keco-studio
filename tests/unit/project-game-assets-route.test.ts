@@ -200,6 +200,42 @@ describe('project game asset upload route', () => {
     }));
   });
 
+  it('registers a manual upload in its requested Assets category', async () => {
+    const bytes = new TextEncoder().encode('%PDF-1.7');
+    const path = `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-menu.pdf`;
+    const bucket = {
+      info: jest.fn().mockResolvedValue({
+        data: { size: bytes.byteLength, contentType: 'application/pdf' },
+        error: null,
+      }),
+      download: jest.fn().mockResolvedValue({ data: new Blob([bytes]), error: null }),
+      remove: jest.fn(),
+    };
+    const rpc = jest.fn((name: string) => Promise.resolve(
+      name === 'resolve_project_storage_upload_reservation'
+        ? { data: RESERVATION_ID, error: null }
+        : { data: [{ id: ASSET_ID, reused: false }], error: null },
+    ));
+    supabase = { storage: { from: jest.fn(() => bucket) }, rpc };
+
+    const response = await post({
+      action: 'complete',
+      category: 'icon',
+      items: [{
+        path,
+        reservationId: RESERVATION_ID,
+        fileName: 'menu.pdf',
+        fileType: 'application/pdf',
+        fileSize: bytes.byteLength,
+      }],
+    });
+
+    expect(response.status).toBe(201);
+    expect(rpc).toHaveBeenCalledWith('complete_project_game_asset_storage_upload_v2', expect.objectContaining({
+      p_category: 'icon',
+    }));
+  });
+
   it('rejects viewers before preparing or completing storage work', async () => {
     getUserProjectRole.mockResolvedValue({ role: 'viewer' });
     const response = await post({ action: 'prepare', files: [] });

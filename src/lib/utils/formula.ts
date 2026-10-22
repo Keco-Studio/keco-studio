@@ -127,6 +127,234 @@ function isIdentPart(ch: string): boolean {
   return isIdentStart(ch) || (ch >= '0' && ch <= '9');
 }
 
+function isRegexStart(
+  expression: string,
+  slashIndex: number,
+  controlParens: boolean[]
+): boolean {
+  let index = slashIndex - 1;
+  while (index >= 0 && /\s/.test(expression[index])) index -= 1;
+  if (index < 0 || '([{:;,!?=<>+-*%&|^~'.includes(expression[index])) return true;
+  if (expression[index] === ')' && controlParens[controlParens.length - 1] === true) return true;
+
+  const end = index + 1;
+  while (index >= 0 && /[A-Za-z]/.test(expression[index])) index -= 1;
+  return [
+    'await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new', 'of',
+    'return', 'throw', 'typeof', 'void', 'yield',
+  ].includes(expression.slice(index + 1, end));
+}
+
+function skipRegularExpression(expression: string, slashIndex: number): number {
+  let index = slashIndex + 1;
+  let inCharacterClass = false;
+  while (index < expression.length) {
+    if (expression[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (expression[index] === '[') inCharacterClass = true;
+    if (expression[index] === ']') inCharacterClass = false;
+    if (expression[index] === '/' && !inCharacterClass) return index + 1;
+    index += 1;
+  }
+  return index;
+}
+
+function findTemplateInterpolationEnd(expression: string, start: number): number {
+  let depth = 1;
+  let index = start;
+  const controlParens: boolean[] = [];
+  let pendingControlParen = false;
+  let justClosedControlParen = false;
+
+  while (index < expression.length) {
+    const char = expression[index];
+    if (char === '\\') {
+      index += 2;
+      continue;
+    }
+    if (char === '/') {
+      if (expression[index + 1] === '/') {
+        index += 2;
+        while (index < expression.length && expression[index] !== '\n' && expression[index] !== '\r') {
+          index += 1;
+        }
+        continue;
+      }
+      if (expression[index + 1] === '*') {
+        const commentEnd = expression.indexOf('*/', index + 2);
+        index = commentEnd === -1 ? expression.length : commentEnd + 2;
+        continue;
+      }
+      if (isRegexStart(expression, index, controlParens) || justClosedControlParen) {
+        index = skipRegularExpression(expression, index);
+        justClosedControlParen = false;
+        continue;
+      }
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      const quote = char;
+      index += 1;
+      while (index < expression.length) {
+        if (expression[index] === '\\') {
+          index += 2;
+          continue;
+        }
+        if (expression[index] === quote) {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      continue;
+    }
+    if (isIdentStart(char)) {
+      const wordStart = index;
+      index += 1;
+      while (index < expression.length && isIdentPart(expression[index])) index += 1;
+      pendingControlParen = ['if', 'while', 'for', 'with', 'switch', 'catch'].includes(
+        expression.slice(wordStart, index),
+      );
+      justClosedControlParen = false;
+      continue;
+    }
+    if (char === '(') {
+      controlParens.push(pendingControlParen);
+      pendingControlParen = false;
+      justClosedControlParen = false;
+      index += 1;
+      continue;
+    }
+    if (char === ')') {
+      justClosedControlParen = controlParens.pop() === true;
+      index += 1;
+      continue;
+    }
+    if (!/\s/.test(char)) {
+      pendingControlParen = false;
+      justClosedControlParen = false;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+    index += 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Updates exact field references in a formula while preserving string literals
+ * and identifiers that only partially match the renamed field.
+ */
+export function rewriteFormulaFieldReference(
+  expression: string | null | undefined,
+  previousFieldName: string,
+  nextFieldName: string
+): string | null | undefined {
+  if (!expression || !previousFieldName || previousFieldName === nextFieldName) {
+    return expression;
+  }
+
+  const replaceBareIdentifier = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(previousFieldName);
+  const nextBareIdentifier = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(nextFieldName);
+  let output = '';
+  let index = 0;
+
+  while (index < expression.length) {
+    const char = expression[index];
+
+    if (char === '"' || char === "'") {
+      const quote = char;
+      const start = index;
+      index += 1;
+      while (index < expression.length) {
+        if (expression[index] === '\\') {
+          index += 2;
+          continue;
+        }
+        if (expression[index] === quote) {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      output += expression.slice(start, index);
+      continue;
+    }
+
+    if (char === '`') {
+      let cursor = index + 1;
+      let segmentStart = cursor;
+      let closed = false;
+      output += '`';
+
+      while (cursor < expression.length) {
+        if (expression[cursor] === '\\') {
+          cursor += 2;
+          continue;
+        }
+        if (expression[cursor] === '`') {
+          output += expression.slice(segmentStart, cursor + 1);
+          cursor += 1;
+          closed = true;
+          break;
+        }
+        if (expression[cursor] === '$' && expression[cursor + 1] === '{') {
+          const interpolationEnd = findTemplateInterpolationEnd(expression, cursor + 2);
+          if (interpolationEnd === -1) break;
+          output += expression.slice(segmentStart, cursor + 2);
+          output += rewriteFormulaFieldReference(
+            expression.slice(cursor + 2, interpolationEnd),
+            previousFieldName,
+            nextFieldName,
+          );
+          output += '}';
+          cursor = interpolationEnd + 1;
+          segmentStart = cursor;
+          continue;
+        }
+        cursor += 1;
+      }
+
+      if (!closed) output += expression.slice(segmentStart, cursor);
+      index = cursor;
+      continue;
+    }
+
+    if (char === '[') {
+      const closeIndex = expression.indexOf(']', index + 1);
+      if (closeIndex !== -1) {
+        const fieldName = expression.slice(index + 1, closeIndex).trim();
+        output += fieldName === previousFieldName
+          ? `[${nextFieldName}]`
+          : expression.slice(index, closeIndex + 1);
+        index = closeIndex + 1;
+        continue;
+      }
+    }
+
+    if (replaceBareIdentifier && isIdentStart(char)) {
+      const start = index;
+      index += 1;
+      while (index < expression.length && isIdentPart(expression[index])) index += 1;
+      const identifier = expression.slice(start, index);
+      output += identifier === previousFieldName
+        ? (nextBareIdentifier ? nextFieldName : `[${nextFieldName}]`)
+        : identifier;
+      continue;
+    }
+
+    output += char;
+    index += 1;
+  }
+
+  return output;
+}
+
 function tokenizeFormula(expr: string): FormulaToken[] {
   const tokens: FormulaToken[] = [];
   const s = expr.trim();
@@ -245,7 +473,8 @@ function toRpn(tokens: FormulaToken[]): FormulaToken[] {
 
 function evalRpn(
   rpn: FormulaToken[],
-  resolveIdentifier: (name: string) => number | null
+  resolveIdentifier: (name: string) => number | null,
+  errorInfo?: { divByZero?: boolean },
 ): number | null {
   const stack: number[] = [];
 
@@ -272,7 +501,10 @@ function evalRpn(
       else if (token.value === '-') result = a - b;
       else if (token.value === '*') result = a * b;
       else {
-        if (b === 0) return null;
+        if (b === 0) {
+          if (errorInfo) errorInfo.divByZero = true;
+          return null;
+        }
         result = a / b;
       }
 
@@ -408,6 +640,7 @@ function evaluateFormulaForRowInternal(
   const { tokens, rpn } = compiled;
   if (tokens.length > 0) {
     if (rpn.length > 0) {
+      const errorInfo: { divByZero?: boolean } = {};
       const numericValue = evalRpn(rpn, (name) => {
         const field = propertyByName.get(name);
         if (!field) return null;
@@ -418,9 +651,12 @@ function evaluateFormulaForRowInternal(
         }
         const num = Number(raw);
         return Number.isNaN(num) ? null : num;
-      });
+      }, errorInfo);
       if (numericValue !== null) {
         return roundFormulaNumber(numericValue);
+      }
+      if (!errorInfo.divByZero) {
+        return null;
       }
     }
   }

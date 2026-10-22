@@ -12,7 +12,6 @@ import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { storageQuotaMessage } from '@/lib/storageQuotaMessage';
 import {
   uploadMediaFile,
-  deleteMediaFile,
   validateMediaFile,
   formatFileSize,
   getFileIcon,
@@ -210,35 +209,6 @@ export function MediaFileUpload({
     fileInputRef.current?.click();
   };
 
-  const handleDelete = async () => {
-    if (!value?.path) return;
-
-    if (!confirm('Are you sure you want to delete this file?')) {
-      return;
-    }
-
-    setError(null);
-    setUploading(true);
-    setUploadProgress('Deleting file...');
-
-    try {
-      await deleteMediaFile(supabase, value.path);
-      onChange(null);
-      setUploadProgress('');
-    } catch (e: any) {
-      const msg = e?.message || 'Failed to delete file';
-      setError(msg);
-      if (onShowToast) {
-        onShowToast(msg, 'error');
-      } else {
-        message.error(msg);
-      }
-      setUploadProgress('');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleView = () => {
     if (!value?.url) return;
 
@@ -392,7 +362,7 @@ export function MediaFileUpload({
         >
           <div
             className={`${styles.fileInfoClickable} ${isTableCellLayout ? styles.fileInfoClickableTableCell : ''}`}
-            onClick={handleView}
+            onDoubleClick={handleView}
             title={value.fileName}
             aria-label={value.fileName}
           >

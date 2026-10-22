@@ -39,4 +39,17 @@ describe('formula evaluator compilation cache', () => {
     expect(computeFormulaValuesForRow(fields, { amount: 8 }).total).toBe(0);
     expect(functionSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('returns an empty result for arithmetic formulas with an empty source value', () => {
+    const properties = [
+      { id: 'amount', key: 'amount', name: 'amount', dataType: 'int' },
+    ] as PropertyConfig[];
+    const emptyRow = {
+      id: 'row-empty',
+      name: 'Empty row',
+      propertyValues: { amount: '' },
+    } as AssetRow;
+
+    expect(evaluateFormulaForRow('amount * 2', emptyRow, properties)).toBeNull();
+  });
 });

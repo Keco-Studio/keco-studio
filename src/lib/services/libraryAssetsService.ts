@@ -9,6 +9,7 @@ import {
   computeFormulaValueForField,
   computeFormulaValuesForRow,
   createFormulaFieldByName,
+  rewriteFormulaFieldReference,
 } from '@/lib/utils/formula';
 import { getLibrary } from '@/lib/services/libraryService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
@@ -74,6 +75,34 @@ const isCustomFormulaCellValue = (value: unknown): boolean => {
     }
   }
   return false;
+};
+
+export const collectFormulaFieldRecalculationRows = (
+  evaluableFields: Parameters<typeof computeFormulaValueForField>[0],
+  targetFormulaFieldId: string,
+  assets: Array<Pick<AssetRow, 'id' | 'propertyValues'>>,
+): Array<{ asset_id: string; field_id: string; value_json: unknown }> => {
+  const fieldByName = createFormulaFieldByName(evaluableFields);
+
+  return assets.flatMap((asset) => {
+    const existingTargetValue = asset.propertyValues?.[targetFormulaFieldId];
+    if (isCustomFormulaCellValue(existingTargetValue)) {
+      // Schema-level recalculation must not overwrite cell-level custom formulas.
+      return [];
+    }
+
+    return [{
+      asset_id: asset.id,
+      field_id: targetFormulaFieldId,
+      // A null result deliberately replaces any prior persisted formula value.
+      value_json: computeFormulaValueForField(
+        evaluableFields,
+        targetFormulaFieldId,
+        asset.propertyValues,
+        fieldByName,
+      ),
+    }];
+  });
 };
 
 const mergeFormulaValuesPreservingCustom = (
@@ -313,30 +342,11 @@ async function recalculateAndPersistFormulaFieldValues(
     dataType: f.data_type,
     formulaExpression: f.formula_expression,
   }));
-  const fieldByName = createFormulaFieldByName(evaluableFields);
-
-  const upsertRows: Array<{ asset_id: string; field_id: string; value_json: unknown }> = [];
-  for (const asset of assets) {
-    const existingTargetValue = asset.propertyValues?.[targetFormulaFieldId];
-    if (isCustomFormulaCellValue(existingTargetValue)) {
-      // Respect cell-level custom formulas: schema-level recalculation should not overwrite them.
-      continue;
-    }
-    const value = computeFormulaValueForField(
-      evaluableFields,
-      targetFormulaFieldId,
-      asset.propertyValues,
-      fieldByName
-    );
-    // Persist any non-empty result so formulas can return numbers, booleans, or strings.
-    if (value !== null && value !== undefined) {
-      upsertRows.push({
-        asset_id: asset.id,
-        field_id: targetFormulaFieldId,
-        value_json: value,
-      });
-    }
-  }
+  const upsertRows = collectFormulaFieldRecalculationRows(
+    evaluableFields,
+    targetFormulaFieldId,
+    assets,
+  );
 
   if (upsertRows.length > 0) {
     const { error } = await supabase
@@ -625,6 +635,32 @@ export async function updateLibraryField(
 ): Promise<void> {
   await verifyLibraryUpdatePermission(supabase, libraryId);
 
+  const nextLabel = payload.label.trim();
+  const fieldsBeforeUpdate = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
+  const currentField = fieldsBeforeUpdate.find((field) => field.id === fieldId);
+  const formulaExpressionUpdates = currentField && currentField.label !== nextLabel
+    ? fieldsBeforeUpdate
+      .filter((field) => field.id !== fieldId && field.data_type === 'formula')
+      .flatMap((field) => {
+        const formulaExpression = rewriteFormulaFieldReference(
+          field.formula_expression,
+          currentField.label,
+          nextLabel,
+        );
+        return formulaExpression !== field.formula_expression
+          ? [{
+            fieldId: field.id,
+            expectedFormulaExpression: field.formula_expression,
+            formulaExpression,
+          }]
+          : [];
+      })
+    : [];
+
+  if (formulaExpressionUpdates.length > 0 && nextLabel.includes(']')) {
+    throw new Error('Columns used by formulas cannot contain ]');
+  }
+
   const enumOptions =
     payload.dataType === 'enum'
       ? (payload.enumOptions ?? []).map((v) => v.trim()).filter((v) => v.length > 0)
@@ -635,26 +671,33 @@ export async function updateLibraryField(
       ? (payload.referenceLibraries ?? [])
       : null;
 
-  const { error } = await supabase
-    .from('library_field_definitions')
-    .update({
-      label: payload.label.trim(),
+  const { error } = await supabase.rpc('update_library_field_with_formula_references', {
+    p_library_id: libraryId,
+    p_field_id: fieldId,
+    p_field: {
+      label: nextLabel,
       description: payload.description?.trim() || null,
-      data_type: payload.dataType ?? 'string',
-      formula_expression: payload.dataType === 'formula' ? (payload.formulaExpression?.trim() || null) : null,
-      enum_options: enumOptions,
-      reference_libraries: referenceLibraries,
-    })
-    .eq('library_id', libraryId)
-    .eq('id', fieldId);
+      dataType: payload.dataType ?? 'string',
+      formulaExpression: payload.dataType === 'formula' ? (payload.formulaExpression?.trim() || null) : null,
+      enumOptions,
+      referenceLibraries,
+    },
+    p_formula_updates: formulaExpressionUpdates,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (payload.dataType === 'formula') {
-    await recalculateAndPersistFormulaFieldValues(supabase, libraryId, fieldId);
-  }
+  const formulaFieldIdsToRecalculate = new Set(
+    formulaExpressionUpdates.map(({ fieldId: formulaFieldId }) => formulaFieldId),
+  );
+  if (payload.dataType === 'formula') formulaFieldIdsToRecalculate.add(fieldId);
+  await Promise.all(
+    Array.from(formulaFieldIdsToRecalculate).map((formulaFieldId) =>
+      recalculateAndPersistFormulaFieldValues(supabase, libraryId, formulaFieldId)
+    )
+  );
 
   await touchLibraryUpdatedAt(supabase, libraryId);
 }

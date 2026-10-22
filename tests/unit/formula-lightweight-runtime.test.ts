@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   computeFormulaValuesForRow,
+  rewriteFormulaFieldReference,
   type FormulaEvaluableField,
 } from '@/lib/utils/formula';
 
@@ -58,5 +59,55 @@ describe('lightweight formula runtime', () => {
     expect(packageJson.dependencies?.mathjs).toBeUndefined();
     expect(packageJson.devDependencies?.mathjs).toBeUndefined();
     expect(packageLock.packages?.['node_modules/mathjs']).toBeUndefined();
+  });
+
+  it('rewrites only exact field references when a source field is renamed', () => {
+    expect(
+      rewriteFormulaFieldReference(
+        '=amount + [amount] + [Order amount] + amount_tax + SUM(amount, 1) + "amount"',
+        'amount',
+        'cost',
+      ),
+    ).toBe('=cost + [cost] + [Order amount] + amount_tax + SUM(cost, 1) + "amount"');
+  });
+
+  it('uses bracket notation when a renamed field cannot be referenced as a bare identifier', () => {
+    expect(rewriteFormulaFieldReference('amount + [amount]', 'amount', 'Order amount'))
+      .toBe('[Order amount] + [Order amount]');
+  });
+
+  it('preserves template literal text while rewriting interpolated field references', () => {
+    expect(rewriteFormulaFieldReference('amount + `amount: ${amount}`', 'amount', 'cost'))
+      .toBe('cost + `amount: ${cost}`');
+  });
+
+  it('rewrites references after regular expressions inside template interpolations', () => {
+    expect(rewriteFormulaFieldReference('`${/}/.test("}") ? amount : 0}`', 'amount', 'cost'))
+      .toBe('`${/}/.test("}") ? cost : 0}`');
+  });
+
+  it('rewrites references after regular expressions following return in template interpolations', () => {
+    expect(
+      rewriteFormulaFieldReference(
+        '`${(() => { return /}/.test("}") })() + amount}`',
+        'amount',
+        'cost',
+      ),
+    ).toBe('`${(() => { return /}/.test("}") })() + cost}`');
+  });
+
+  it('rewrites references after regular expressions following a control condition', () => {
+    expect(
+      rewriteFormulaFieldReference(
+        '`${(() => { if (true) /}/.test("}"); return 0 })() + amount}`',
+        'amount',
+        'cost',
+      ),
+    ).toBe('`${(() => { if (true) /}/.test("}"); return 0 })() + cost}`');
+  });
+
+  it('rewrites references after regular expressions following instanceof', () => {
+    expect(rewriteFormulaFieldReference('`${foo instanceof /}/ ? amount : 0}`', 'amount', 'cost'))
+      .toBe('`${foo instanceof /}/ ? cost : 0}`');
   });
 });

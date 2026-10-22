@@ -46,7 +46,7 @@ export function useClipboardShortcuts({
       if (isEditing || isInput) return;
 
       const hasSelection = selectedCells.size > 0 || selectedRowIds.size > 0;
-      if (e.key === 'Delete' && hasSelection && onClearContents) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && hasSelection && onClearContents) {
         e.preventDefault();
         e.stopPropagation();
         onClearContents();

@@ -4,11 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { GameAssetsPage } from '@/components/admin/GameAssetsPage';
 
-const message = { error: jest.fn(), success: jest.fn() };
-
 jest.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 jest.mock('antd', () => ({
-  App: { useApp: () => ({ message }) },
   Button: ({ children, loading: _loading, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) =>
     <button type="button" {...props}>{children}</button>,
   Spin: () => <span>Loading</span>,
@@ -68,4 +65,22 @@ it('uses the sidebar delete dialog and closes the selected asset only after conf
   fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Asset detail' })).toBeNull());
   expect(screen.queryByRole('button', { name: 'Forest.png' })).toBeNull();
+});
+
+it('keeps an asset visible when removing it fails', async () => {
+  const asset = { id: 'manual:one', name: 'Forest.png', category: 'media', source: 'manual', status: 'ready', format: 'png', mimeType: 'image/png', previewUrl: null };
+  global.fetch = jest.fn(async (_url, options) => ({
+    ok: options?.method !== 'DELETE',
+    json: async () => options?.method === 'DELETE' ? {} : { assets: [asset], warnings: [] },
+  })) as jest.Mock;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 800 });
+  renderPage();
+
+  const card = await screen.findByRole('button', { name: 'Forest.png' });
+  fireEvent.contextMenu(card);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+  await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('button', { name: 'Forest.png' })).toBeTruthy();
 });

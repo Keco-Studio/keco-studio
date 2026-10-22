@@ -42,7 +42,7 @@ import { useLibraryTableFindReplaceWiring } from './hooks/useLibraryTableFindRep
 import { useLibraryAssetDetailDrawerUpdate } from './hooks/useLibraryAssetDetailDrawerUpdate';
 import { TableToast } from './components/TableToast';
 import { RowContextMenu } from './components/RowContextMenu';
-import { BatchEditMenu } from './components/BatchEditMenu';
+import { LibraryBatchEditMenu } from './components/LibraryBatchEditMenu';
 import { AssetCardPanel } from './components/AssetCardPanel';
 import { TableHeader } from './components/TableHeader';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
@@ -1332,25 +1332,22 @@ export function LibraryAssetsTable({
         }}
       />
 
-      <BatchEditMenu
+      <LibraryBatchEditMenu
         visible={batchEditMenuVisible && !!batchEditMenuPosition}
         position={batchEditMenuPosition ?? { x: 0, y: 0 }}
         userRole={userRole}
+        orderedProperties={orderedProperties}
+        selectedCells={selectedCells}
         onCut={handleCut}
         onCopy={handleCopy}
         onPaste={handlePaste}
         onInsertRowAbove={handleInsertRowAbove}
         onInsertRowBelow={handleInsertRowBelow}
-        onClearContents={() => {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setClearContentsConfirmVisible(true);
-        }}
-        onDeleteRow={() => {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setDeleteRowConfirmVisible(true);
-        }}
+        onClearContents={handleClearContents}
+        setVisible={setBatchEditMenuVisible}
+        setPosition={setBatchEditMenuPosition}
+        setClearContentsConfirmVisible={setClearContentsConfirmVisible}
+        setDeleteRowConfirmVisible={setDeleteRowConfirmVisible}
       />
       <TableToast message={toastMessage?.message ?? null} type={toastMessage?.type ?? 'default'} />
       <DeleteAssetModal

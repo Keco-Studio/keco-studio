@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { App, Button, Spin } from 'antd';
+import { Button, Spin } from 'antd';
 import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
@@ -125,7 +125,6 @@ function buildJustifiedRows(
 }
 
 export function GameAssetsPage({ projectId }: { projectId: string }) {
-  const { message } = App.useApp();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const category = parseGameAssetsCategoryParam(searchParams?.get('category'));
@@ -242,11 +241,10 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
         ? { ...current, assets: current.assets.filter((item) => item.id !== asset.id) }
         : current);
       setSelected((current) => current?.id === asset.id ? null : current);
-      message.success('Removed from Assets library');
     } catch {
-      message.error("Couldn't remove asset");
+      return;
     }
-  }, [message, projectId, queryClient]);
+  }, [projectId, queryClient]);
 
   const selectedPreview = useMemo(() => {
     if (!selected) return null;
@@ -261,7 +259,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
           {assetsQuery.isError ? (
             <div className={styles.state}>
               <span>We couldn’t load the project assets.</span>
-              <Button onClick={() => void assetsQuery.refetch().catch(() => message.error('Refresh failed'))}>Try again</Button>
+              <Button onClick={() => void assetsQuery.refetch()}>Try again</Button>
             </div>
           ) : null}
           {!assetsQuery.isLoading && !assetsQuery.isError && filtered.length === 0 ? (

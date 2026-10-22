@@ -67,7 +67,7 @@ describe('MediaFileUpload image preview', () => {
       { container: tableRegion },
     );
 
-    fireEvent.click(screen.getByRole('img', { name: 'file.webp' }));
+    fireEvent.doubleClick(screen.getByRole('img', { name: 'file.webp' }));
 
     const overlay = document.body.querySelector('.modalOverlay');
     expect(overlay).toBeTruthy();
