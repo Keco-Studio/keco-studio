@@ -232,17 +232,18 @@ jobs:
         echo "📋 Getting Supabase status as JSON..."
         STATUS_JSON=$(supabase status --output json)
         
-        # Extract keys using correct field names from Supabase CLI JSON output
+        # Realtime validates Auth session JWTs against the local JWT secret.
+        # Use the legacy JWT anon key rather than the publishable API key.
         # Note: Sensitive values may be masked as "***" in JSON, so we'll use text output as fallback
-        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.PUBLISHABLE_KEY // empty')
+        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.ANON_KEY // empty')
         SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty')
         
         # If keys are masked (show as "***") or missing, extract from text output
         if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
-          echo "⚠️  PUBLISHABLE_KEY is masked or missing, extracting from text output..."
+          echo "⚠️  ANON_KEY is masked or missing, extracting from text output..."
           STATUS_TEXT=$(supabase status)
-          # Extract Publishable key from text output (format: "│ Publishable │ sb_publishable_... │")
-          ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "Publishable" | sed -n 's/.*│[[:space:]]*Publishable[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+          # Extract the JWT anon key from text output (format: "│ Anon key │ eyJ... │").
+          ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "anon key" | sed -n 's/.*│[[:space:]]*Anon key[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
         fi
         
         if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ] || [ "$SERVICE_KEY" == "***" ]; then
@@ -256,7 +257,7 @@ jobs:
         
         # Final validation
         if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
-          echo "❌ Error: ANON_KEY (PUBLISHABLE_KEY) is empty, null, or masked"
+          echo "❌ Error: ANON_KEY is empty, null, or masked"
           echo "JSON output:"
           echo "$STATUS_JSON" | jq '.'
           echo ""

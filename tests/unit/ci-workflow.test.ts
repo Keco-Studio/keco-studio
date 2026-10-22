@@ -209,6 +209,12 @@ describe('CI workflow gates', () => {
     );
   });
 
+  it('uses the local JWT anon key for Playwright Realtime authentication', () => {
+    expect(playwrightWorkflow).toContain(".ANON_KEY // empty");
+    expect(playwrightWorkflow).not.toContain(".PUBLISHABLE_KEY // empty");
+    expect(workflow).toContain(".ANON_KEY // empty");
+  });
+
   it('keeps pull request migrations isolated while deployment branches always retry', () => {
     expect(deployWorkflow).toContain(
       "push:\n    branches:\n      - main\n      - master\n      - 'release/**'"
