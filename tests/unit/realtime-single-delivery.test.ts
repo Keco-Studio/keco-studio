@@ -7,12 +7,12 @@ import {
 } from '@/lib/realtime/reconnect-reconciliation';
 
 describe('single-path realtime delivery', () => {
-  it('reconciles exactly once after a disconnected channel resubscribes', () => {
+  it('reconciles after initial subscription and after a disconnected channel resubscribes', () => {
     let phase: RealtimeConnectionPhase = 'initial';
 
     let transition = advanceRealtimeConnection(phase, 'SUBSCRIBED');
     phase = transition.phase;
-    expect(transition.shouldReconcile).toBe(false);
+    expect(transition.shouldReconcile).toBe(true);
 
     transition = advanceRealtimeConnection(phase, 'CHANNEL_ERROR');
     phase = transition.phase;

@@ -17,7 +17,7 @@ export function advanceRealtimeConnection(
   if (status === 'SUBSCRIBED') {
     return {
       phase: 'connected',
-      shouldReconcile: phase === 'reconnect_pending',
+      shouldReconcile: phase !== 'connected',
     };
   }
 
