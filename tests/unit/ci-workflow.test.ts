@@ -112,9 +112,11 @@ describe('CI workflow gates', () => {
   });
 
   it('pins Supabase CLI versions instead of resolving latest during CI', () => {
-    expect(workflow).toContain('version: 2.90.0');
-    expect(deployWorkflow).toContain('version: 2.90.0');
+    expect(workflow).toContain('version: 2.105.0');
+    expect(playwrightWorkflow).toContain('version: 2.105.0');
+    expect(deployWorkflow).toContain('version: 2.105.0');
     expect(workflow).not.toContain('version: latest');
+    expect(playwrightWorkflow).not.toContain('version: latest');
     expect(deployWorkflow).not.toContain('version: latest');
   });
 
