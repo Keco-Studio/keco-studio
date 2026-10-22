@@ -1,5 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
-import { buildCellUpdateOperation, buildRowCreateOperation, buildRowDeleteOperation } from '@/lib/library/tableOperationSnapshots';
+import {
+  buildCellUpdateOperation,
+  buildFieldReorderOperation,
+  buildRowCreateOperation,
+  buildRowDeleteOperation,
+  buildRowReorderOperation,
+} from '@/lib/library/tableOperationSnapshots';
 
 describe('buildCellUpdateOperation', () => {
   it('keeps exact before and after values for a multi-row update', () => {
@@ -91,5 +97,29 @@ describe('buildCellUpdateOperation', () => {
       inverse: { rows: [{ id: 'new-row', name: 'Untitled', createdAt: '2026-10-22T00:00:00.000Z', rowIndex: 5, values: { score: 0 } }] },
       expected: expect.objectContaining({ before: { assetIdsAbsent: ['new-row'] } }),
     }));
+  });
+
+  it('records complete before and after row order', () => {
+    const operation = buildRowReorderOperation([
+      { id: 'a', rowIndex: 1 }, { id: 'b', rowIndex: 2 }, { id: 'c', rowIndex: 3 },
+    ] as any, ['c', 'a', 'b']);
+
+    expect(operation).toMatchObject({
+      kind: 'rows_reordered',
+      forward: { orderedIds: ['c', 'a', 'b'] },
+      inverse: { orderedIds: ['a', 'b', 'c'] },
+    });
+  });
+
+  it('records complete before and after field order', () => {
+    const operation = buildFieldReorderOperation([
+      { id: 'a', orderIndex: 0 }, { id: 'b', orderIndex: 1 }, { id: 'c', orderIndex: 2 },
+    ] as any, ['b', 'c', 'a']);
+
+    expect(operation).toMatchObject({
+      kind: 'fields_reordered',
+      forward: { orderedIds: ['b', 'c', 'a'] },
+      inverse: { orderedIds: ['a', 'b', 'c'] },
+    });
   });
 });

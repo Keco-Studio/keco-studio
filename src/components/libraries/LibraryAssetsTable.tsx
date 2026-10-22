@@ -70,6 +70,8 @@ import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { moveItemAtEdge, orderItemsById, type DropEdge } from './utils/tableReorder';
 import { sortRowsByNumericColumn, type NumericSortDirection } from './utils/tableNumericSorting';
 import { useTableUndoShortcuts } from './hooks/useTableUndoShortcuts';
+import { applyLibraryTableOperation } from '@/lib/services/libraryTableOperationsService';
+import { buildFieldReorderOperation, buildRowReorderOperation } from '@/lib/library/tableOperationSnapshots';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -98,6 +100,7 @@ export type LibraryAssetsTableProps = {
     canRedo: boolean;
     undo: () => Promise<void>;
     redo: () => Promise<void>;
+    record: (operationId: string) => void;
   };
   /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
   onAddProperty?: (payload: AddColumnFormPayload) => Promise<void>;
@@ -343,7 +346,12 @@ export function LibraryAssetsTable({
   const referencedAssetIdFromQuery = parseReferencedAssetSearch(
     `?${searchParams.toString()}`
   );
-  const { isLoading: libraryAssetsLoading, reorderRows, broadcastSchemaChange } = useLibraryData();
+  const {
+    isLoading: libraryAssetsLoading,
+    reorderRows,
+    broadcastSchemaChange,
+    refreshAssetsFromServer,
+  } = useLibraryData();
   const supabase = useSupabase();
   useTableUndoShortcuts({
     rootRef: tableContainerRef,
@@ -562,7 +570,17 @@ export function LibraryAssetsTable({
     setReordering(true);
     setColumnOrder(next.map((property) => property.id));
     try {
-      await reorderLibraryFields(supabase, library.id, next.map((property) => property.id));
+      if (tableOperationHistory) {
+        const result = await applyLibraryTableOperation(
+          supabase,
+          library.id,
+          buildFieldReorderOperation(orderedProperties, next.map((property) => property.id)),
+        );
+        tableOperationHistory.record(result.operationId);
+        await refreshAssetsFromServer();
+      } else {
+        await reorderLibraryFields(supabase, library.id, next.map((property) => property.id));
+      }
       await broadcastSchemaChange().catch((error) => console.error('Failed to broadcast schema change', error));
       await invalidateLibrarySchemaData(queryClient, { libraryId: library.id, refetchActiveSchema: true });
       setColumnOrder(null);
@@ -573,7 +591,7 @@ export function LibraryAssetsTable({
       reorderPendingRef.current = false;
       setReordering(false);
     }
-  }, [broadcastSchemaChange, canReorder, columnOrder, library, orderedProperties, queryClient, supabase]);
+  }, [broadcastSchemaChange, canReorder, columnOrder, library, orderedProperties, queryClient, refreshAssetsFromServer, supabase, tableOperationHistory]);
 
   const handleRowReorder = useCallback(async (activeId: string, overId: string, edge: DropEdge) => {
     if (!canReorder || reorderPendingRef.current || resolvedRows.some((row) => row.id.startsWith('temp-'))) return;
@@ -585,7 +603,17 @@ export function LibraryAssetsTable({
     setReordering(true);
     setRowOrder(next.map((row) => row.id));
     try {
-      await reorderRows(next);
+      if (tableOperationHistory && library) {
+        const result = await applyLibraryTableOperation(
+          supabase,
+          library.id,
+          buildRowReorderOperation(allRows, next.map((row) => row.id)),
+        );
+        tableOperationHistory.record(result.operationId);
+        await refreshAssetsFromServer();
+      } else {
+        await reorderRows(next);
+      }
       setRowOrder(null);
     } catch (error) {
       setRowOrder(previousOrder);
@@ -594,7 +622,7 @@ export function LibraryAssetsTable({
       reorderPendingRef.current = false;
       setReordering(false);
     }
-  }, [canReorder, reorderRows, resolvedRows, rowOrder]);
+  }, [canReorder, library, refreshAssetsFromServer, reorderRows, resolvedRows, rowOrder, supabase, tableOperationHistory]);
   const resizeColumnKeys = useMemo(
     () => [NUMBER_COLUMN_KEY, ...activeProperties.map((property) => property.id)],
     [activeProperties],
@@ -1098,6 +1126,13 @@ export function LibraryAssetsTable({
         <div
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('input, textarea, select, [contenteditable="true"]')) {
+              tableContainerRef.current?.focus({ preventScroll: true });
+            }
+          }}
         >
           {scriptViewMode === 'script' ? (
             hasScriptColumns ? (

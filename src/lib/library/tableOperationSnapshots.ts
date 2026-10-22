@@ -138,3 +138,54 @@ export function buildRowCreateOperation(
     },
   };
 }
+
+function buildReorderOperation(
+  kind: 'rows_reordered' | 'fields_reordered',
+  beforeOrder: string[],
+  afterOrder: string[],
+  beforeExpected: Record<string, unknown>[],
+): LibraryTableOperationInput {
+  if (beforeOrder.length !== afterOrder.length
+    || new Set(beforeOrder).size !== beforeOrder.length
+    || beforeOrder.some((id) => !afterOrder.includes(id))) {
+    throw new Error('Table order must contain every row or column exactly once');
+  }
+  return {
+    kind,
+    forward: { orderedIds: afterOrder },
+    inverse: { orderedIds: beforeOrder },
+    expected: {
+      before: { assets: kind === 'rows_reordered'
+        ? beforeExpected
+        : [], fields: kind === 'fields_reordered'
+        ? beforeExpected
+        : [] },
+      after: { assets: kind === 'rows_reordered'
+        ? afterOrder.map((id, index) => ({ id, rowIndex: index + 1 }))
+        : [], fields: kind === 'fields_reordered'
+        ? afterOrder.map((id, index) => ({ id, orderIndex: index }))
+        : [] },
+    },
+  };
+}
+
+export function buildRowReorderOperation(rows: AssetRow[], orderedIds: string[]): LibraryTableOperationInput {
+  return buildReorderOperation(
+    'rows_reordered',
+    rows.map((row) => row.id),
+    orderedIds,
+    rows.map((row) => ({ id: row.id, rowIndex: row.rowIndex ?? null })),
+  );
+}
+
+export function buildFieldReorderOperation(
+  fields: Array<{ id: string; orderIndex?: number }>,
+  orderedIds: string[],
+): LibraryTableOperationInput {
+  return buildReorderOperation(
+    'fields_reordered',
+    fields.map((field) => field.id),
+    orderedIds,
+    fields.map((field) => ({ id: field.id, orderIndex: field.orderIndex ?? null })),
+  );
+}
