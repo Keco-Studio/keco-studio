@@ -1,7 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   buildCellUpdateOperation,
+  buildFieldCreateOperation,
+  buildFieldDeleteOperation,
   buildFieldReorderOperation,
+  buildFieldUpdateOperation,
   buildRowCreateOperation,
   buildRowDeleteOperation,
   buildRowReorderOperation,
@@ -99,6 +102,27 @@ describe('buildCellUpdateOperation', () => {
     }));
   });
 
+  it('restores displaced row indices when undoing an inserted row', () => {
+    const operation = buildRowCreateOperation(
+      [{ id: 'new-row', name: 'Untitled', createdAt: '2026-10-22T00:00:00.000Z', rowIndex: 2, values: {} }],
+      [{ id: 'row-1', rowIndex: 2 }, { id: 'row-2', rowIndex: 3 }] as any,
+      [{ assetId: 'row-1', rowIndex: 3 }, { assetId: 'row-2', rowIndex: 4 }],
+    );
+
+    expect(operation).toMatchObject({
+      forward: { rowIndexUpdates: [{ id: 'row-1', rowIndex: 3 }, { id: 'row-2', rowIndex: 4 }] },
+      inverse: { rowIndexUpdates: [{ id: 'row-1', rowIndex: 2 }, { id: 'row-2', rowIndex: 3 }] },
+      expected: {
+        before: { assets: [{ id: 'row-1', rowIndex: 2 }, { id: 'row-2', rowIndex: 3 }] },
+        after: { assets: [
+          { id: 'new-row', rowIndex: 2 },
+          { id: 'row-1', rowIndex: 3 },
+          { id: 'row-2', rowIndex: 4 },
+        ] },
+      },
+    });
+  });
+
   it('records complete before and after row order', () => {
     const operation = buildRowReorderOperation([
       { id: 'a', rowIndex: 1 }, { id: 'b', rowIndex: 2 }, { id: 'c', rowIndex: 3 },
@@ -120,6 +144,92 @@ describe('buildCellUpdateOperation', () => {
       kind: 'fields_reordered',
       forward: { orderedIds: ['b', 'c', 'a'] },
       inverse: { orderedIds: ['a', 'b', 'c'] },
+    });
+  });
+
+  it('keeps a deleted field and all of its values for restoration', () => {
+    const operation = buildFieldDeleteOperation(
+      {
+        id: 'score', key: 'score', name: 'Score', dataType: 'float', orderIndex: 2,
+        description: 'A numeric score', required: true,
+      },
+      [
+        { id: 'row-1', propertyValues: { score: 3, note: 'keep' } },
+        { id: 'row-2', propertyValues: { score: null } },
+      ] as any,
+    );
+
+    expect(operation).toMatchObject({
+      kind: 'field_deleted',
+      forward: { fields: [{ id: 'score' }] },
+      inverse: {
+        fields: [{ id: 'score', label: 'Score', dataType: 'float', orderIndex: 2 }],
+        assetValues: [
+          { assetId: 'row-1', fieldId: 'score', value: 3 },
+          { assetId: 'row-2', fieldId: 'score', value: null },
+        ],
+      },
+    });
+  });
+
+  it('treats a renamed source field and rewritten formula as one reversible update', () => {
+    const before = [
+      { id: 'score', name: 'Score', dataType: 'float', orderIndex: 0 },
+      { id: 'total', name: 'Total', dataType: 'formula', formulaExpression: '[Score] * 2', orderIndex: 1 },
+    ];
+    const after = [
+      { ...before[0], name: 'Points' },
+      { ...before[1], formulaExpression: '[Points] * 2' },
+    ];
+
+    expect(buildFieldUpdateOperation(before, after)).toMatchObject({
+      kind: 'field_updated',
+      forward: { fields: [
+        { id: 'score', label: 'Points' },
+        { id: 'total', formulaExpression: '[Points] * 2' },
+      ] },
+      inverse: { fields: [
+        { id: 'score', label: 'Score' },
+        { id: 'total', formulaExpression: '[Score] * 2' },
+      ] },
+      expected: {
+        before: { fields: [
+          { id: 'score', label: 'Score' },
+          { id: 'total', formulaExpression: '[Score] * 2' },
+        ] },
+        after: { fields: [
+          { id: 'score', label: 'Points' },
+          { id: 'total', formulaExpression: '[Points] * 2' },
+        ] },
+      },
+    });
+  });
+
+  it('creates a field with its values and records the complete column order', () => {
+    const operation = buildFieldCreateOperation(
+      [{ id: 'name', name: 'Name', dataType: 'string', orderIndex: 0 }],
+      { id: 'flag', name: 'Flag', dataType: 'boolean', orderIndex: 1 },
+      [{ assetId: 'row-1', fieldId: 'flag', value: false }],
+    );
+
+    expect(operation).toMatchObject({
+      kind: 'field_created',
+      forward: {
+        fields: [{ id: 'flag', label: 'Flag', dataType: 'boolean' }],
+        assetValues: [{ assetId: 'row-1', fieldId: 'flag', value: false }],
+        orderedIds: ['name', 'flag'],
+      },
+      inverse: {
+        fields: [{ id: 'flag' }],
+        orderedIds: ['name'],
+      },
+      expected: {
+        before: { fieldIdsAbsent: ['flag'] },
+        after: { fields: [
+          { id: 'name', label: 'Name', dataType: 'string' },
+          { id: 'flag', label: 'Flag', dataType: 'boolean' },
+        ] },
+      },
     });
   });
 });

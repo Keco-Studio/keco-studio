@@ -309,16 +309,15 @@ begin
       v_field ->> 'dataType',
       nullif(v_field ->> 'formulaExpression', ''),
       coalesce((v_field ->> 'required')::boolean, false),
-      coalesce((v_field ->> 'orderIndex')::integer, 0),
+      case when p_payload ? 'orderedIds' then -1 else coalesce((v_field ->> 'orderIndex')::integer, 0) end,
       case when jsonb_typeof(v_field -> 'enumOptions') = 'array'
         then array(select jsonb_array_elements_text(v_field -> 'enumOptions')) else null end,
       case when jsonb_typeof(v_field -> 'referenceLibraries') = 'array'
         then array(select jsonb_array_elements_text(v_field -> 'referenceLibraries')::uuid) else null end
     ) on conflict (id) do update set
-      section_id = excluded.section_id, section = excluded.section, label = excluded.label,
-      description = excluded.description, data_type = excluded.data_type,
+      label = excluded.label, description = excluded.description, data_type = excluded.data_type,
       formula_expression = excluded.formula_expression, required = excluded.required,
-      order_index = excluded.order_index, enum_options = excluded.enum_options,
+      enum_options = excluded.enum_options,
       reference_libraries = excluded.reference_libraries;
   end loop;
 
@@ -403,12 +402,24 @@ begin
     when 'rows_created' then
       if p_inverse then perform public.delete_library_table_asset_snapshot(p_library_id, p_payload);
       else perform public.apply_library_table_asset_snapshot(p_library_id, p_payload); end if;
+      if p_payload ? 'rowIndexUpdates' then
+        perform public.apply_library_table_cells_snapshot(
+          p_library_id,
+          jsonb_build_object('assets', p_payload -> 'rowIndexUpdates')
+        );
+      end if;
     when 'rows_deleted' then
       if p_inverse then perform public.apply_library_table_asset_snapshot(p_library_id, p_payload);
       else perform public.delete_library_table_asset_snapshot(p_library_id, p_payload); end if;
     when 'field_created' then
-      if p_inverse then perform public.delete_library_table_field_snapshot(p_library_id, p_payload);
-      else perform public.apply_library_table_field_snapshot(p_library_id, p_payload); end if;
+      if p_inverse then
+        perform public.delete_library_table_field_snapshot(p_library_id, p_payload);
+      else
+        perform public.apply_library_table_field_snapshot(p_library_id, p_payload);
+      end if;
+      if p_payload ? 'orderedIds' then
+        perform public.apply_library_table_order_snapshot(p_library_id, p_payload, 'fields_reordered');
+      end if;
     when 'field_deleted' then
       if p_inverse then perform public.apply_library_table_field_snapshot(p_library_id, p_payload);
       else perform public.delete_library_table_field_snapshot(p_library_id, p_payload); end if;

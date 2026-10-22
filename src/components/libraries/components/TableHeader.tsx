@@ -11,7 +11,7 @@ import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
-import { deleteLibraryField, updateLibraryField } from '@/lib/services/libraryAssetsService';
+import { updateLibraryField } from '@/lib/services/libraryAssetsService';
 import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
@@ -202,6 +202,16 @@ export type TableHeaderProps = {
   onReorderProperties?: (activeId: string, overId: string, edge: DropEdge) => void;
   numericSort?: { propertyId: string; direction: NumericSortDirection } | null;
   onToggleNumericSort?: (propertyId: string) => void;
+  /** Executes a durable column delete operation when supplied by the table. */
+  onDeleteProperty?: (propertyId: string) => Promise<void>;
+  onUpdateProperty?: (propertyId: string, payload: {
+    label: string;
+    dataType: PropertyConfig['dataType'];
+    description?: string;
+    enumOptions?: string[];
+    referenceLibraries?: string[];
+    formulaExpression?: string;
+  }) => Promise<void>;
 };
 
 export function TableHeader({
@@ -227,6 +237,8 @@ export function TableHeader({
   onReorderProperties,
   numericSort = null,
   onToggleNumericSort,
+  onDeleteProperty,
+  onUpdateProperty,
 }: TableHeaderProps) {
   const supabase = useSupabase();
   const params = useParams();
@@ -752,7 +764,11 @@ export function TableHeader({
                       loading: false,
                     });
                     try {
-                      await deleteLibraryField(supabase, libraryId, propertyId);
+                      if (onDeleteProperty) {
+                        await onDeleteProperty(propertyId);
+                      } else {
+                        throw new Error('Column delete is unavailable');
+                      }
                       showSuccessToast('Column deleted');
                       void invalidateLibrarySchemaData(queryClient, {
                         libraryId,
@@ -815,6 +831,7 @@ export function TableHeader({
         propertyReferenceLibraries={editTarget.propertyReferenceLibraries}
         propertyFormulaExpression={editTarget.propertyFormulaExpression}
         existingProperties={existingProperties}
+        onUpdateProperty={onUpdateProperty}
         onClose={() => setEditTarget({ open: false })}
       />
     </>

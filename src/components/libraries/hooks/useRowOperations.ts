@@ -6,8 +6,6 @@ import type {
   RowIndexUpdate,
 } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeRowIndices, shiftRowIndices } from '@/lib/services/libraryAssetsService';
 
 // Compatible interface for rowStore (supports both row store and mock objects)
 interface RowStoreLike {
@@ -32,7 +30,6 @@ export type UseRowOperationsParams = {
   /** Batch delete: Supabase .delete().in(), one round-trip */
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   library: { id: string } | null;
-  supabase: SupabaseClient | null;
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
   rowStore: RowStoreLike;
@@ -105,7 +102,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
     onDeleteAsset,
     onDeleteAssets,
     library,
-    supabase,
     orderedProperties,
     getAllRowsForCellSelection,
     rowStore,
@@ -224,28 +220,18 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     // --- Background: DB operations ---
     try {
-      // Normalize row indices to sequential values matching display order.
-      if (supabase) {
-        await normalizeRowIndices(supabase, library.id, allRowsForSelection);
-      }
-
       // Find the display position of the FIRST selected row — all new rows
       // go above it as a contiguous batch.
       const firstDisplayIndex = allRowsForSelection.findIndex((r) => r.id === firstRowId);
       if (firstDisplayIndex < 0) throw new Error('First selected row not found');
 
-      // baseRowIndex = 1-based index of the first selected row (after normalization)
+      // baseRowIndex = 1-based index of the first selected row.
       const baseRowIndex = firstDisplayIndex + 1;
       const rowIndexUpdates = buildRowIndexUpdatesAfterInsertion(
         allRowsForSelection,
         baseRowIndex,
         numRowsToInsert
       );
-
-      // Shift existing rows to make room for N new rows at once
-      if (supabase) {
-        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
-      }
 
       // Create N new rows with sequential indices starting from baseRowIndex.
       // Use skipReload for all but the last insert to avoid intermediate loadInitialData()
@@ -274,7 +260,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
   }, [
     onSaveAsset,
     library,
-    supabase,
     orderedProperties,
     selectedCells,
     selectedRowIds,
@@ -360,11 +345,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     // --- Background: DB operations ---
     try {
-      // Normalize row indices to sequential values matching display order.
-      if (supabase) {
-        await normalizeRowIndices(supabase, library.id, allRowsForSelection);
-      }
-
       // Find the display position of the LAST selected row — all new rows
       // go below it as a contiguous batch.
       const lastDisplayIndex = allRowsForSelection.findIndex((r) => r.id === lastRowId);
@@ -377,11 +357,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
         baseRowIndex,
         numRowsToInsert
       );
-
-      // Shift existing rows to make room for N new rows at once
-      if (supabase) {
-        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
-      }
 
       // Create N new rows with sequential indices starting from baseRowIndex.
       // Use skipReload for all but the last insert to avoid intermediate loadInitialData()
@@ -410,7 +385,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
   }, [
     onSaveAsset,
     library,
-    supabase,
     orderedProperties,
     selectedCells,
     selectedRowIds,
@@ -568,7 +542,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
     onUpdateAsset,
     onUpdateAssets,
     onUpdateAssetsWithBatchBroadcast,
-    supabase,
     setSelectedCells,
     setSelectedRowIds,
     setClearContentsConfirmVisible,

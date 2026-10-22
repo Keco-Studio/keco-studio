@@ -38,6 +38,14 @@ type EditColumnModalProps = {
   propertyFormulaExpression?: string;
   /** Existing fields used for duplicate-name validation. */
   existingProperties?: PropertyConfig[];
+  onUpdateProperty?: (propertyId: string, payload: {
+    label: string;
+    dataType: PropertyConfig['dataType'];
+    description?: string;
+    enumOptions?: string[];
+    referenceLibraries?: string[];
+    formulaExpression?: string;
+  }) => Promise<void>;
   onClose: () => void;
 };
 
@@ -82,6 +90,7 @@ export function EditColumnModal({
   propertyReferenceLibraries,
   propertyFormulaExpression,
   existingProperties,
+  onUpdateProperty,
   onClose,
 }: EditColumnModalProps) {
   const supabase = useSupabase();
@@ -435,7 +444,7 @@ export function EditColumnModal({
     }
 
     try {
-      await updateLibraryField(supabase, libraryId!, editColumnModal.propertyId!, {
+      const payload = {
         label: editColumnModal.name,
         dataType: editColumnModal.dataType,
         description: editColumnModal.description.trim() || undefined,
@@ -445,7 +454,12 @@ export function EditColumnModal({
           editColumnModal.dataType === 'formula'
             ? editColumnModal.formulaExpression.trim()
             : undefined,
-      });
+      };
+      if (onUpdateProperty) {
+        await onUpdateProperty(editColumnModal.propertyId!, payload);
+      } else {
+        await updateLibraryField(supabase, libraryId!, editColumnModal.propertyId!, payload);
+      }
 
       await invalidateLibrarySchemaData(queryClient, {
         libraryId: libraryId!,
