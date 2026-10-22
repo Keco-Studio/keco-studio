@@ -215,6 +215,29 @@ type FieldSnapshotInput = {
   referenceLibraries?: string[];
 };
 
+type FieldValueUpdate = {
+  assetId: string;
+  fieldId: string;
+  beforeValue: unknown;
+  beforePresent: boolean;
+  afterValue: unknown;
+  afterPresent: boolean;
+};
+
+function toAssetValueSnapshots(updates: FieldValueUpdate[], direction: 'before' | 'after'): AssetSnapshot[] {
+  const assets = new Map<string, AssetSnapshot>();
+  for (const update of updates) {
+    const asset = assets.get(update.assetId) ?? { id: update.assetId, values: [] };
+    asset.values.push({
+      fieldId: update.fieldId,
+      value: direction === 'before' ? update.beforeValue : update.afterValue,
+      present: direction === 'before' ? update.beforePresent : update.afterPresent,
+    });
+    assets.set(update.assetId, asset);
+  }
+  return [...assets.values()];
+}
+
 function toFieldSnapshot(field: FieldSnapshotInput) {
   return {
     id: field.id,
@@ -261,6 +284,7 @@ export function buildFieldDeleteOperation(
 export function buildFieldUpdateOperation(
   before: FieldSnapshotInput[],
   after: FieldSnapshotInput[],
+  valueUpdates: FieldValueUpdate[] = [],
 ): LibraryTableOperationInput {
   if (before.length === 0 || before.length !== after.length) {
     throw new Error('Field update snapshots must have matching non-empty definitions');
@@ -271,13 +295,15 @@ export function buildFieldUpdateOperation(
   }
   const beforeSnapshots = before.map(toFieldSnapshot);
   const afterSnapshots = after.map(toFieldSnapshot);
+  const beforeAssets = toAssetValueSnapshots(valueUpdates, 'before');
+  const afterAssets = toAssetValueSnapshots(valueUpdates, 'after');
   return {
     kind: 'field_updated',
-    forward: { fields: afterSnapshots },
-    inverse: { fields: beforeSnapshots },
+    forward: { fields: afterSnapshots, ...(afterAssets.length > 0 ? { assets: afterAssets } : {}) },
+    inverse: { fields: beforeSnapshots, ...(beforeAssets.length > 0 ? { assets: beforeAssets } : {}) },
     expected: {
-      before: { fields: beforeSnapshots },
-      after: { fields: afterSnapshots },
+      before: { fields: beforeSnapshots, ...(beforeAssets.length > 0 ? { assets: beforeAssets } : {}) },
+      after: { fields: afterSnapshots, ...(afterAssets.length > 0 ? { assets: afterAssets } : {}) },
     },
   };
 }

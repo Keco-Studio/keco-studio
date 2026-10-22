@@ -468,14 +468,45 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       ...property,
       formulaExpression,
     }))];
+    const updatedFieldsById = new Map(after.map((field) => [field.id, field]));
+    const formulaFieldsAfterUpdate = restProps.properties.map((field) => {
+      const updated = updatedFieldsById.get(field.id) ?? field;
+      return {
+        id: updated.id,
+        name: updated.name,
+        dataType: updated.dataType ?? 'string',
+        formulaExpression: updated.formulaExpression ?? null,
+      };
+    });
+    const formulaFieldIdsToRecalculate = new Set(formulaReferenceChanges.map(({ property }) => property.id));
+    if (updatedSource.dataType === 'formula') formulaFieldIdsToRecalculate.add(updatedSource.id);
+    const formulaValueUpdates = allAssets.flatMap((asset) => {
+      const valuesAfterUpdate = computeFormulaValuesForRow(formulaFieldsAfterUpdate, asset.propertyValues);
+      return [...formulaFieldIdsToRecalculate].flatMap((fieldId) => {
+        const currentValue = asset.propertyValues[fieldId];
+        const isCustomFormula = typeof currentValue === 'string' && currentValue.trim().startsWith('=');
+        if (isCustomFormula) return [];
+        return [{
+          assetId: asset.id,
+          fieldId,
+          beforeValue: currentValue,
+          beforePresent: Object.prototype.hasOwnProperty.call(asset.propertyValues, fieldId),
+          afterValue: valuesAfterUpdate[fieldId] ?? null,
+          afterPresent: true,
+        }];
+      });
+    });
     const result = await applyLibraryTableOperation(
       supabase,
       libraryId,
-      buildFieldUpdateOperation(before, after),
+      buildFieldUpdateOperation(before, after, formulaValueUpdates),
     );
     tableOperationHistory.record(result.operationId);
-    await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
-  }, [libraryId, queryClient, restProps.properties, supabase, tableOperationHistory]);
+    await Promise.all([
+      refreshAssetsFromServer(),
+      invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true }),
+    ]);
+  }, [allAssets, libraryId, queryClient, refreshAssetsFromServer, restProps.properties, supabase, tableOperationHistory]);
 
   const handleAddProperty = useCallback(async (payload: AddColumnFormPayload) => {
     const orderedFields = orderProperties(restProps.properties);

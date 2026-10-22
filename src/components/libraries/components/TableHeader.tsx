@@ -8,7 +8,6 @@ import { useDndMonitor, type DragEndEvent, type DragMoveEvent, type DragOverEven
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useParams } from 'next/navigation';
-import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { updateLibraryField } from '@/lib/services/libraryAssetsService';
@@ -240,7 +239,6 @@ export function TableHeader({
   onDeleteProperty,
   onUpdateProperty,
 }: TableHeaderProps) {
-  const supabase = useSupabase();
   const params = useParams();
   const queryClient = useQueryClient();
   const libraryId = params?.libraryId as string | undefined;

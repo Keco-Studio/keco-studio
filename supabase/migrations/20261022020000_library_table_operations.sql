@@ -374,7 +374,7 @@ begin
     where asset.id = item.id::uuid and asset.library_id = p_library_id;
   else
     update public.library_field_definitions field
-    set order_index = -field.order_index - 1
+    set order_index = -field.order_index - 2
     where field.library_id = p_library_id;
     update public.library_field_definitions field
     set order_index = item.ordinality::integer - 1
@@ -423,7 +423,11 @@ begin
     when 'field_deleted' then
       if p_inverse then perform public.apply_library_table_field_snapshot(p_library_id, p_payload);
       else perform public.delete_library_table_field_snapshot(p_library_id, p_payload); end if;
-    when 'field_updated' then perform public.apply_library_table_field_snapshot(p_library_id, p_payload);
+    when 'field_updated' then
+      perform public.apply_library_table_field_snapshot(p_library_id, p_payload);
+      if p_payload ? 'assets' then
+        perform public.apply_library_table_cells_snapshot(p_library_id, p_payload);
+      end if;
     when 'rows_reordered', 'fields_reordered' then perform public.apply_library_table_order_snapshot(p_library_id, p_payload, p_kind);
     else raise exception 'Unsupported table operation' using errcode = '22023';
   end case;

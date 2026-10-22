@@ -182,16 +182,29 @@ describe('buildCellUpdateOperation', () => {
       { ...before[1], formulaExpression: '[Points] * 2' },
     ];
 
-    expect(buildFieldUpdateOperation(before, after)).toMatchObject({
+    expect(buildFieldUpdateOperation(before, after, [{
+      assetId: 'row-1',
+      fieldId: 'total',
+      beforeValue: 4,
+      beforePresent: true,
+      afterValue: 6,
+      afterPresent: true,
+    }])).toMatchObject({
       kind: 'field_updated',
-      forward: { fields: [
-        { id: 'score', label: 'Points' },
-        { id: 'total', formulaExpression: '[Points] * 2' },
-      ] },
-      inverse: { fields: [
-        { id: 'score', label: 'Score' },
-        { id: 'total', formulaExpression: '[Score] * 2' },
-      ] },
+      forward: {
+        fields: [
+          { id: 'score', label: 'Points' },
+          { id: 'total', formulaExpression: '[Points] * 2' },
+        ],
+        assets: [{ id: 'row-1', values: [{ fieldId: 'total', value: 6, present: true }] }],
+      },
+      inverse: {
+        fields: [
+          { id: 'score', label: 'Score' },
+          { id: 'total', formulaExpression: '[Score] * 2' },
+        ],
+        assets: [{ id: 'row-1', values: [{ fieldId: 'total', value: 4, present: true }] }],
+      },
       expected: {
         before: { fields: [
           { id: 'score', label: 'Score' },
@@ -200,7 +213,7 @@ describe('buildCellUpdateOperation', () => {
         after: { fields: [
           { id: 'score', label: 'Points' },
           { id: 'total', formulaExpression: '[Points] * 2' },
-        ] },
+        ], assets: [{ id: 'row-1', values: [{ fieldId: 'total', value: 6, present: true }] }] },
       },
     });
   });

@@ -26,6 +26,11 @@ describe('library table operation journal migration', () => {
     expect(migration).toContain("raise exception 'Table operation conflict' using errcode = '40001'");
   });
 
+  it('uses a non-overlapping temporary field order while applying field creation', () => {
+    expect(migration).toContain('set order_index = -field.order_index - 2');
+    expect(migration).toContain("case when p_payload ? 'orderedIds' then -1");
+  });
+
   it('restricts journal access and leaves expiry cleanup to the service role', () => {
     expect(migration).toContain('alter table public.library_table_operations enable row level security');
     expect(migration).toContain('library_table_operations_select_own');
