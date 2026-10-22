@@ -237,14 +237,10 @@ export async function deleteMediaFile(
     throw new Error(error.message || 'Failed to delete file');
   }
 
-  // Supabase Storage may report success when RLS caused DELETE to affect zero rows.
-  const verification = await storage.info(filePath);
-  if (!verification.error && verification.data) {
-    throw new Error('Failed to delete file');
-  }
-
   if (pathParts.length < 3) return;
 
+  // The settlement RPC checks Storage itself. A client-side info() immediately
+  // after remove() can still observe the pre-delete object and skip settlement.
   const { error: settlementError } = await supabase.rpc(
     'settle_project_storage_file_deletion',
     { p_bucket_id: bucket, p_object_path: filePath }

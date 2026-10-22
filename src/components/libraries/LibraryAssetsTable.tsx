@@ -697,6 +697,17 @@ export function LibraryAssetsTable({
     },
   });
 
+  const selectedMediaCellsOnly = useMemo(() => {
+    if (selectedCells.size === 0) return false;
+    return [...selectedCells].every((cellKey) => {
+      const property = orderedProperties.find((item) => cellKey.endsWith(`-${item.key}`));
+      return property?.dataType === 'image'
+        || property?.dataType === 'file'
+        || property?.dataType === 'multimedia'
+        || property?.dataType === 'audio';
+    });
+  }, [orderedProperties, selectedCells]);
+
   // Keep wrapped display after saving long text (edit mode wraps; display defaults to nowrap).
   afterSaveEditRef.current = ({ rowId, propertyKey, editorEl }) => {
     if (!editorContentOverflows(editorEl)) return;
@@ -1344,8 +1355,13 @@ export function LibraryAssetsTable({
         onClearContents={() => {
           setBatchEditMenuVisible(false);
           setBatchEditMenuPosition(null);
-          setClearContentsConfirmVisible(true);
+          if (selectedMediaCellsOnly) {
+            void handleClearContents();
+          } else {
+            setClearContentsConfirmVisible(true);
+          }
         }}
+        clearContentsLabel={selectedMediaCellsOnly ? 'Delete media' : undefined}
         onDeleteRow={() => {
           setBatchEditMenuVisible(false);
           setBatchEditMenuPosition(null);

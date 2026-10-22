@@ -376,6 +376,11 @@ export const evaluateFormulaForRow = (
     if (numericValue !== null) {
       return roundFormulaNumber(numericValue);
     }
+
+    // Avoid JavaScript coercing missing operands, such as null * 2, into zero.
+    if (!/[<>=!&,]/.test(trimmedExpr)) {
+      return null;
+    }
   }
 
   try {

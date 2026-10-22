@@ -8,6 +8,25 @@ import type {
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeRowIndices, shiftRowIndices } from '@/lib/services/libraryAssetsService';
+import { deleteMediaFile, type MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
+
+const MEDIA_PROPERTY_TYPES = new Set(['image', 'file', 'multimedia', 'audio']);
+
+function parseMediaFileMetadata(value: unknown): MediaFileMetadata | null {
+  const parsed = typeof value === 'string'
+    ? (() => {
+      try {
+        return JSON.parse(value) as unknown;
+      } catch {
+        return null;
+      }
+    })()
+    : value;
+
+  return parsed && typeof parsed === 'object' && typeof (parsed as MediaFileMetadata).path === 'string'
+    ? parsed as MediaFileMetadata
+    : null;
+}
 
 // Compatible interface for rowStore (supports both row store and mock objects)
 interface RowStoreLike {
@@ -451,6 +470,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     const allRowsForSelection = getAllRowsForCellSelection();
     const cellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
     const clearedKeysByRow = new Map<string, Set<string>>();
+    const mediaFilesToDelete = new Map<string, MediaFileMetadata>();
 
     cellsToClear.forEach((cellKey) => {
       let rowId = '';
@@ -476,6 +496,10 @@ export function useRowOperations(params: UseRowOperationsParams) {
           clearedKeysByRow.get(rowId)!.add(propertyKey);
           const rowData = cellsByRow.get(rowId)!;
           const prop = orderedProperties[propertyIndex];
+          if (prop && MEDIA_PROPERTY_TYPES.has(prop.dataType)) {
+            const mediaFile = parseMediaFileMetadata(row.propertyValues[propertyKey]);
+            if (mediaFile) mediaFilesToDelete.set(mediaFile.path, mediaFile);
+          }
           // Name field is identified by label='name' and dataType='string', not by position
           const isNameField = prop && prop.name === 'name' && prop.dataType === 'string';
           if (isNameField) {
@@ -547,6 +571,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
           })
         );
       }
+      if (supabase && mediaFilesToDelete.size > 0) {
+        await Promise.allSettled(
+          [...mediaFilesToDelete.values()].map((mediaFile) => deleteMediaFile(supabase, mediaFile.path)),
+        );
+      }
       // Rely on useOptimisticCleanup when rows match; avoid timeout clearing that causes flicker.
       setSelectedCells(new Set());
       setSelectedRowIds(new Set());
@@ -568,6 +597,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     onUpdateAsset,
     onUpdateAssets,
     onUpdateAssetsWithBatchBroadcast,
+    supabase,
     setSelectedCells,
     setSelectedRowIds,
     setClearContentsConfirmVisible,
@@ -739,6 +769,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setDeletedAssetIds,
     setSelectedCells,
     setSelectedRowIds,
+    setToastMessage,
   ]);
 
   const handleDeleteAsset = useCallback(async () => {
