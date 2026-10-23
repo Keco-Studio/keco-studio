@@ -112,10 +112,20 @@ describe('CI workflow gates', () => {
   });
 
   it('pins Supabase CLI versions instead of resolving latest during CI', () => {
-    expect(workflow).toContain('version: 2.90.0');
-    expect(deployWorkflow).toContain('version: 2.90.0');
+    expect(workflow).toContain('version: 2.105.0');
+    expect(playwrightWorkflow).toContain('version: 2.105.0');
+    expect(deployWorkflow).toContain('version: 2.105.0');
     expect(workflow).not.toContain('version: latest');
+    expect(playwrightWorkflow).not.toContain('version: latest');
     expect(deployWorkflow).not.toContain('version: latest');
+  });
+
+  it('verifies authenticated Realtime broadcast delivery before Playwright starts', () => {
+    const preflight = playwrightWorkflow.indexOf('npm run supabase:realtime-preflight');
+    const playwright = playwrightWorkflow.indexOf('npx playwright test --shard=');
+
+    expect(preflight).toBeGreaterThan(-1);
+    expect(playwright).toBeGreaterThan(preflight);
   });
 
   it('deploys MCP before Vercel and synchronizes the production codec secret', () => {
@@ -207,6 +217,12 @@ describe('CI workflow gates', () => {
     expect(playwrightWorkflow).not.toContain(
       'curl -f -s http://127.0.0.1:54321/rest/v1/'
     );
+  });
+
+  it('uses the local JWT anon key for Playwright Realtime authentication', () => {
+    expect(playwrightWorkflow).toContain(".ANON_KEY // empty");
+    expect(playwrightWorkflow).not.toContain(".PUBLISHABLE_KEY // empty");
+    expect(workflow).toContain(".ANON_KEY // empty");
   });
 
   it('keeps pull request migrations isolated while deployment branches always retry', () => {

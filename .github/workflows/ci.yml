@@ -52,7 +52,7 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 2.90.0
+          version: 2.105.0
 
       - name: Start local Supabase services
         run: |
@@ -171,8 +171,12 @@ jobs:
       - name: Extract local Supabase keys
         id: local-supabase
         run: |
+          STATUS_JSON=$(supabase status --output json)
           STATUS_TEXT=$(supabase status)
-          ANON_KEY=$(echo "$STATUS_TEXT" | grep -iE "anon key|Publishable" | sed -n 's/.*│[[:space:]]*\(sb_publishable_[^[:space:]]*\|eyJ[^[:space:]]*\).*/\1/p' | head -1)
+          ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.ANON_KEY // empty')
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "***" ]; then
+            ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "anon key" | sed -n 's/.*│[[:space:]]*Anon key[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+          fi
           SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -iE "service_role key|Secret" | grep -v "JWT" | sed -n 's/.*│[[:space:]]*\(sb_secret_[^[:space:]]*\|eyJ[^[:space:]]*\).*/\1/p' | head -1)
           if [ -z "$ANON_KEY" ] || [ -z "$SERVICE_KEY" ]; then
             echo "❌ Failed to extract local Supabase keys"; echo "$STATUS_TEXT"; exit 1

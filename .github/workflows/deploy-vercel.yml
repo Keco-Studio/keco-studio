@@ -127,7 +127,7 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 2.90.0
+          version: 2.105.0
 
       - name: Check migration files exist
         run: |
@@ -208,7 +208,7 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 2.90.0
+          version: 2.105.0
 
       - name: Deploy MCP and PixelLab Edge Functions
         env:

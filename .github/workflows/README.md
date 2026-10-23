@@ -66,14 +66,12 @@ The production workflow publishes the same repository service-role secret to
 Vercel as `SUPABASE_SERVICE_ROLE_KEY` and to Supabase as
 `KECO_SERVICE_ROLE_KEY` before deploying the Edge Functions. Keep those writes
 paired so trusted Vercel-to-Edge calls cannot drift to different credentials.
-The workflow pins `supabase/setup-cli@v1` to Supabase CLI `2.90.0`; retain that
+The workflow pins `supabase/setup-cli@v1` to Supabase CLI `2.105.0`; retain that
 pin for the account rollout.
 
-Supabase CLI `2.90.0` can configure `[auth.oauth_server]` for local
-`supabase start`, but does not serialize remote OAuth Server settings. A
-successful `supabase link` or `supabase db push` is therefore not proof of
-production OAuth enablement. Production release acceptance must directly verify
-root protected-resource discovery, DCR, authorization, code exchange,
+Local `[auth.oauth_server]` support does not prove that the corresponding remote
+OAuth Server settings are enabled. Production release acceptance must directly
+verify root protected-resource discovery, DCR, authorization, code exchange,
 `list_projects`, viewer denial, account/legacy replay denial, and a legacy
 project endpoint.
 

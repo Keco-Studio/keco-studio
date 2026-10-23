@@ -12,6 +12,7 @@ describe('Playwright Next.js isolation', () => {
     expect(config).toContain('node scripts/run-playwright-dev-server.mjs');
     expect(config).toContain("gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 }");
     expect(config).toContain('PLAYWRIGHT_SUPABASE_SERVICE_ROLE_KEY');
+    expect(config).not.toContain('override: true');
     expect(existsSync(wrapperPath)).toBe(true);
     const wrapper = existsSync(wrapperPath) ? readFileSync(wrapperPath, 'utf8') : '';
     expect(wrapper).toContain("'next-env.d.ts'");

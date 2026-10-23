@@ -160,9 +160,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   // Load initial data from database (can be reused after restore)
   const loadInitialData = useCallback(async () => {
-    if (!libraryId || !isAuthenticated || !profileUserId) return;
+    if (!libraryId || !isAuthenticated || !profileUserId) return false;
 
-    await runLatestLibraryHydration({
+    return runLatestLibraryHydration({
       generationRef: loadInitialDataGenerationRef,
       isMounted: () => isMountedRef.current,
       // Use the same service as version snapshots so the current view and
@@ -230,6 +230,18 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const handleSchemaChange = useCallback(() => {
     void invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
   }, [libraryId, queryClient]);
+  const handleReconcile = useCallback(async () => {
+    let hydrated = await loadInitialData();
+    if (!hydrated) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      hydrated = await loadInitialData();
+    }
+    if (!hydrated) throw new Error('Failed to reconcile library data');
+    await Promise.all([
+      invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: false }),
+      invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true }),
+    ]);
+  }, [libraryId, loadInitialData, queryClient]);
   const realtimeConfig = useMemo(() => ({
       libraryId: profileUserId ? libraryId : '',
       currentUserId: profileUserId ?? '',
@@ -242,14 +254,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onConflict: handleConflictEvent,
       onRowOrderChange: handleRowOrderChangeEvent,
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
-      onReconnect: loadInitialData,
+      onReconcile: handleReconcile,
+      onReconnect: async () => { await loadInitialData(); },
       onVersionChange: handleVersionChange,
       onSchemaChange: handleSchemaChange,
-  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange, handleSchemaChange]);
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, handleReconcile, loadInitialData, handleVersionChange, handleSchemaChange]);
 
   const realtimeSubscription = useRealtimeSubscription(realtimeConfig);
 
-  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange, broadcastSchemaChange } =
+  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange, broadcastSchemaChange, broadcastReconcile } =
     realtimeSubscription;
 
   // Presence tracking - use useMemo to avoid recreating config on every render
@@ -306,9 +319,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [assetStore, broadcastRowOrderChange, libraryId, queryClient, supabase]);
 
   const refreshAssetsFromServer = useCallback(async () => {
+    void broadcastReconcile().catch((error) => {
+      console.error('[LibraryDataContext] Failed to notify peers about reconciliation:', error);
+    });
     await loadInitialData();
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
-  }, [libraryId, loadInitialData, queryClient]);
+  }, [broadcastReconcile, libraryId, loadInitialData, queryClient]);
 
   useEffect(() => {
     const reconcile = (rawEvent: Event) => {

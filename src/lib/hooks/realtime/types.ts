@@ -21,6 +21,7 @@ export type RealtimeSubscriptionConfig = {
   onConflict: (event: CellUpdateEvent, localValue: any) => void;
   onRowOrderChange?: (event: RowOrderChangeEvent) => void;
   onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
+  onReconcile?: () => void | Promise<void>;
   onReconnect?: () => void | Promise<void>;
   onVersionChange?: (payload: any) => void;
   onSchemaChange?: () => void;

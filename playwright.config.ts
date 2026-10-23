@@ -14,10 +14,9 @@ import path from 'path';
  */
 
 dotenv.config({ path: path.resolve(__dirname, '.env') });
-dotenv.config({ 
-  path: path.resolve(__dirname, '.env.local'), 
-  override: true // Allow .env.local variables to override .env
-});
+// Shell-provided values select the isolated CI Supabase instance. Local files
+// only fill missing settings and must never replace those explicit values.
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.PLAYWRIGHT_SUPABASE_URL
   ?? process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -70,7 +70,7 @@ describe('runLatestLibraryHydration', () => {
     const setIsLoading = jest.fn<(value: boolean) => void>();
     const setIsSynced = jest.fn<(value: boolean) => void>();
 
-    await runLatestLibraryHydration({
+    const hydrated = await runLatestLibraryHydration({
       generationRef: { current: 0 },
       isMounted: () => true,
       fetchAssetRows,
@@ -85,6 +85,25 @@ describe('runLatestLibraryHydration', () => {
     expect(setIsSynced).toHaveBeenNthCalledWith(1, false);
     expect(setIsSynced).toHaveBeenLastCalledWith(true);
     expect(setIsLoading).toHaveBeenLastCalledWith(false);
+    expect(hydrated).toBe(true);
+  });
+
+  it('reports a failed latest fetch so callers can retry reconciliation', async () => {
+    const error = new Error('temporary read failure');
+    const onError = jest.fn<(error: unknown) => void>();
+
+    const hydrated = await runLatestLibraryHydration({
+      generationRef: { current: 0 },
+      isMounted: () => true,
+      fetchAssetRows: async () => { throw error; },
+      hydrate: () => {},
+      setIsLoading: () => {},
+      setIsSynced: () => {},
+      onError,
+    });
+
+    expect(hydrated).toBe(false);
+    expect(onError).toHaveBeenCalledWith(error);
   });
 
   it('does not let stale errors overwrite the latest successful sync state', async () => {

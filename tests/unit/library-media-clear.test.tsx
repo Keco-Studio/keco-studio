@@ -28,7 +28,7 @@ const row: AssetRow = {
 };
 
 describe.each(['image', 'file', 'audio', 'multimedia'] as const)('%s table cell', (dataType) => {
-it('removes a media object after clearing its table cell', async () => {
+  it('defers media object deletion after clearing its table cell so undo can restore it', async () => {
   const onUpdateAsset = jest.fn(async () => undefined);
   const supabase = {} as any;
   const property: PropertyConfig = {
@@ -95,12 +95,13 @@ it('removes a media object after clearing its table cell', async () => {
   const { getByRole } = render(<Harness />);
   fireEvent.click(getByRole('button', { name: 'Clear' }));
 
-  await waitFor(() => expect(deleteMediaFile).toHaveBeenCalledWith(supabase, 'user-1/project-1/file'));
+  await waitFor(() => expect(onUpdateAsset).toHaveBeenCalledWith('row-1', 'Row', { media: null }));
+  expect(deleteMediaFile).not.toHaveBeenCalled();
   expect(onUpdateAsset).toHaveBeenCalledWith('row-1', 'Row', { media: null });
 });
 });
 
-it('keeps media cleanup failures silent after clearing the cell', async () => {
+it('does not attempt browser media cleanup after clearing the cell', async () => {
   const onUpdateAsset = jest.fn(async () => undefined);
   const setToastMessage = jest.fn();
   const supabase = {} as any;
@@ -111,7 +112,6 @@ it('keeps media cleanup failures silent after clearing the cell', async () => {
     dataType: 'image',
     order: 0,
   };
-  jest.mocked(deleteMediaFile).mockRejectedValueOnce(new Error('settlement temporarily unavailable'));
 
   function Harness() {
     const [selectedCells, setSelectedCells] = useState(new Set(['row-1-media'] as const));
@@ -168,7 +168,8 @@ it('keeps media cleanup failures silent after clearing the cell', async () => {
   const { getByRole } = render(<Harness />);
   fireEvent.click(getByRole('button', { name: 'Clear' }));
 
-  await waitFor(() => expect(deleteMediaFile).toHaveBeenCalledWith(supabase, 'user-1/project-1/file'));
+  await waitFor(() => expect(onUpdateAsset).toHaveBeenCalledWith('row-1', 'Row', { media: null }));
+  expect(deleteMediaFile).not.toHaveBeenCalled();
   expect(onUpdateAsset).toHaveBeenCalledWith('row-1', 'Row', { media: null });
   expect(setToastMessage).not.toHaveBeenCalled();
 });

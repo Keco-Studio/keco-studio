@@ -444,8 +444,8 @@ export function LibraryAssetsTableBody({
             onContextMenu={(event) => {
               onRowContextMenu(event, row);
             }}
-            onMouseEnter={() => setHoveredRowId(row.id)}
-            onMouseLeave={() => setHoveredRowId(null)}
+            onMouseEnter={() => setHoveredRowId((current) => current === row.id ? current : row.id)}
+            onMouseLeave={() => setHoveredRowId((current) => current === null ? current : null)}
           >
             <SortableRowNumberCell rowId={row.id} disabled={!canReorder}>
               {isRowHovered || isRowSelected ? (

@@ -8,10 +8,9 @@ import { useDndMonitor, type DragEndEvent, type DragMoveEvent, type DragOverEven
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useParams } from 'next/navigation';
-import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
-import { deleteLibraryField, updateLibraryField } from '@/lib/services/libraryAssetsService';
+import { updateLibraryField } from '@/lib/services/libraryAssetsService';
 import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
@@ -23,6 +22,7 @@ import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelect
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import descriptionIcon from '@/assets/images/descriptionIcon.svg';
 import { type DropEdge } from '../utils/tableReorder';
+import type { NumericSortDirection } from '../utils/tableNumericSorting';
 
 function getDropEdge(event: DragMoveEvent | DragOverEvent | DragEndEvent): DropEdge {
   const translated = event.active.rect.current.translated;
@@ -199,6 +199,18 @@ export type TableHeaderProps = {
   /** Whether the user can drag columns to change the shared schema order. */
   canReorder?: boolean;
   onReorderProperties?: (activeId: string, overId: string, edge: DropEdge) => void;
+  numericSort?: { propertyId: string; direction: NumericSortDirection } | null;
+  onToggleNumericSort?: (propertyId: string) => void;
+  /** Executes a durable column delete operation when supplied by the table. */
+  onDeleteProperty?: (propertyId: string) => Promise<void>;
+  onUpdateProperty?: (propertyId: string, payload: {
+    label: string;
+    dataType: PropertyConfig['dataType'];
+    description?: string;
+    enumOptions?: string[];
+    referenceLibraries?: string[];
+    formulaExpression?: string;
+  }) => Promise<void>;
 };
 
 export function TableHeader({
@@ -222,8 +234,11 @@ export function TableHeader({
   onMergeAssetNamesCache,
   canReorder = false,
   onReorderProperties,
+  numericSort = null,
+  onToggleNumericSort,
+  onDeleteProperty,
+  onUpdateProperty,
 }: TableHeaderProps) {
-  const supabase = useSupabase();
   const params = useParams();
   const queryClient = useQueryClient();
   const libraryId = params?.libraryId as string | undefined;
@@ -433,6 +448,37 @@ export function TableHeader({
                       text={property.name}
                       className={styles.propertyHeaderText}
                     />
+                    {(property.dataType === 'int' || property.dataType === 'float') && onToggleNumericSort && (
+                      <Tooltip
+                        title={
+                          numericSort?.propertyId === property.id
+                            ? numericSort.direction === 'asc' ? 'Sorted ascending' : 'Sorted descending'
+                            : 'Sort by number'
+                        }
+                        placement="top"
+                      >
+                        <button
+                          type="button"
+                          className={`${styles.columnFilterButton} ${
+                            numericSort?.propertyId === property.id ? styles.columnFilterButtonActive : ''
+                          }`}
+                          aria-label={`Sort ${property.name} ${
+                            numericSort?.propertyId === property.id ? numericSort.direction : 'none'
+                          }`}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleNumericSort(property.id);
+                          }}
+                        >
+                          <span aria-hidden="true" className={styles.columnNumericSortIcon}>
+                            {numericSort?.propertyId === property.id
+                              ? numericSort.direction === 'asc' ? <>&uarr;</> : <>&darr;</>
+                              : <>&#8597;</>}
+                          </span>
+                        </button>
+                      </Tooltip>
+                    )}
                     {onApplyColumnFilter && (
                       <Tooltip
                         title={isColumnFiltered?.(property.id) ? 'Column filter active' : 'Filter by values'}
@@ -716,7 +762,11 @@ export function TableHeader({
                       loading: false,
                     });
                     try {
-                      await deleteLibraryField(supabase, libraryId, propertyId);
+                      if (onDeleteProperty) {
+                        await onDeleteProperty(propertyId);
+                      } else {
+                        throw new Error('Column delete is unavailable');
+                      }
                       showSuccessToast('Column deleted');
                       void invalidateLibrarySchemaData(queryClient, {
                         libraryId,
@@ -779,6 +829,7 @@ export function TableHeader({
         propertyReferenceLibraries={editTarget.propertyReferenceLibraries}
         propertyFormulaExpression={editTarget.propertyFormulaExpression}
         existingProperties={existingProperties}
+        onUpdateProperty={onUpdateProperty}
         onClose={() => setEditTarget({ open: false })}
       />
     </>

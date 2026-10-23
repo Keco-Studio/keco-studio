@@ -10,7 +10,7 @@ import { DndContext } from '@dnd-kit/core';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
-jest.mock('next/navigation', () => ({ useParams: () => ({}) }));
+jest.mock('next/navigation', () => ({ useParams: () => ({ libraryId: 'library-1' }) }));
 jest.mock('next/image', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => React.createElement('img', props),
@@ -103,6 +103,25 @@ describe('table column actions', () => {
     fireEvent.click(within(menu!).getByRole('button', { name: 'Insert column right' }));
 
     expect(onInsertColumnRight).toHaveBeenCalledWith('field-1');
+  });
+
+  it('delegates confirmed column deletion to the table operation handler', async () => {
+    const onDeleteProperty = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const properties = [
+      { id: 'field-1', key: 'field-1', name: 'Name', valueType: 'string' as const, dataType: 'string' as const, orderIndex: 0 },
+      { id: 'field-2', key: 'field-2', name: 'Score', valueType: 'number' as const, dataType: 'int' as const, orderIndex: 1 },
+    ];
+    const { container } = render(
+      <table><TableHeader properties={properties} allRowsSelected={false}
+        hasSomeRowsSelected={false} onToggleSelectAll={() => undefined}
+        onDeleteProperty={onDeleteProperty} /></table>,
+    );
+
+    fireEvent.contextMenu(container.querySelector('[data-property-header-id="field-1"]')!);
+    fireEvent.click(within(document.querySelector('.headerContextMenu')!).getByRole('button', { name: 'Delete column' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(onDeleteProperty).toHaveBeenCalledWith('field-1');
   });
 
   it('only exposes a draggable column header when reordering is enabled', () => {

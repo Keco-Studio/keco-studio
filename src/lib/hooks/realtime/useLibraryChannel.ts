@@ -12,6 +12,7 @@ import type {
   AssetDeleteEvent,
   CellUpdateEvent,
   CellsBatchUpdateEvent,
+  LibraryReconcileEvent,
   RowOrderChangeEvent,
 } from '@/lib/types/collaboration';
 import type { LibraryChannelRuntime } from './types';
@@ -103,6 +104,14 @@ export function useLibraryChannel({
         const event = payload.payload as CellsBatchUpdateEvent;
         const config = runtime().config;
         if (event.userId !== config.currentUserId) config.onCellsBatchUpdate?.(event);
+      })
+      .on('broadcast', { event: 'library:reconcile' }, (payload) => {
+        const event = payload.payload as LibraryReconcileEvent;
+        const config = runtime().config;
+        if (event.userId === config.currentUserId) return;
+        void Promise.resolve(config.onReconcile?.()).catch((error) => {
+          console.error('[useLibraryChannel] Reconciliation request failed:', error);
+        });
       })
       .on(
         'postgres_changes',
