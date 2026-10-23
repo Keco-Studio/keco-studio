@@ -1,10 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
-import {
-  getAutoColumnWidths,
-  getAutoTableWidth,
-  getUnmeasuredAutoColumnWidth,
-} from '@/components/libraries/utils/autoColumnWidths';
+import * as autoColumnWidthsModule from '@/components/libraries/utils/autoColumnWidths';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+
+const { getAutoColumnWidths, getAutoTableLayout, getAutoTableWidth } = autoColumnWidthsModule;
 
 const property = (id: string, name: string): PropertyConfig => ({
   id,
@@ -84,8 +82,21 @@ describe('getAutoColumnWidths', () => {
     expect(getAutoTableWidth({ type: 160, properties: 260 }, 100, 400)).toBe(520);
   });
 
-  it('keeps data columns inside the remaining table width before the container is measured', () => {
-    expect(getUnmeasuredAutoColumnWidth(100, 1)).toBe('calc((100% - 100px) / 1)');
-    expect(getUnmeasuredAutoColumnWidth(100, 3)).toBe('calc((100% - 100px) / 3)');
+  it('keeps fixed columns at their declared width while a table has no data columns', () => {
+    expect(getAutoTableLayout({}, 100, 1000)).toEqual({
+      tableWidth: '100px',
+      tableMinWidth: '100px',
+    });
+  });
+
+  it('assigns unmeasured table space only to data columns', () => {
+    expect(getAutoTableLayout({ name: 96 }, 100, 0)).toEqual({
+      tableWidth: '100%',
+      unmeasuredColumnWidth: 'calc((100% - 100px) / 1)',
+    });
+    expect(getAutoTableLayout({ name: 96, type: 96 }, 60, 0)).toEqual({
+      tableWidth: '100%',
+      unmeasuredColumnWidth: 'calc((100% - 60px) / 2)',
+    });
   });
 });

@@ -21,18 +21,36 @@ export function getAutoTableWidth(
   return Math.max(containerWidth, columnsWidth);
 }
 
-/**
- * Before ResizeObserver reports a real container width, keep each data column
- * in the portion of the table that remains after fixed columns. This prevents
- * the browser's fixed-table algorithm from assigning the spare width to the
- * row-number column for one frame.
- */
-export function getUnmeasuredAutoColumnWidth(
+export type AutoTableLayout = {
+  tableWidth: string;
+  tableMinWidth?: string;
+  unmeasuredColumnWidth?: string;
+};
+
+export function getAutoTableLayout(
+  columnWidths: Record<string, number>,
   fixedColumnWidth: number,
-  propertyCount: number,
-): string | undefined {
-  if (propertyCount <= 0) return undefined;
-  return `calc((100% - ${fixedColumnWidth}px) / ${propertyCount})`;
+  containerWidth: number,
+): AutoTableLayout {
+  const columnCount = Object.keys(columnWidths).length;
+  if (columnCount === 0) {
+    const fixedWidth = `${fixedColumnWidth}px`;
+    return {
+      tableWidth: fixedWidth,
+      tableMinWidth: fixedWidth,
+    };
+  }
+
+  if (containerWidth <= 0) {
+    return {
+      tableWidth: '100%',
+      unmeasuredColumnWidth: `calc((100% - ${fixedColumnWidth}px) / ${columnCount})`,
+    };
+  }
+
+  return {
+    tableWidth: `${getAutoTableWidth(columnWidths, fixedColumnWidth, containerWidth)}px`,
+  };
 }
 
 function getDisplayLength(value: unknown): number {
