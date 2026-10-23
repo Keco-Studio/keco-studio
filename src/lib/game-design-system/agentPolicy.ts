@@ -39,7 +39,7 @@ export function buildAgentRulePolicy(ruleSet: GameDesignRuleSet): {
   for (const rule of prioritizedRules) {
     const line = JSON.stringify({
       id: rule.id,
-      ...(isRuntimeKernel ? { domain: rule.domain } : {}),
+      ...(isRuntimeKernel && 'domain' in rule ? { domain: rule.domain } : {}),
       kind: rule.kind,
       title: sanitizeAgentPolicyText(rule.title, 120),
       statement: sanitizeAgentPolicyText(rule.statement, 800),

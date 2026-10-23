@@ -60,6 +60,34 @@ export async function mapService(ctx: ToolContext) {
   return createMapMcpService({ supabase: ctx.supabase, userId: ctx.userId });
 }
 
+export async function resolveMapProjectContext(ctx: ToolContext, mapId: string): Promise<string> {
+  if (ctx.projectId) return ctx.projectId;
+  const map = await (await mapService(ctx)).readMap({ mapId });
+  return map.projectId;
+}
+
+const agentMapWorkspaces = new Set(['studio', 'game-design-systems']);
+
+export async function attachGeneratedMapToAgentConversation(
+  ctx: ToolContext,
+  input: { mapId: string; revisionId: string; assetId: string },
+): Promise<void> {
+  if (!agentMapWorkspaces.has(ctx.workspace)) return;
+  const { data: located, error: locateError } = await ctx.supabase.rpc(
+    'find_map_conversation_by_map_id_v1',
+    { p_map_project_id: input.mapId },
+  );
+  if (locateError) throw locateError;
+  const row = Array.isArray(located) ? located[0] : located;
+  if (!row || typeof row !== 'object' || typeof (row as { plan_node_id?: unknown }).plan_node_id !== 'string') return;
+  const { error: attachError } = await ctx.supabase.rpc('attach_map_conversation_output_v1', {
+    p_plan_node_id: (row as { plan_node_id: string }).plan_node_id,
+    p_map_revision_id: input.revisionId,
+    p_map_asset_id: input.assetId,
+  });
+  if (attachError) throw attachError;
+}
+
 export function mapToolError(error: unknown): { success: false; error: string } {
   if (error instanceof z.ZodError) return { success: false, error: 'Invalid map parameters.' };
   const code = error && typeof error === 'object' && 'code' in error ? error.code : null;

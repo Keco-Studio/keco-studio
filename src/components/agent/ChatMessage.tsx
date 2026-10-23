@@ -15,11 +15,13 @@ import { AssistantMarkdown } from './AssistantMarkdown';
 import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
 import { summarizeReasoning } from './reasoning-utils';
 import { GddChatJobStatus, parseGddChatJob } from './GddChatJobStatus';
+import type { MapPlanPreviewTarget } from '@/components/documents/GddMapPlanPreviewModal';
 
 interface Props {
   item: ChatItem;
   streaming: boolean;
   onDecision: (actionId: string, decision: 'approve' | 'reject') => void;
+  onOpenMap?: (target: MapPlanPreviewTarget) => void;
 }
 
 function inferCompletedStatus(content: string): string {
@@ -62,7 +64,7 @@ function inferCompletedStatus(content: string): string {
   return 'Processing...';
 }
 
-export function ChatMessage({ item, streaming, onDecision }: Props) {
+export function ChatMessage({ item, streaming, onDecision, onOpenMap }: Props) {
   switch (item.role) {
     case 'user':
       return (
@@ -119,7 +121,7 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
         </div>;
       }
       return item.toolCall?.displayHint === 'map' && item.toolCall.status === 'success'
-        ? <MapToolResultCard data={item.toolCall.data} /> : null;
+        ? <MapToolResultCard data={item.toolCall.data} onOpenMap={onOpenMap} /> : null;
     }
     case 'confirmation': {
       if (!item.confirmation) return null;

@@ -69,7 +69,7 @@ describeDb('GDD Map Plan binding (live database)', () => {
     if (fx) await teardownProjectFixture(fx);
   }, 120_000);
 
-  it('binds a GDD-generated revision to Plan V1 and keeps a new draft current', async () => {
+  it('groups GDD-generated Plans and Maps in one durable conversation', async () => {
     const version = await fx.svc.from('game_design_system_versions').insert({
       system_id: systemId,
       version_number: 1,
@@ -102,7 +102,7 @@ describeDb('GDD Map Plan binding (live database)', () => {
       content: '# GDD',
       created_by: fx.owner.id,
       gdd_generation_job_id: job.data.id,
-    }).select('id').single();
+    }).select('id,updated_at,collab_epoch,collab_revision').single();
     if (document.error || !document.data) throw new Error(`create GDD document failed: ${document.error?.message}`);
 
     const setOutput = await fx.svc.from('gdd_generation_jobs')
@@ -146,7 +146,7 @@ describeDb('GDD Map Plan binding (live database)', () => {
       asset_id: string;
     }>)[0];
 
-    const [generatedRevision, nextDraft, savedPlan, map, persistedArtifact] = await Promise.all([
+    const [generatedRevision, nextDraft, savedPlan, map, persistedArtifact, planNode] = await Promise.all([
       fx.svc.from('map_revisions').select('id,status,plan_version_id').eq('id', result.generation_revision_id).single(),
       fx.svc.from('map_revisions').select('id,status').eq('id', result.draft_revision_id).single(),
       fx.svc.from('map_plan_versions')
@@ -155,6 +155,11 @@ describeDb('GDD Map Plan binding (live database)', () => {
         .single(),
       fx.svc.from('map_projects').select('current_revision_id').eq('id', result.map_id).single(),
       fx.svc.from('gdd_map_artifacts').select('status,phase,map_project_id,map_revision_id,map_asset_id').eq('id', artifact.data.id).single(),
+      fx.svc.from('map_conversation_nodes')
+        .select('id,conversation_id,plan_display_version,map_project_id,map_plan_version_id')
+        .eq('map_project_id', result.map_id)
+        .eq('node_type', 'plan')
+        .single(),
     ]);
 
     expect(generatedRevision.error).toBeNull();
@@ -179,5 +184,110 @@ describeDb('GDD Map Plan binding (live database)', () => {
       map_revision_id: result.generation_revision_id,
       map_asset_id: result.asset_id,
     });
+    expect(planNode.error).toBeNull();
+    expect(planNode.data).toMatchObject({
+      map_project_id: result.map_id,
+      map_plan_version_id: savedPlan.data?.id,
+      plan_display_version: 1,
+    });
+
+    const secondArtifact = await fx.svc.from('gdd_map_artifacts').insert({
+      id: randomUUID(),
+      gdd_generation_job_id: job.data.id,
+      gdd_document_id: document.data.id,
+      project_id: fx.projectId,
+      owner_id: fx.owner.id,
+      design_system_id: systemId,
+      version_id: version.data.id,
+      map_brief_id: randomUUID(),
+      title: 'GDD delivery island revision',
+      map_brief: { title: 'GDD delivery island revision' },
+      input_hash: 'd'.repeat(64),
+      status: 'running',
+      phase: 'planning',
+      lease_owner: workerId,
+      lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+    }).select('id').single();
+    if (secondArtifact.error || !secondArtifact.data) throw new Error(`create second map artifact failed: ${secondArtifact.error?.message}`);
+
+    const secondPrepared = await fx.svc.rpc('prepare_gdd_map_artifact', {
+      p_artifact_id: secondArtifact.data.id,
+      p_worker_id: workerId,
+      p_plan: { ...plan, name: 'GDD delivery island revision' },
+      p_scene: scene,
+      p_generation_id: randomUUID(),
+      p_plan_fingerprint: 'e'.repeat(64),
+    });
+    expect(secondPrepared.error).toBeNull();
+    const secondResult = (secondPrepared.data as Array<{ map_id: string }>)[0];
+
+    const groupedPlans = await fx.svc.from('map_conversation_nodes')
+      .select('conversation_id,plan_display_version,map_project_id')
+      .in('map_project_id', [result.map_id, secondResult.map_id])
+      .eq('node_type', 'plan')
+      .order('plan_display_version');
+    expect(groupedPlans.error).toBeNull();
+    expect(groupedPlans.data).toEqual([
+      expect.objectContaining({
+        conversation_id: planNode.data?.conversation_id,
+        plan_display_version: 1,
+        map_project_id: result.map_id,
+      }),
+      expect.objectContaining({
+        conversation_id: planNode.data?.conversation_id,
+        plan_display_version: 2,
+        map_project_id: secondResult.map_id,
+      }),
+    ]);
+
+    const makeAssetReady = await fx.svc.from('map_assets')
+      .update({ status: 'ready' })
+      .eq('id', result.asset_id);
+    if (makeAssetReady.error) throw new Error(`mark map asset ready failed: ${makeAssetReady.error.message}`);
+    const resumeArtifact = await fx.svc.from('gdd_map_artifacts')
+      .update({
+        status: 'running',
+        phase: 'validating',
+        lease_owner: workerId,
+        lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .eq('id', artifact.data.id);
+    if (resumeArtifact.error) throw new Error(`resume artifact failed: ${resumeArtifact.error.message}`);
+    const finished = await fx.svc.rpc('finish_gdd_map_artifact', {
+      p_artifact_id: artifact.data.id,
+      p_worker_id: workerId,
+      p_status: 'ready',
+      p_error: null,
+    });
+    expect(finished.error).toBeNull();
+    const mapNode = await fx.svc.from('map_conversation_nodes')
+      .select('parent_plan_node_id,map_revision_id,map_asset_id')
+      .eq('parent_plan_node_id', planNode.data?.id ?? '')
+      .eq('node_type', 'map')
+      .single();
+    expect(mapNode.error).toBeNull();
+    expect(mapNode.data).toMatchObject({
+      parent_plan_node_id: planNode.data?.id,
+      map_revision_id: result.generation_revision_id,
+      map_asset_id: result.asset_id,
+    });
+
+    const followUp = await fx.owner.client.rpc('create_map_conversation_plan_v1', {
+      p_project_id: fx.projectId,
+      p_conversation_id: planNode.data?.conversation_id,
+      p_parent_plan_node_id: planNode.data?.id,
+      p_title: 'GDD delivery island',
+      p_message: 'Move the harbor clinic closer to the route.',
+      p_idempotency_key: randomUUID(),
+      p_intent_hash: 'f'.repeat(64),
+      p_name: 'GDD delivery island clinic revision',
+      p_source_document_id: document.data.id,
+      p_source_document_updated_at: document.data.updated_at ?? null,
+      p_source_epoch: document.data.collab_epoch ?? null,
+      p_source_revision: document.data.collab_revision ?? null,
+      p_plan: { ...plan, name: 'GDD delivery island clinic revision' },
+      p_scene: scene,
+    });
+    expect(followUp.error).toBeNull();
   }, 120_000);
 });

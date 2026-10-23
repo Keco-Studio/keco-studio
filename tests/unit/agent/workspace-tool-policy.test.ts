@@ -35,24 +35,25 @@ describe('workspace Tool policy', () => {
       .toEqual(projectTools);
   });
 
-  it('gives Create Map and GDS their own literal bundles', () => {
+  it('keeps Map tools available in the current GDS conversation', () => {
     expect([...getAllowedToolNames('create-map')]).toEqual([...discoveryAndSettings, ...mapTools]);
-    expect([...getAllowedToolNames('game-design-systems')]).toEqual([...discoveryAndSettings, ...gdsTools]);
+    expect([...getAllowedToolNames('game-design-systems')]).toEqual([...discoveryAndSettings, ...gdsTools, ...mapTools]);
     expect(getAllowedToolNames('create-map').has('create_project')).toBe(false);
     expect(getAllowedToolNames('game-design-systems').has('create_project')).toBe(false);
     expect(getToolsForLlm({ workspace: 'create-map' }).map((tool) => tool.function.name).sort())
       .toEqual([...discoveryAndSettings, ...mapTools].sort());
     expect(getToolsForLlm({ workspace: 'game-design-systems' }).map((tool) => tool.function.name).sort())
-      .toEqual([...discoveryAndSettings, ...gdsTools].sort());
+      .toEqual([...discoveryAndSettings, ...gdsTools, ...mapTools].sort());
   });
 
-  it('retains the current registry in Studio and limits Script mutations', () => {
+  it('keeps Map tools in the active Studio conversation and limits Script mutations', () => {
     expect([...getAllowedToolNames('studio')].sort()).toEqual(
-      allTools.map((tool) => tool.name).filter((name) => !['list_projects', 'create_project', 'select_project', ...mapTools, ...gdsTools, ...scriptOnlyTools].includes(name)).sort()
+      allTools.map((tool) => tool.name).filter((name) => !['list_projects', 'create_project', 'select_project', ...gdsTools, ...scriptOnlyTools].includes(name)).sort()
     );
     for (const name of ['list_projects', 'create_project', 'select_project']) {
       expect(getAllowedToolNames('studio').has(name)).toBe(false);
     }
+    expect(getAllowedToolNames('studio').has('create_map_draft')).toBe(true);
     expect(getAllowedToolNames('script').has('create_project')).toBe(false);
     expect(getAllowedToolNames('script').has('import_script')).toBe(true);
     expect(getAllowedToolNames('script').has('propose_story_graph_edit')).toBe(true);

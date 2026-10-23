@@ -43,6 +43,7 @@ export const POST = withAuth(async function POST(
     currentFolderName?: string;
     currentLibraryId?: string;
     currentLibraryName?: string;
+    mapBasePlanNodeId?: unknown;
     workspace?: AgentWorkspace;
     /** Default for newly created conversations (from user preference). */
     autoExecute?: unknown;
@@ -304,6 +305,9 @@ export const POST = withAuth(async function POST(
       documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
+      ...(typeof body.mapBasePlanNodeId === 'string' && isUuid(body.mapBasePlanNodeId)
+        ? { mapBasePlanNodeId: body.mapBasePlanNodeId }
+        : {}),
     };
 
     const message = documentSnapshot

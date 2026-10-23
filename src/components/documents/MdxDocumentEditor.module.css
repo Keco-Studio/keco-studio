@@ -343,8 +343,77 @@
   border-radius: 4px;
 }
 
+.gddMapOpenButton {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.gddMapPlanPreviewImage {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  margin-bottom: 16px;
+  object-fit: contain;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+  background: var(--ant-color-fill-quaternary, #fafafa);
+}
+
+.gddMapPlanPreview {
+  color: var(--ant-color-text, #1f1f1f);
+}
+
+.gddMapPlanPreview > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gddMapPlanPreview > div:first-child span {
+  color: var(--ant-color-text-secondary, #595959);
+  font-size: 12px;
+}
+
+.gddMapPlanPreview dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.gddMapPlanPreview dl div {
+  padding: 10px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+}
+
+.gddMapPlanPreview dt {
+  color: var(--ant-color-text-secondary, #595959);
+  font-size: 12px;
+}
+
+.gddMapPlanPreview dd {
+  margin: 2px 0 0;
+}
+
+.gddMapPlanDescription {
+  white-space: pre-wrap;
+}
+
 @media (max-width: 640px) {
   .gddMapCompact {
+    grid-template-columns: 1fr;
+  }
+
+  .gddMapPlanPreview dl {
     grid-template-columns: 1fr;
   }
 }

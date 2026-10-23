@@ -26,6 +26,8 @@ const mapToolDataSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('map'), projectId: z.string().uuid(), mapId: z.string().uuid(), revisionId: z.string().uuid(),
     revisionNumber: z.number().int().nonnegative().optional(), saveVersion: z.number().int().nonnegative().optional(),
+    conversationId: z.string().uuid().optional(), planNodeId: z.string().uuid().optional(),
+    planVersionId: z.string().uuid().optional(), planDisplayVersion: z.number().int().positive().optional(),
     plan: z.object({ title: z.string().max(160), summary: z.string().max(500), width: z.number().positive(), height: z.number().positive(), referenceCount: z.number().int().nonnegative() }).optional(),
     generation: mapGenerationSchema.nullable().optional(),
   }),
@@ -84,6 +86,8 @@ export interface SendOptions {
   documentExport?: DocumentTableExportContext;
   /** Composer text to restore if the user stops this turn mid-stream. */
   composerDraft?: string;
+  /** Explicit base Plan selected from this conversation's Map asset library. */
+  mapBasePlanNodeId?: string | null;
 }
 
 export interface ChatItem {

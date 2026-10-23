@@ -13,6 +13,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ChangeEvent,
   type ComponentType,
   type MouseEvent,
@@ -85,6 +86,7 @@ import {
 import { ResourceReferenceProvider } from './ResourceReferenceProvider';
 import { GddMapReferenceProvider } from './GddMapReferenceProvider';
 import { GddMapReferenceEditor } from './GddMapReferenceEditor';
+import { GddMapPlanPreviewModal } from './GddMapPlanPreviewModal';
 import { GddTablePlaceholderEditor } from './GddTablePlaceholderEditor';
 import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
@@ -96,6 +98,7 @@ import { documentTableCellSelectionPlugin } from './documentTableCellSelectionPl
 import { documentTablePastePlugin } from './documentTablePastePlugin';
 import { GddScriptBranchSnapshotEditor } from './GddScriptBranchSnapshotEditor';
 import { coerceSanctionedMdxHtmlComments } from '@/lib/documents/sanctionedMdx';
+import type { GddMapArtifactView } from '@/lib/documents/gddMapArtifactService';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -328,6 +331,7 @@ export default function MdxDocumentEditor({
 }: MdxDocumentEditorProps) {
   const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
   const editorFrameRef = useRef<HTMLDivElement>(null);
+  const [selectedMapArtifact, setSelectedMapArtifact] = useState<GddMapArtifactView | null>(null);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
@@ -362,7 +366,9 @@ export default function MdxDocumentEditor({
         readOnly={readOnly}
       />
     );
-    const GddMapReference = (props: JsxEditorProps) => <GddMapReferenceEditor {...props} />;
+    const GddMapReference = (props: JsxEditorProps) => (
+      <GddMapReferenceEditor {...props} onOpenMap={setSelectedMapArtifact} />
+    );
     const jsxComponentDescriptors = createSanctionedMdxDescriptors(
       SanctionedMdxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
     ).map((descriptor) =>
@@ -515,6 +521,11 @@ export default function MdxDocumentEditor({
           documentId={documentId}
           onCancel={referencePicker.cancel}
           onConfirm={referencePicker.confirm}
+        />
+        <GddMapPlanPreviewModal
+          projectId={projectId}
+          target={selectedMapArtifact}
+          onClose={() => setSelectedMapArtifact(null)}
         />
       </ResourceReferenceProvider>
     </div>

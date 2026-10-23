@@ -18,7 +18,7 @@
   overflow: hidden;
   color: var(--create-map-ink);
   background: var(--create-map-surface);
-  font-family: 'Roboto', sans-serif;
+  font-family: "Roboto", sans-serif;
 }
 
 .workbenchCanvasOnly {
@@ -73,7 +73,7 @@
 .brandTitle {
   margin: 0;
   color: #16325d;
-  font-family: Archivo, 'Roboto', sans-serif;
+  font-family: Archivo, "Roboto", sans-serif;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.2;
@@ -113,7 +113,10 @@
   letter-spacing: 0;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.16s ease, border-color 0.16s ease, border-radius 0.16s ease;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    border-radius 0.16s ease;
 }
 
 .projectButton:hover:not(:disabled) {
@@ -345,6 +348,20 @@
   font-size: 16px;
 }
 
+button.mapHistoryItem {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.mapHistoryItem:hover,
+button.mapHistoryItem:focus-visible {
+  background: #e8f5fd;
+  outline: none;
+}
+
 .mapHistoryItemCurrent {
   background: #e8f5fd;
 }
@@ -482,7 +499,7 @@
   cursor: not-allowed;
 }
 
-.chatHeaderIconButton[aria-pressed='true'] {
+.chatHeaderIconButton[aria-pressed="true"] {
   color: var(--create-map-blue);
   background: rgba(11, 153, 255, 0.1);
 }
@@ -634,6 +651,25 @@
   padding: 10px 4px 14px;
   border-top: 1px solid var(--create-map-line);
   background: #f5f7f9;
+}
+
+.chatBasePlanPicker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #52606d;
+  font-size: 12px;
+}
+
+.chatBasePlanPicker select {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid #cbd3d9;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: #21272a;
+  background: #fff;
 }
 
 .chatAttachmentRow {
@@ -1067,7 +1103,7 @@
   cursor: pointer;
 }
 
-.modeSwitch button[aria-selected='true'] {
+.modeSwitch button[aria-selected="true"] {
   color: #25313a;
   background: #fff;
   box-shadow: 0 1px 2px rgba(24, 32, 38, 0.1);
@@ -1330,12 +1366,12 @@
   white-space: nowrap;
 }
 
-.generationPhase[data-phase='ready'] {
+.generationPhase[data-phase="ready"] {
   color: #2f7b4d;
 }
 
-.generationPhase[data-phase='failed'],
-.generationPhase[data-phase='blocked'] {
+.generationPhase[data-phase="failed"],
+.generationPhase[data-phase="blocked"] {
   color: #ad4039;
 }
 
@@ -1378,7 +1414,7 @@
   background: #edf1f3;
 }
 
-.singleAssetRow[data-status='ready'] .assetStatusIcon {
+.singleAssetRow[data-status="ready"] .assetStatusIcon {
   color: #2f7b4d;
   background: #eaf5ee;
 }
@@ -1424,8 +1460,12 @@
 }
 
 @keyframes direct-progress {
-  from { transform: translateX(-20%); }
-  to { transform: translateX(160%); }
+  from {
+    transform: translateX(-20%);
+  }
+  to {
+    transform: translateX(160%);
+  }
 }
 
 .errorCode {
@@ -1537,11 +1577,11 @@
   box-shadow: 0 12px 30px rgba(40, 50, 58, 0.14);
 }
 
-.directCanvasFrame[data-orientation='landscape'] {
+.directCanvasFrame[data-orientation="landscape"] {
   width: min(100%, 720px);
 }
 
-.directCanvasFrame[data-orientation='portrait'] {
+.directCanvasFrame[data-orientation="portrait"] {
   width: min(100%, 384px);
 }
 
@@ -1565,7 +1605,7 @@
   pointer-events: none;
 }
 
-.directCollisionOverlay[data-visible='true'] {
+.directCollisionOverlay[data-visible="true"] {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1593,7 +1633,10 @@
   background: #fff;
 }
 
-.collisionSummary i[data-cell='blocked'] { border-color: #c95858; background: #d96a6a; }
+.collisionSummary i[data-cell="blocked"] {
+  border-color: #c95858;
+  background: #d96a6a;
+}
 
 .collisionModes {
   display: grid;
@@ -1637,8 +1680,11 @@
   background: #fff;
 }
 
-.collisionMode span[data-cell='1'],
-.collisionModeActive span[data-cell='1'] { border-color: #c95858; background: #d96a6a; }
+.collisionMode span[data-cell="1"],
+.collisionModeActive span[data-cell="1"] {
+  border-color: #c95858;
+  background: #d96a6a;
+}
 
 .collisionActions {
   display: grid;
@@ -1665,7 +1711,9 @@
   cursor: pointer;
 }
 
-.collisionActions button:active { transform: translateY(1px); }
+.collisionActions button:active {
+  transform: translateY(1px);
+}
 
 .directCanvasEmpty {
   display: grid;
@@ -1709,7 +1757,7 @@
   cursor: pointer;
 }
 
-.referenceUploadButton[aria-disabled='true'] {
+.referenceUploadButton[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -1804,8 +1852,13 @@
   font-size: 10px;
 }
 
-.selectCompact { padding: 0 5px; }
-.inputCompact { width: 100%; padding: 0 7px; }
+.selectCompact {
+  padding: 0 5px;
+}
+.inputCompact {
+  width: 100%;
+  padding: 0 7px;
+}
 
 .select,
 .input {
@@ -1917,7 +1970,7 @@
   left: 10px;
   width: 1px;
   background: #d9dee2;
-  content: '';
+  content: "";
 }
 
 .stageMarker {
@@ -1934,13 +1987,13 @@
   font-weight: 700;
 }
 
-.stageItem[data-status='active'] .stageMarker {
+.stageItem[data-status="active"] .stageMarker {
   border-color: var(--create-map-blue);
   color: #fff;
   background: var(--create-map-blue);
 }
 
-.stageItem[data-status='complete'] .stageMarker {
+.stageItem[data-status="complete"] .stageMarker {
   border-color: #3c8057;
   color: #fff;
   background: #3c8057;
@@ -2023,36 +2076,36 @@
   background: #8fa97b;
 }
 
-.layerSwatch[data-kind='objects'],
+.layerSwatch[data-kind="objects"],
 .objectThumbnail {
   background: #52735b;
 }
 
-.layerSwatch[data-kind='overlay'] {
+.layerSwatch[data-kind="overlay"] {
   background: #d78372;
 }
 
-.layerSwatch[data-kind='region'] {
+.layerSwatch[data-kind="region"] {
   background: #8fa97b;
 }
 
-.layerSwatch[data-kind='path'] {
+.layerSwatch[data-kind="path"] {
   background: #a27f58;
 }
 
-.layerSwatch[data-kind='placement'] {
+.layerSwatch[data-kind="placement"] {
   background: #49685b;
 }
 
-.layerSwatch[data-kind='background'] {
+.layerSwatch[data-kind="background"] {
   background: #8aa278;
 }
 
-.layerSwatch[data-kind='obstacles'] {
+.layerSwatch[data-kind="obstacles"] {
   background: #52735b;
 }
 
-.layerSwatch[data-kind='collision'] {
+.layerSwatch[data-kind="collision"] {
   background: #cf7668;
 }
 
@@ -2268,13 +2321,13 @@
   border-radius: 6px;
 }
 
-.generationItem[data-status='failed'],
-.generationItem[data-status='blocked'] {
+.generationItem[data-status="failed"],
+.generationItem[data-status="blocked"] {
   border-color: #f0caca;
   background: #fff8f8;
 }
 
-.generationItem[data-status='ready'] {
+.generationItem[data-status="ready"] {
   background: #f5faf6;
 }
 
@@ -2287,12 +2340,12 @@
   font-size: 12px;
 }
 
-.generationItem[data-status='ready'] .generationIcon {
+.generationItem[data-status="ready"] .generationIcon {
   color: #347b51;
 }
 
-.generationItem[data-status='failed'] .generationIcon,
-.generationItem[data-status='blocked'] .generationIcon {
+.generationItem[data-status="failed"] .generationIcon,
+.generationItem[data-status="blocked"] .generationIcon {
   color: #b44545;
 }
 
@@ -2487,15 +2540,15 @@
   cursor: crosshair;
 }
 
-.canvasViewport[data-tool='select'] .canvas {
+.canvasViewport[data-tool="select"] .canvas {
   cursor: default;
 }
 
-.canvasViewport[data-tool='hand'] .canvas {
+.canvasViewport[data-tool="hand"] .canvas {
   cursor: grab;
 }
 
-.canvasViewport[data-tool='hand'] .canvas:active {
+.canvasViewport[data-tool="hand"] .canvas:active {
   cursor: grabbing;
 }
 
@@ -2661,9 +2714,9 @@
   line-height: 1.35;
 }
 
-.input[aria-invalid='true'],
-.select[aria-invalid='true'],
-.textarea[aria-invalid='true'] {
+.input[aria-invalid="true"],
+.select[aria-invalid="true"],
+.textarea[aria-invalid="true"] {
   border-color: #c95a52;
 }
 
@@ -2675,7 +2728,10 @@
 @media (min-width: 1100px) and (max-width: 1280px) {
   .workbench {
     min-width: 0;
-    grid-template-columns: minmax(210px, 232px) minmax(420px, 1fr) minmax(248px, 278px);
+    grid-template-columns: minmax(210px, 232px) minmax(420px, 1fr) minmax(
+        248px,
+        278px
+      );
   }
 
   .workbenchLeftCollapsed {
@@ -2786,7 +2842,6 @@
     background: #fff;
     cursor: pointer;
   }
-
 }
 
 @media (max-width: 899px) {
@@ -2810,7 +2865,6 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
-
 }
 
 @media (max-width: 479px) {

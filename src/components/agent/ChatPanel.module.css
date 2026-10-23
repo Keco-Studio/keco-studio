@@ -275,6 +275,58 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   border-radius: 12px;
   padding: 12px;
 }
+.agentMapVersionLibrary {
+  position: relative;
+  margin: 0 12px 8px;
+}
+.agentMapVersionLibrary > button {
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #475569;
+}
+.agentMapVersionMenu {
+  position: absolute;
+  z-index: 8;
+  right: 0;
+  bottom: 24px;
+  width: 230px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+}
+.agentMapVersionMenu label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #64748b;
+}
+.agentMapVersionMenu select { width: 100%; min-width: 0; }
+.agentMapVersionGroup { display: grid; gap: 2px; }
+.agentMapVersionGroup button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+}
+.agentMapVersionGroup button:hover,
+.agentMapVersionGroup button[aria-current="true"] { background: #eff6ff; }
 .markdown {
   min-width: 0;
   max-width: 100%;

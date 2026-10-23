@@ -78,15 +78,16 @@ beforeEach(() => {
 });
 
 describe('Create Map agent tools', () => {
-  it.each(tools)('$name requires project context before arguments or services', async (tool) => {
+  it.each([listMapsTool, readMapTool, createMapDraftTool])('$name requires project context before arguments or services', async (tool) => {
     await expect(tool.execute({}, { ...ctx, projectId: undefined })).rejects.toMatchObject({ code: 'PROJECT_CONTEXT_REQUIRED' });
     if (tool.prepareConfirmation) await expect(tool.prepareConfirmation({}, { ...ctx, projectId: undefined })).rejects.toMatchObject({ code: 'PROJECT_CONTEXT_REQUIRED' });
     expect(createMapMcpService).not.toHaveBeenCalled();
   });
 
-  it.each(tools)('registers $name only in Create Map', (tool) => {
+  it.each(tools)('registers $name in the current Studio and GDS conversations', (tool) => {
     expect(resolveAllowedTool(tool.name, 'create-map')).toBe(tool);
-    expect(resolveAllowedTool(tool.name, 'studio')).toBeUndefined();
+    expect(resolveAllowedTool(tool.name, 'studio')).toBe(tool);
+    expect(resolveAllowedTool(tool.name, 'game-design-systems')).toBe(tool);
   });
 
   it('bounds list results to 20 by default and 50 maximum, preserving pagination', async () => {
@@ -134,6 +135,73 @@ describe('Create Map agent tools', () => {
     expect((await createMapDraftTool.execute(draftArgs, ctx)).success).toBe(true);
     expect(backend.createDraft).toHaveBeenCalledTimes(1);
     expect(backend.claimDraft).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: ctx.projectId, idempotencyKey: id(7) }));
+  });
+
+  it('records each map Plan against the active Agent conversation', async () => {
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: [{
+          conversation_id: id(10),
+          plan_node_id: id(11),
+          plan_version_id: id(12),
+          plan_display_version: 1,
+        }],
+        error: null,
+      });
+    const result = await createMapDraftTool.execute(draftArgs, {
+      ...ctx,
+      workspace: 'game-design-systems',
+      supabase: { rpc } as unknown as SupabaseClient,
+    });
+
+    expect(rpc).toHaveBeenCalledWith('attach_map_conversation_plan_to_agent_v1', expect.objectContaining({
+      p_project_id: ctx.projectId,
+      p_agent_conversation_id: ctx.conversationId,
+      p_parent_plan_node_id: null,
+      p_map_id: identity.mapId,
+      p_draft_revision_id: identity.revisionId,
+      p_expected_save_version: identity.saveVersion,
+    }));
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        conversationId: id(10),
+        planNodeId: id(11),
+        planDisplayVersion: 1,
+      },
+    });
+  });
+
+  it('uses the explicit project for Map Plans created from a global GDS conversation', async () => {
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: [{
+          conversation_id: id(10),
+          plan_node_id: id(11),
+          plan_version_id: id(12),
+          plan_display_version: 1,
+        }],
+        error: null,
+      });
+    const globalGdsContext = {
+      ...ctx,
+      projectId: undefined,
+      workspace: 'game-design-systems' as const,
+      supabase: { rpc } as unknown as SupabaseClient,
+    };
+    const args = { ...draftArgs, projectId: ctx.projectId! };
+
+    await expect(createMapDraftTool.prepareConfirmation!(args, globalGdsContext)).resolves.toMatchObject({
+      success: true,
+      args: expect.objectContaining({ projectId: ctx.projectId, basePlanNodeId: null }),
+    });
+    await expect(createMapDraftTool.execute({ ...args, basePlanNodeId: null }, globalGdsContext)).resolves.toMatchObject({
+      success: true,
+      data: { projectId: ctx.projectId, planNodeId: id(11) },
+    });
+    expect(backend.claimDraft).toHaveBeenCalledWith(expect.objectContaining({ projectId: ctx.projectId }));
   });
 
   it('rejects conflicting idempotency input and explicit project substitution', async () => {
@@ -191,6 +259,55 @@ describe('Create Map agent tools', () => {
     expect(backend.invokeProvider).toHaveBeenCalledWith('submit', expect.objectContaining({ assetId: id(6), expectedAttemptCount: 0 }));
     expect(advance).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it('attaches the generated Map to its conversation Plan in GDS chat', async () => {
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: [{ conversation_id: id(10), plan_node_id: id(11) }], error: null })
+      .mockResolvedValueOnce({ data: [{ map_node_id: id(12), plan_display_version: 1, map_version_number: 1 }], error: null });
+    const gdsContext = {
+      ...ctx,
+      workspace: 'game-design-systems' as const,
+      supabase: { rpc } as unknown as SupabaseClient,
+    };
+    const prepared = await generateMapImageTool.prepareConfirmation!(generateArgs, gdsContext);
+    if (!prepared.success) throw new Error('Preparation failed');
+
+    await expect(generateMapImageTool.execute(prepared.args, gdsContext)).resolves.toMatchObject({ success: true });
+    expect(rpc).toHaveBeenCalledWith('find_map_conversation_by_map_id_v1', {
+      p_map_project_id: identity.mapId,
+    });
+    expect(rpc).toHaveBeenCalledWith('attach_map_conversation_output_v1', {
+      p_plan_node_id: id(11),
+      p_map_revision_id: identity.revisionId,
+      p_map_asset_id: id(6),
+    });
+  });
+
+  it('resolves the Map project for generation operations in a global GDS conversation', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const globalGdsContext = {
+      ...ctx,
+      projectId: undefined,
+      workspace: 'game-design-systems' as const,
+      supabase: { rpc } as unknown as SupabaseClient,
+    };
+
+    const prepared = await generateMapImageTool.prepareConfirmation!(generateArgs, globalGdsContext);
+    expect(prepared).toMatchObject({ success: true, args: { projectId: ctx.projectId } });
+    if (!prepared.success) throw new Error('Preparation failed');
+    await expect(generateMapImageTool.execute(prepared.args, globalGdsContext)).resolves.toMatchObject({
+      success: true,
+      data: { projectId: ctx.projectId, generation: { status: 'queued' } },
+    });
+    expect((await getMapGenerationStatusTool.execute(statusArgs, globalGdsContext)).data).toMatchObject({
+      projectId: ctx.projectId,
+    });
+
+    state.asset = { ...state.asset, status: 'failed', providerJobId: 'job', attemptCount: 1 };
+    const retried = await retryMapGenerationTool.prepareConfirmation!({ ...statusArgs, acknowledgeDuplicateBilling: true }, globalGdsContext);
+    expect(retried).toMatchObject({ success: true, args: { projectId: ctx.projectId } });
+    expect(backend.readMap).toHaveBeenCalledWith(identity.mapId);
   });
 
   it('rejects raw execution without server-sealed confirmation arguments', async () => {

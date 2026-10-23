@@ -8,16 +8,18 @@ import { LeftNav } from '@/components/layout/LeftNav';
 import { agentRuntimeScopeKey, resetAgentChatRuntimeStoreForTests } from '@/components/agent/agentChatRuntimeStore';
 import { setLastConversation } from '@/components/agent/agentChatStorage';
 import { deriveAgentWorkspaceContext, type AgentNavigationContext } from '@/lib/agent/client-workspace';
+import { queueMapAgentHandoff } from '@/lib/map-agent-handoff';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 let mockPathname = '/projects';
 let mockNavigation: AgentNavigationContext;
+const mockRouterPush = jest.fn();
 const mockGetSession = jest.fn(async () => ({ data: { session: { access_token: 'token' } } }));
 const mockSupabase = { auth: { getSession: mockGetSession } };
 
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
-  useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }),
+  useRouter: () => ({ refresh: jest.fn(), push: mockRouterPush }),
 }));
 jest.mock('@/lib/contexts/AuthContext', () => ({
   useAuth: () => ({ userProfile: { id: 'user-1' } }),
@@ -67,9 +69,11 @@ beforeEach(() => {
     currentLibraryId: null, currentLibraryName: null,
   };
   window.localStorage.clear();
+  window.sessionStorage.clear();
   resetAgentChatRuntimeStoreForTests();
   mockGetSession.mockClear();
   mockFetch.mockClear();
+  mockRouterPush.mockClear();
   global.fetch = mockFetch as unknown as typeof fetch;
 });
 
@@ -121,5 +125,72 @@ describe('Assistant rail', () => {
     expect(screen.getAllByTestId('agent-launcher')).toHaveLength(1);
     expect(screen.getByTestId('agent-launcher').getAttribute('aria-pressed')).toBe('false');
     expect(mockFetch).toHaveBeenCalledTimes(requestsAfterOpen);
+  });
+
+  it('routes Map from GDS to the direct Map workspace', () => {
+    mockPathname = '/game-design-systems';
+    mountShell();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/create-map');
+    expect(screen.queryByTestId('agent-panel')).toBeNull();
+  });
+
+  it('restores the owning GDS conversation before sending a map revision request', async () => {
+    mockPathname = '/game-design-systems';
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/messages?limit=200')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            messages: [
+              { id: 'history-user', role: 'user', content: { content: 'Design the island delivery loop' } },
+            ],
+          }),
+        };
+      }
+      if (url.endsWith('/meta')) {
+        return { ok: true, status: 200, json: async () => ({ meta: { autoExecute: false } }) };
+      }
+      return new Response(null, {
+        status: 200,
+        headers: { 'X-Conversation-Id': 'map-agent-conversation' },
+      });
+    });
+    queueMapAgentHandoff({
+      projectId: PROJECT,
+      agentConversationId: 'map-agent-conversation',
+      planNodeId: '10000000-0000-4000-8000-000000000003',
+      message: 'Add an island clinic',
+    });
+    mountShell();
+
+    fireEvent.click(screen.getByTestId('agent-launcher'));
+
+    await waitFor(() => expect(screen.getByText('Design the island delivery loop')).toBeTruthy());
+    await waitFor(() => {
+      const request = mockFetch.mock.calls.find(([input, init]) =>
+        String(input) === '/api/agent-chat' && typeof init === 'object'
+      );
+      expect(request).toBeDefined();
+      const payload = JSON.parse((request?.[1] as RequestInit).body as string);
+      expect(payload).toMatchObject({
+        conversationId: 'map-agent-conversation',
+        message: 'Add an island clinic',
+        mapBasePlanNodeId: '10000000-0000-4000-8000-000000000003',
+      });
+    });
+  });
+
+  it('keeps the standalone Map workspace open when Map is clicked again', () => {
+    mockPathname = '/create-map';
+    mountShell();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 });

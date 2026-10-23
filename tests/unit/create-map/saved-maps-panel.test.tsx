@@ -1,5 +1,7 @@
+/** @jest-environment jsdom */
 import React from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
+import { render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -142,5 +144,43 @@ describe('SavedMapsPanel', () => {
 
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain('Opening...');
+  });
+
+  it('keeps the same conversation row mounted when its latest map changes', () => {
+    const first = {
+      ...summary,
+      conversationId: 'conversation-1',
+      name: 'River Town conversation',
+    };
+    const view = render(<SavedMapsPanel
+      maps={[first]}
+      isLoading={false}
+      error={null}
+      activeMapId={null}
+      openingMapId={null}
+      disabled={false}
+      onOpen={() => undefined}
+      onRetry={() => undefined}
+    />);
+    const originalRow = screen.getByRole('button', { name: /River Town conversation/ });
+
+    view.rerender(<SavedMapsPanel
+      maps={[{
+        ...first,
+        id: 'map-2',
+        currentRevisionId: 'revision-3',
+        updatedAt: '2026-08-10T02:00:00.000Z',
+      }]}
+      isLoading={false}
+      error={null}
+      activeMapId={null}
+      openingMapId={null}
+      disabled={false}
+      onOpen={() => undefined}
+      onRetry={() => undefined}
+    />);
+
+    expect(screen.getByRole('button', { name: /River Town conversation/ })).toBe(originalRow);
+    view.unmount();
   });
 });
