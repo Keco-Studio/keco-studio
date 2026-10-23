@@ -178,7 +178,7 @@ export function hydrateGameDesignSystemVersionRow(
   projectedDiff?: GameDesignSystemVersionDiff,
 ): GameDesignSystemVersion {
   const rules = parseRuleSet(row.rules);
-  const document = row.document == null
+  const document = row.document == null && rules.schemaVersion === 1
     ? buildCompatibilityGameDesignDocument(rules, metadata)
     : parseGameDesignDocument(row.document);
   const rawArtStyle = row.art_style;
@@ -297,10 +297,10 @@ function hydrateVersionRows(
 
     const currentRules = parseRuleSet(row.rules);
     const parentRules = parseRuleSet(parentRow.rules);
-    const currentDocument = row.document == null
+    const currentDocument = row.document == null && currentRules.schemaVersion === 1
       ? buildCompatibilityGameDesignDocument(currentRules, metadata)
       : parseGameDesignDocument(row.document);
-    const parentDocument = parentRow.document == null
+    const parentDocument = parentRow.document == null && parentRules.schemaVersion === 1
       ? buildCompatibilityGameDesignDocument(parentRules, metadata)
       : parseGameDesignDocument(parentRow.document);
     const derived = createVersionDiff(

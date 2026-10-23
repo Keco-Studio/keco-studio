@@ -15,6 +15,7 @@ import {
 import { findReintroducedRuleIds } from '@/lib/game-design-system/ruleDiff';
 import {
   createVersionDiff,
+  type GameDesignSystemVersionDiffV2,
 } from '@/lib/game-design-system/versionDiff';
 import {
   GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,
@@ -35,6 +36,7 @@ export type PublicGameDesignSystemVersionErrorCode =
   | 'VERSION_PARENT_INVALID'
   | 'VERSION_LINEAGE_INVALID'
   | 'VERSION_RULE_REINTRODUCED'
+  | 'VERSION_RULE_CONFLICT'
   | 'VERSION_NO_CHANGES'
   | 'VERSION_STALE'
   | 'IDEMPOTENCY_CONFLICT'
@@ -47,6 +49,7 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicGameDesignSystemVersionErrorCode, stri
   VERSION_PARENT_INVALID: 'Parent version does not belong to this system.',
   VERSION_LINEAGE_INVALID: 'Version lineage is invalid.',
   VERSION_RULE_REINTRODUCED: 'Rule IDs cannot be reintroduced after deletion.',
+  VERSION_RULE_CONFLICT: 'Version contains incompatible rule changes.',
   VERSION_NO_CHANGES: 'The version does not contain any changes.',
   VERSION_STALE: 'The Game Design System changed after this draft was opened.',
   IDEMPOTENCY_CONFLICT: 'Idempotency key was already used with a different payload.',
@@ -57,14 +60,19 @@ export class PublicGameDesignSystemVersionError extends Error {
   readonly code: PublicGameDesignSystemVersionErrorCode;
   readonly publicMessage: string;
   readonly ruleIds?: string[];
+  readonly conflicts?: GameDesignSystemVersionDiffV2['conflicts'];
 
-  constructor(code: PublicGameDesignSystemVersionErrorCode, options?: { ruleIds?: string[] }) {
+  constructor(
+    code: PublicGameDesignSystemVersionErrorCode,
+    options?: { ruleIds?: string[]; conflicts?: GameDesignSystemVersionDiffV2['conflicts'] },
+  ) {
     const publicMessage = PUBLIC_ERROR_MESSAGES[code];
     super(publicMessage);
     this.name = 'PublicGameDesignSystemVersionError';
     this.code = code;
     this.publicMessage = publicMessage;
     this.ruleIds = options?.ruleIds;
+    this.conflicts = options?.conflicts;
   }
 }
 
@@ -225,6 +233,9 @@ export async function createPublicGameDesignSystemVersion(
   const rules = request.rules === undefined
     ? parentRules
     : parseRuleSet(request.rules);
+  if (rules.schemaVersion !== 2) {
+    throw new PublicGameDesignSystemVersionError('VERSION_REQUEST_INVALID');
+  }
   const inheritArtStyle = request.artStyle === undefined;
   const artStyleJson = inheritArtStyle
     ? null
@@ -247,6 +258,11 @@ export async function createPublicGameDesignSystemVersion(
     { document: parentDocument, rules: parentRules, artStyle: parentArtStyle },
     { document, rules, artStyle: artStyleJson },
   );
+  if (diff.conflicts.length > 0) {
+    throw new PublicGameDesignSystemVersionError('VERSION_RULE_CONFLICT', {
+      conflicts: diff.conflicts,
+    });
+  }
   const renderedMarkdown = renderRuleSetMarkdown(rules, {
     title: system.title,
     version: GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,

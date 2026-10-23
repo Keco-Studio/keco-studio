@@ -9,7 +9,15 @@ const createSchema = z.object({
   title: gameDesignSystemTitleSchema,
   summary: z.string().trim().max(1000).optional(),
   rules: gameDesignRuleSetSchema,
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.rules.schemaVersion === 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['rules', 'schemaVersion'],
+      message: 'New Game Design System drafts require schemaVersion: 2.',
+    });
+  }
+});
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(101),
@@ -41,7 +49,7 @@ export const GET = withAuth(async function GET(request, _context, { supabase }) 
 
 export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid structured rule set.', issues: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: 'Invalid structured game rule set.', issues: parsed.error.flatten() }, { status: 400 });
   try {
     const system = await createGameDesignSystem(getSupabaseServiceRoleClient(), user.id, {
       title: parsed.data.title,

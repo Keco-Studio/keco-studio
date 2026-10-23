@@ -531,6 +531,29 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(detail?.current_version).not.toHaveProperty('art_style');
   });
 
+  it('hydrates an existing v1 version without changing its stored rule set', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: null,
+      current_version_id: 'version-1', body: '# Legacy version', genres: [], philosophies: [], suitable_for: null,
+    };
+    const legacyVersion = {
+      id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
+      document: null, rules: ruleSet, art_style: null, rendered_markdown: '# Legacy version',
+      diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] }, conflicts: [],
+    };
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: async () => ({ data: [legacyVersion], error: null }) }) }) }),
+    };
+
+    const detail = await getGameDesignSystemDetail(supabase as never, 'system-1');
+
+    expect(detail?.current_version?.rules).toEqual(ruleSet);
+    expect(detail?.current_version?.rules.schemaVersion).toBe(1);
+    expect(legacyVersion.rules).toEqual(ruleSet);
+  });
+
   it('derives cross-domain changes for legacy diffs when their parent is readable', async () => {
     const system = {
       id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: null,

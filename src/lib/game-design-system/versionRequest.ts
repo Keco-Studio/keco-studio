@@ -19,6 +19,14 @@ export const createGameDesignSystemVersionRequestSchema = z.object({
     });
   }
 
+  if (value.rules?.schemaVersion === 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['rules', 'schemaVersion'],
+      message: 'New Game Design System versions require schemaVersion: 2.',
+    });
+  }
+
   if (value.artStyle !== undefined && value.artStyle !== null) {
     try {
       resolveOfferedGameArtStylePreset(value.artStyle.presetId, value.artStyle.presetVersion);

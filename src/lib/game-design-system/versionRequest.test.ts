@@ -5,18 +5,20 @@ const versionId = '78200594-64e5-4e7e-a79a-409ebc741061';
 const currentVersionId = '16662223-2c61-4af8-8a81-ea9f3da97d93';
 
 const rules = {
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   genres: ['Strategy'],
   philosophies: ['Readable Systems'],
   suitableFor: 'Tactical games',
-  rules: [{
-    id: 'readable-state',
-    kind: 'principle' as const,
-    title: 'Readable state',
-    statement: 'Expose decision inputs.',
-    appliesWhen: 'Presenting choices.',
-    severity: 'required' as const,
-  }],
+  rules: [
+    { id: 'readable-state', domain: 'player' as const, kind: 'principle' as const, title: 'Readable state', statement: 'Expose decision inputs.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'objective-rule', domain: 'objective' as const, kind: 'constraint' as const, title: 'Objective rule', statement: 'Define the objective.', appliesWhen: 'Starting an encounter.', severity: 'required' as const },
+    { id: 'action-rule', domain: 'action' as const, kind: 'constraint' as const, title: 'Action rule', statement: 'Define available actions.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'object-state-rule', domain: 'object_state' as const, kind: 'constraint' as const, title: 'Object state rule', statement: 'Define object state.', appliesWhen: 'Resolving actions.', severity: 'required' as const },
+    { id: 'sequence-rule', domain: 'sequence' as const, kind: 'constraint' as const, title: 'Sequence rule', statement: 'Define resolution sequence.', appliesWhen: 'Resolving actions.', severity: 'required' as const },
+    { id: 'resource-cost-rule', domain: 'resource_cost' as const, kind: 'constraint' as const, title: 'Resource cost rule', statement: 'Define resource costs.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'resolution-feedback-rule', domain: 'resolution_feedback' as const, kind: 'constraint' as const, title: 'Resolution feedback rule', statement: 'Define resolution feedback.', appliesWhen: 'Completing an action.', severity: 'required' as const },
+    { id: 'fallback-rule', domain: 'fallback' as const, kind: 'constraint' as const, title: 'Fallback rule', statement: 'Define fallback behavior.', appliesWhen: 'No valid action remains.', severity: 'required' as const },
+  ],
   tableGuidance: [],
 };
 
@@ -64,6 +66,37 @@ describe('createGameDesignSystemVersionRequestSchema', () => {
       expectedCurrentVersionId: currentVersionId,
       artStyle: null,
     });
+  });
+
+  it('rejects legacy v1 rules for a new version write at the rules schema field', () => {
+    const legacyRules = {
+      schemaVersion: 1,
+      genres: rules.genres,
+      philosophies: rules.philosophies,
+      suitableFor: rules.suitableFor,
+      rules: [{
+        id: 'readable-state',
+        kind: 'principle',
+        title: 'Readable state',
+        statement: 'Expose decision inputs.',
+        appliesWhen: 'Presenting choices.',
+        severity: 'required',
+      }],
+      tableGuidance: [],
+    };
+
+    const parsed = createGameDesignSystemVersionRequestSchema.safeParse({
+      parentVersionId: versionId,
+      expectedCurrentVersionId: currentVersionId,
+      rules: legacyRules,
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: ['rules', 'schemaVersion'] }),
+      ]));
+    }
   });
 
   it.each([
