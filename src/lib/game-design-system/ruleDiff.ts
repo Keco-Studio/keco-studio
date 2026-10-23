@@ -1,5 +1,7 @@
 import type { GameDesignRuleSet } from './ruleSchema';
 
+type GameDesignRule = GameDesignRuleSet['rules'][number];
+
 export type GameDesignRuleDiff = {
   added: string[];
   removed: string[];
@@ -21,8 +23,12 @@ export function findReintroducedRuleIds(
 }
 
 export function diffRuleSets(parent: GameDesignRuleSet, next: GameDesignRuleSet): GameDesignRuleDiff {
-  const previousById = new Map(parent.rules.map((rule) => [rule.id, rule]));
-  const nextById = new Map(next.rules.map((rule) => [rule.id, rule]));
+  const previousById = new Map<string, GameDesignRule>(
+    parent.rules.map((rule) => [rule.id, rule] as [string, GameDesignRule]),
+  );
+  const nextById = new Map<string, GameDesignRule>(
+    next.rules.map((rule) => [rule.id, rule] as [string, GameDesignRule]),
+  );
   const added = [...nextById.keys()].filter((id) => !previousById.has(id)).sort();
   const removed = [...previousById.keys()].filter((id) => !nextById.has(id)).sort();
   const changed: string[] = [];
