@@ -149,6 +149,7 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     const versions = await fixture.svc.from('game_design_system_versions').insert([1, 2, 3].map((versionNumber) => ({
       system_id: systemId,
       version_number: versionNumber,
+      document: designDocument,
       rules,
       rendered_markdown: `# Version ${versionNumber}`,
       source_snapshots: [],

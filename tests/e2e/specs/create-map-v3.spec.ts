@@ -1241,6 +1241,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     const slowMap = page.getByRole('button', { name: /Slow Marsh/ });
     await expect(slowMap).toBeVisible();
     await slowMap.evaluate((element: HTMLButtonElement) => element.click());
+    await page.getByRole('button', { name: 'Back to saved maps' }).click();
+    await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
     await page.getByRole('button', { name: /Fast Harbor/ }).click();
     await expect(page.getByRole('heading', { name: 'Fast Harbor' })).toBeVisible();
     await page.waitForTimeout(800);
