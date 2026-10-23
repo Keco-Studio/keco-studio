@@ -59,6 +59,7 @@ export type ScriptDialogueEditingProps = {
   onRedo: () => Promise<boolean>;
   onInsertAfterBlock: (blockId: string, speaker: string) => Promise<boolean>;
   onChangeBlockSpeaker: (blockId: string, speaker: string) => Promise<boolean>;
+  onChangeSpeakerSide: (speaker: string, side: 'left' | 'right') => Promise<boolean>;
   onSaveBlock: (
     blockId: string,
     values: { action: string; dialogue: string },
@@ -411,6 +412,7 @@ export function VisualNovelScriptView({
             onFinishEdit={() => editing.finishEditingBlock(block.id)}
             onInsertCharacter={(speaker) => editing.onInsertAfterBlock(block.id, speaker)}
             onChangeSpeaker={(speaker) => editing.onChangeBlockSpeaker(block.id, speaker)}
+            onChangeSpeakerSide={editing.onChangeSpeakerSide}
             onSaveBlock={(values) => editing.onSaveBlock(block.id, values)}
             onDelete={() => editing.onDeleteBlock(block.id)}
           />

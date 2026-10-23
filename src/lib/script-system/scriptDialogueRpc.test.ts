@@ -6,6 +6,7 @@ import {
   insertScriptDialogueBlock,
   isMissingScriptDialogueRpcError,
   removeDeletedDialogueRows,
+  setScriptDialogueSpeakerSide,
 } from './scriptDialogueRpc';
 
 const row = (id: string, rowIndex: number): AssetRow => ({
@@ -62,6 +63,29 @@ describe('script dialogue RPC helpers', () => {
 
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith('delete_script_dialogue_block', expect.any(Object));
+  });
+
+  it('sets one speaker side through one Script-scoped RPC', async () => {
+    const rpc = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue({
+      data: ['speech-a', 'speech-b'],
+      error: null,
+    });
+
+    await expect(setScriptDialogueSpeakerSide({
+      supabase: { rpc } as never,
+      libraryId: 'lib',
+      speaker: 'Hero',
+      side: 'right',
+      fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
+    })).resolves.toEqual(['speech-a', 'speech-b']);
+
+    expect(rpc).toHaveBeenCalledWith('set_script_dialogue_speaker_side', {
+      p_library_id: 'lib',
+      p_speaker: 'Hero',
+      p_speech_type: '1',
+      p_type_field_id: 'type',
+      p_name_field_id: 'name',
+    });
   });
 
   it('applies returned insert rows and removes deleted rows without refetching', () => {
@@ -121,5 +145,11 @@ describe('script dialogue RPC helpers', () => {
       'Could not find the function public.delete_script_dialogue_block in the schema cache',
     ))).toBe(true);
     expect(isMissingScriptDialogueRpcError({ code: '42501', message: 'Forbidden' })).toBe(false);
+  });
+
+  it('recognizes a missing speaker-side RPC from the schema cache error text', () => {
+    expect(isMissingScriptDialogueRpcError(new Error(
+      'Could not find the function public.set_script_dialogue_speaker_side in the schema cache',
+    ))).toBe(true);
   });
 });

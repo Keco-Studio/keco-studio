@@ -16,13 +16,17 @@ import {
 } from '@/lib/script-system/scriptDialogueBlocks';
 import {
   applyRowOrder,
+  applyDialogueSpeakerUpdates,
   deleteDialogueBlock,
   ensureActionRowForBlock,
   ensureSpeechRowForBlock,
   insertDialogueThreadAfter,
+  planDialogueSpeakerSideUpdates,
   reorderDialogueBlock,
   restoreDeletedDialogueBlock,
+  rollbackDialogueSpeakerSide,
   updateDialogueBlockSpeaker,
+  updateDialogueSpeakerSide,
   updateDialogueRowsContent,
   type DialogueSpeakerUpdate,
   type DeletedDialogueSnapshot,
@@ -34,6 +38,7 @@ import {
   insertScriptDialogueBlock,
   isMissingScriptDialogueRpcError,
   removeDeletedDialogueRows,
+  setScriptDialogueSpeakerSide,
 } from '@/lib/script-system/scriptDialogueRpc';
 import { deleteAssets } from '@/lib/services/libraryAssetsService';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
@@ -70,7 +75,11 @@ type HistoryEntry =
       nextOrderIds: string[];
     }
   | {
-      type: 'speaker';
+      type: 'speaker-change';
+      updates: DialogueSpeakerUpdate[];
+    }
+  | {
+      type: 'speaker-side';
       updates: DialogueSpeakerUpdate[];
     };
 
@@ -582,7 +591,7 @@ export function useScriptDialogueEditor({
         speaker,
         speechType: character.speechType === '1' ? '1' : '2',
       });
-      pushHistory({ type: 'speaker', updates });
+      pushHistory({ type: 'speaker-change', updates });
       await refresh();
       return true;
     } catch (error) {
@@ -594,6 +603,112 @@ export function useScriptDialogueEditor({
       busyRef.current = false;
     }
   }, [blocks, characters, fields, isDerivedScript, pushHistory, refresh, rows, supabase, syncSource]);
+
+  const changeSpeakerSide = useCallback(async (
+    speaker: string,
+    side: 'left' | 'right',
+  ) => {
+    if (!supabase || !fields || busyRef.current) return false;
+    await queryClient.cancelQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+    const currentRows = queryClient.getQueryData<AssetRow[]>(
+      queryKeys.libraryAssets(libraryId),
+    ) ?? rows;
+    const plannedUpdates = planDialogueSpeakerSideUpdates({
+      rows: currentRows,
+      fields,
+      speaker,
+      side,
+    });
+    if (plannedUpdates.length === 0) return true;
+
+    busyRef.current = true;
+    queryClient.setQueryData<AssetRow[]>(
+      queryKeys.libraryAssets(libraryId),
+      applyDialogueSpeakerUpdates(currentRows, plannedUpdates),
+    );
+    try {
+      let updates = plannedUpdates;
+      try {
+        await setScriptDialogueSpeakerSide({
+          supabase,
+          libraryId,
+          fields,
+          speaker,
+          side,
+        });
+      } catch (error) {
+        if (!isMissingScriptDialogueRpcError(error)) throw error;
+        updates = await updateDialogueSpeakerSide({
+          supabase,
+          rows: currentRows,
+          fields,
+          speaker,
+          side,
+        });
+      }
+      pushHistory({ type: 'speaker-side', updates });
+      void refresh();
+      return true;
+    } catch (error) {
+      queryClient.setQueryData<AssetRow[]>(
+        queryKeys.libraryAssets(libraryId),
+        (current = currentRows) => rollbackDialogueSpeakerSide(
+          current,
+          plannedUpdates,
+          fields.typeKey,
+        ),
+      );
+      console.error(error);
+      showErrorToast('Failed to change character position');
+      void refresh();
+      return false;
+    } finally {
+      busyRef.current = false;
+    }
+  }, [fields, libraryId, pushHistory, queryClient, refresh, rows, supabase]);
+
+  const persistSpeakerSide = useCallback(async (
+    speaker: string,
+    side: 'left' | 'right',
+    currentRows: AssetRow[],
+  ) => {
+    try {
+      await setScriptDialogueSpeakerSide({
+        supabase: supabase!,
+        libraryId,
+        fields: fields!,
+        speaker,
+        side,
+      });
+    } catch (error) {
+      if (!isMissingScriptDialogueRpcError(error)) throw error;
+      await updateDialogueSpeakerSide({
+        supabase: supabase!,
+        rows: currentRows,
+        fields: fields!,
+        speaker,
+        side,
+      });
+    }
+  }, [fields, libraryId, supabase]);
+
+  const applySpeakerSideHistory = useCallback(async (
+    updates: DialogueSpeakerUpdate[],
+    direction: 'undo' | 'redo',
+  ) => {
+    const firstUpdate = updates[0];
+    if (!firstUpdate || !fields) throw new Error('Speaker-side history is missing its dialogue fields');
+    const propertyValues = direction === 'undo'
+      ? firstUpdate.oldPropertyValues
+      : firstUpdate.newPropertyValues;
+    const speaker = String(propertyValues[fields.nameKey] ?? '').trim();
+    const speechType = String(propertyValues[fields.typeKey] ?? '').trim();
+    if (!speaker || (speechType !== '1' && speechType !== '2')) {
+      throw new Error('Speaker-side history is invalid');
+    }
+    const currentRows = queryClient.getQueryData<AssetRow[]>(queryKeys.libraryAssets(libraryId)) ?? rows;
+    await persistSpeakerSide(speaker, speechType === '1' ? 'right' : 'left', currentRows);
+  }, [fields, libraryId, persistSpeakerSide, queryClient, rows]);
 
   const reorderBlock = useCallback(async (fromIndex: number, toIndex: number) => {
     if (!supabase || !fields || busyRef.current) return false;
@@ -698,7 +813,7 @@ export function useScriptDialogueEditor({
         });
         setHistoryPast((prev) => prev.slice(0, -1));
         setHistoryFuture((prev) => [entry, ...prev]);
-      } else if (entry.type === 'speaker') {
+      } else if (entry.type === 'speaker-change') {
         const { updateAsset } = await import('@/lib/services/libraryAssetsService');
         await Promise.all(entry.updates.map((update) => updateAsset(
           supabase,
@@ -706,6 +821,10 @@ export function useScriptDialogueEditor({
           update.oldName,
           update.oldPropertyValues,
         )));
+        setHistoryPast((prev) => prev.slice(0, -1));
+        setHistoryFuture((prev) => [entry, ...prev]);
+      } else if (entry.type === 'speaker-side') {
+        await applySpeakerSideHistory(entry.updates, 'undo');
         setHistoryPast((prev) => prev.slice(0, -1));
         setHistoryFuture((prev) => [entry, ...prev]);
       }
@@ -718,7 +837,7 @@ export function useScriptDialogueEditor({
     } finally {
       busyRef.current = false;
     }
-  }, [fields, historyPast, libraryId, queryClient, refresh, rows, supabase]);
+  }, [applySpeakerSideHistory, fields, historyPast, libraryId, queryClient, refresh, rows, supabase]);
 
   const redo = useCallback(async () => {
     if (!supabase || !fields || busyRef.current || historyFuture.length === 0) return false;
@@ -764,7 +883,7 @@ export function useScriptDialogueEditor({
           libraryId,
           orderIds: entry.nextOrderIds,
         });
-      } else if (entry.type === 'speaker') {
+      } else if (entry.type === 'speaker-change') {
         const { updateAsset } = await import('@/lib/services/libraryAssetsService');
         await Promise.all(entry.updates.map((update) => updateAsset(
           supabase,
@@ -772,6 +891,8 @@ export function useScriptDialogueEditor({
           update.newName,
           update.newPropertyValues,
         )));
+      } else if (entry.type === 'speaker-side') {
+        await applySpeakerSideHistory(entry.updates, 'redo');
       }
       setHistoryFuture((prev) => prev.slice(1));
       setHistoryPast((prev) => [...prev, nextEntry]);
@@ -784,7 +905,7 @@ export function useScriptDialogueEditor({
     } finally {
       busyRef.current = false;
     }
-  }, [fields, historyFuture, libraryId, queryClient, refresh, rows, supabase]);
+  }, [applySpeakerSideHistory, fields, historyFuture, libraryId, queryClient, refresh, rows, supabase]);
 
   const queuedInsertAfterBlock = useCallback(
     (blockId: string | null, speaker: string) => enqueueCommand(
@@ -807,6 +928,12 @@ export function useScriptDialogueEditor({
       () => changeBlockSpeaker(blockId, speaker),
     ),
     [changeBlockSpeaker, enqueueCommand],
+  );
+  const queuedChangeSpeakerSide = useCallback(
+    (speaker: string, side: 'left' | 'right') => enqueueCommand(
+      () => changeSpeakerSide(speaker, side),
+    ),
+    [changeSpeakerSide, enqueueCommand],
   );
   const queuedReorderBlock = useCallback(
     (fromIndex: number, toIndex: number) => enqueueCommand(
@@ -839,6 +966,7 @@ export function useScriptDialogueEditor({
     canRedo: !isBusy && historyFuture.length > 0,
     insertAfterBlock: queuedInsertAfterBlock,
     changeBlockSpeaker: queuedChangeBlockSpeaker,
+    changeSpeakerSide: queuedChangeSpeakerSide,
     saveBlock: queuedSaveBlock,
     deleteBlock: queuedDeleteBlock,
     reorderBlock: queuedReorderBlock,

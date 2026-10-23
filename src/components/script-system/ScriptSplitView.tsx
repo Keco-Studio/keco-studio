@@ -213,6 +213,9 @@ export function ScriptSplitView({
         onChangeBlockSpeaker: (blockId: string, speaker: string) => (
           dialogueEditor.changeBlockSpeaker(blockId, speaker)
         ),
+        onChangeSpeakerSide: (speaker: string, side: 'left' | 'right') => (
+          dialogueEditor.changeSpeakerSide(speaker, side)
+        ),
         onSaveBlock: (
           blockId: string,
           values: { action: string; dialogue: string },

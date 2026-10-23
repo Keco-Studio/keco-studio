@@ -1,5 +1,68 @@
 import { describe, expect, it } from '@jest/globals';
-import { reorderDialogueRowIds } from './scriptDialogueMutations';
+import type { AssetRow } from '@/lib/types/libraryAssets';
+import {
+  applyDialogueSpeakerUpdates,
+  planDialogueSpeakerSideUpdates,
+  reorderDialogueRowIds,
+} from './scriptDialogueMutations';
+
+function row(id: string, type: string, speaker: string): AssetRow {
+  return {
+    id,
+    libraryId: 'current-script',
+    name: speaker,
+    propertyValues: { type, name: speaker, content: id },
+  };
+}
+
+describe('planDialogueSpeakerSideUpdates', () => {
+  it('changes every speech row for one speaker without changing action or other rows', () => {
+    const updates = planDialogueSpeakerSideUpdates({
+      rows: [
+        row('hero-speech-a', '2', 'Hero'),
+        row('hero-action', '3', 'Hero'),
+        row('hero-speech-b', '2', 'Hero'),
+        row('rival-speech', '2', 'Rival'),
+        row('scene-title', '4', 'Hero'),
+      ],
+      fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
+      speaker: 'Hero',
+      side: 'right',
+    });
+
+    expect(updates.map((update) => ({
+      rowId: update.rowId,
+      type: update.newPropertyValues.type,
+    }))).toEqual([
+      { rowId: 'hero-speech-a', type: '1' },
+      { rowId: 'hero-speech-b', type: '1' },
+    ]);
+  });
+
+  it('applies the planned side to cached rows used by every plot-node preview', () => {
+    const rows = [
+      row('hero-speech-a', '2', 'Hero'),
+      row('hero-action', '3', 'Hero'),
+      row('hero-speech-b', '2', 'Hero'),
+      row('rival-speech', '2', 'Rival'),
+    ];
+    const fields = { typeKey: 'type', nameKey: 'name', contentKey: 'content' };
+    const updates = planDialogueSpeakerSideUpdates({
+      rows,
+      fields,
+      speaker: 'Hero',
+      side: 'right',
+    });
+    const nextRows = applyDialogueSpeakerUpdates(rows, updates);
+
+    expect(nextRows.map((item) => [item.id, item.propertyValues.type])).toEqual([
+      ['hero-speech-a', '1'],
+      ['hero-action', '3'],
+      ['hero-speech-b', '1'],
+      ['rival-speech', '2'],
+    ]);
+  });
+});
 
 describe('reorderDialogueRowIds', () => {
   it('reorders dialogue groups without moving non-dialogue row slots', () => {
