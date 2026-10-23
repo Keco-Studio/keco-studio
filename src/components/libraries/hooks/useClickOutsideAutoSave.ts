@@ -15,6 +15,8 @@ export type UseClickOutsideAutoSaveParams = {
   /** When adding row, click outside this ref (e.g. another cell or outside table) triggers save */
   addRowFormRef?: React.RefObject<HTMLTableRowElement | null>;
   isAddingRow: boolean;
+  /** Placeholder-initiated editors close without saving when no value was entered. */
+  discardBlankAddRow?: boolean;
   newRowData: Record<string, any>;
   setIsAddingRow: (v: boolean | ((prev: boolean) => boolean)) => void;
   setNewRowData: React.Dispatch<React.SetStateAction<Record<string, any>>>;
@@ -55,7 +57,7 @@ export type UseClickOutsideAutoSaveParams = {
 /**
  * useClickOutsideAutoSave
  * Listens for mousedown outside the table container when adding a row or editing a cell.
- * - Add row: auto-save new asset (or create blank) / cancel; then remove listener.
+ * - Add row: auto-save entered data, then create a blank row or cancel according to the caller.
  * - Edit cell: auto-save edited cell; then remove listener.
  */
 export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
@@ -70,6 +72,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         tableContainerRef,
         addRowFormRef,
         isAddingRow: liveIsAddingRow,
+        discardBlankAddRow,
         newRowData,
         setIsAddingRow,
         setNewRowData,
@@ -164,6 +167,12 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
           } finally {
             setIsSaving(false);
           }
+          return;
+        }
+
+        if (!hasData && discardBlankAddRow) {
+          setIsAddingRow(false);
+          setNewRowData({});
           return;
         }
 

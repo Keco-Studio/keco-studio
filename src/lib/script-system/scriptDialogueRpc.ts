@@ -25,7 +25,7 @@ export function isMissingScriptDialogueRpcError(error: unknown): boolean {
     .join(' ')
     .toLowerCase();
   return text.includes('could not find the function')
-    && text.includes('script_dialogue_block')
+    && text.includes('script_dialogue')
     && text.includes('schema cache');
 }
 
@@ -100,6 +100,24 @@ export async function deleteScriptDialogueBlock(params: {
   });
   if (error) throw error;
   return ((data as { deleted_ids?: string[] } | null)?.deleted_ids ?? []).filter(Boolean);
+}
+
+export async function setScriptDialogueSpeakerSide(params: {
+  supabase: SupabaseClient;
+  libraryId: string;
+  speaker: string;
+  side: 'left' | 'right';
+  fields: ScriptDialogueFieldKeys;
+}): Promise<string[]> {
+  const { data, error } = await params.supabase.rpc('set_script_dialogue_speaker_side', {
+    p_library_id: params.libraryId,
+    p_speaker: params.speaker,
+    p_speech_type: params.side === 'right' ? '1' : '2',
+    p_type_field_id: params.fields.typeKey,
+    p_name_field_id: params.fields.nameKey,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data.filter((id): id is string => typeof id === 'string') : [];
 }
 
 export function applyInsertedDialogueRows(

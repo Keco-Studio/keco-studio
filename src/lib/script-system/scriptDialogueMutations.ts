@@ -180,6 +180,104 @@ export type DialogueSpeakerUpdate = {
   newPropertyValues: Record<string, unknown>;
 };
 
+export function planDialogueSpeakerSideUpdates(params: {
+  rows: AssetRow[];
+  fields: ScriptDialogueFieldKeys;
+  speaker: string;
+  side: 'left' | 'right';
+}): DialogueSpeakerUpdate[] {
+  const { rows, fields, speaker, side } = params;
+  const targetType = side === 'right' ? '1' : '2';
+
+  return rows.flatMap((row) => {
+    const rowSpeaker = String(row.propertyValues[fields.nameKey] ?? '').trim();
+    const rowType = String(row.propertyValues[fields.typeKey] ?? '').trim();
+    if (rowSpeaker !== speaker || (rowType !== '1' && rowType !== '2')) return [];
+    if (rowType === targetType) return [];
+    return [{
+      rowId: row.id,
+      oldName: row.name,
+      newName: row.name,
+      oldPropertyValues: { ...row.propertyValues },
+      newPropertyValues: {
+        ...row.propertyValues,
+        [fields.typeKey]: targetType,
+      },
+    }];
+  });
+}
+
+export function applyDialogueSpeakerUpdates(
+  rows: AssetRow[],
+  updates: DialogueSpeakerUpdate[],
+): AssetRow[] {
+  const updateByRowId = new Map(updates.map((update) => [update.rowId, update]));
+  return rows.map((row) => {
+    const update = updateByRowId.get(row.id);
+    if (!update) return row;
+    return {
+      ...row,
+      name: update.newName,
+      propertyValues: { ...update.newPropertyValues },
+    };
+  });
+}
+
+export function rollbackDialogueSpeakerSide(
+  rows: AssetRow[],
+  updates: DialogueSpeakerUpdate[],
+  typeKey: string,
+): AssetRow[] {
+  const updateByRowId = new Map(updates.map((update) => [update.rowId, update]));
+  return rows.map((row) => {
+    const update = updateByRowId.get(row.id);
+    if (!update || row.propertyValues[typeKey] !== update.newPropertyValues[typeKey]) return row;
+    return {
+      ...row,
+      propertyValues: {
+        ...row.propertyValues,
+        [typeKey]: update.oldPropertyValues[typeKey],
+      },
+    };
+  });
+}
+
+export async function updateDialogueSpeakerSide(params: {
+  supabase: SupabaseClient;
+  rows: AssetRow[];
+  fields: ScriptDialogueFieldKeys;
+  speaker: string;
+  side: 'left' | 'right';
+}): Promise<DialogueSpeakerUpdate[]> {
+  const updates = planDialogueSpeakerSideUpdates(params);
+  const results = await Promise.allSettled(updates.map((update) => updateAsset(
+    params.supabase,
+    update.rowId,
+    update.newName,
+    update.newPropertyValues,
+  )));
+  const firstFailure = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
+  if (firstFailure) {
+    const successfulUpdates = updates.filter((_, index) => results[index]?.status === 'fulfilled');
+    const rollbackResults = await Promise.allSettled(successfulUpdates.map((update) => updateAsset(
+      params.supabase,
+      update.rowId,
+      update.oldName,
+      update.oldPropertyValues,
+    )));
+    const rollbackFailed = rollbackResults.some((result) => result.status === 'rejected');
+    if (rollbackFailed) {
+      throw new Error('Failed to change character position and restore partial updates', {
+        cause: firstFailure.reason,
+      });
+    }
+    throw firstFailure.reason;
+  }
+  return updates;
+}
+
 export async function updateDialogueBlockSpeaker(params: {
   supabase: SupabaseClient;
   rows: AssetRow[];

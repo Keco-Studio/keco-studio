@@ -1,5 +1,8 @@
+/** @jest-environment jsdom */
+
 import React from 'react';
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { cleanup, fireEvent, render as renderDom, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ScriptDialogueBlock } from '@/lib/script-system/scriptDialogueBlocks';
 
@@ -32,6 +35,8 @@ import {
   ScriptEditableDialogBlock,
 } from './ScriptEditableDialogBlock';
 
+afterEach(cleanup);
+
 const block: ScriptDialogueBlock = {
   id: 'speech',
   actionRowId: 'action',
@@ -55,6 +60,7 @@ function render(isEditing: boolean) {
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
       onChangeSpeaker={jest.fn(async () => true)}
+      onChangeSpeakerSide={jest.fn(async () => true)}
       onSaveBlock={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
     />,
@@ -71,6 +77,7 @@ function renderBlock(overrides: Partial<ScriptDialogueBlock>, isEditing = false)
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
       onChangeSpeaker={jest.fn(async () => true)}
+      onChangeSpeakerSide={jest.fn(async () => true)}
       onSaveBlock={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
     />,
@@ -78,6 +85,96 @@ function renderBlock(overrides: Partial<ScriptDialogueBlock>, isEditing = false)
 }
 
 describe('ScriptEditableDialogBlock', () => {
+  it('opens the character side menu on right-click and changes the speaker side', () => {
+    const onChangeSpeakerSide = jest.fn(async (_speaker: string, _side: 'left' | 'right') => true);
+    const props = {
+      block,
+      characters: [],
+      isEditing: false,
+      onBeginEdit: jest.fn(),
+      onFinishEdit: jest.fn(),
+      onInsertCharacter: jest.fn(async () => true),
+      onChangeSpeaker: jest.fn(async () => true),
+      onChangeSpeakerSide,
+      onSaveBlock: jest.fn(async () => true),
+      onDelete: jest.fn(async () => true),
+    };
+
+    renderDom(<ScriptEditableDialogBlock {...props} />);
+    fireEvent.contextMenu(screen.getByText('Hero'), { clientX: 120, clientY: 80 });
+
+    const menu = screen.getByRole('menu', { name: 'CHARACTER POSITION' });
+    expect(menu.getAttribute('style')).toContain('left: 120px');
+    expect(menu.getAttribute('style')).toContain('top: 80px');
+    expect(screen.getByRole('menuitemradio', { name: 'Show on left' }).getAttribute('aria-checked'))
+      .toBe('true');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Show on left' }));
+    expect(onChangeSpeakerSide).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(screen.getByText('Hero'));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Show on right' }));
+    expect(onChangeSpeakerSide).toHaveBeenCalledWith('Hero', 'right');
+  });
+
+  it('supports keyboard navigation and restores focus after closing the side menu', () => {
+    renderDom(
+      <ScriptEditableDialogBlock
+        block={block}
+        characters={[]}
+        isEditing={false}
+        onBeginEdit={jest.fn()}
+        onFinishEdit={jest.fn()}
+        onInsertCharacter={jest.fn(async () => true)}
+        onChangeSpeaker={jest.fn(async () => true)}
+        onChangeSpeakerSide={jest.fn(async () => true)}
+        onSaveBlock={jest.fn(async () => true)}
+        onDelete={jest.fn(async () => true)}
+      />,
+    );
+    const avatar = screen.getByRole('button', { name: 'Switch Hero character' });
+
+    fireEvent.contextMenu(avatar, { clientX: 120, clientY: 80 });
+    const left = screen.getByRole('menuitemradio', { name: 'Show on left' });
+    const right = screen.getByRole('menuitemradio', { name: 'Show on right' });
+    expect(document.activeElement).toBe(left);
+
+    fireEvent.keyDown(left, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(right);
+    fireEvent.keyDown(right, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(left);
+    fireEvent.keyDown(left, { key: 'End' });
+    expect(document.activeElement).toBe(right);
+    fireEvent.keyDown(right, { key: 'Home' });
+    expect(document.activeElement).toBe(left);
+
+    fireEvent.keyDown(left, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'CHARACTER POSITION' })).toBeNull();
+    expect(document.activeElement).toBe(avatar);
+  });
+
+  it('opens the character side menu with the keyboard context-menu shortcut', () => {
+    renderDom(
+      <ScriptEditableDialogBlock
+        block={block}
+        characters={[]}
+        isEditing={false}
+        onBeginEdit={jest.fn()}
+        onFinishEdit={jest.fn()}
+        onInsertCharacter={jest.fn(async () => true)}
+        onChangeSpeaker={jest.fn(async () => true)}
+        onChangeSpeakerSide={jest.fn(async () => true)}
+        onSaveBlock={jest.fn(async () => true)}
+        onDelete={jest.fn(async () => true)}
+      />,
+    );
+
+    const avatar = screen.getByRole('button', { name: 'Switch Hero character' });
+    fireEvent.keyDown(avatar, { key: 'F10', shiftKey: true });
+
+    expect(screen.getByRole('menu', { name: 'CHARACTER POSITION' })).not.toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Show on left' }));
+  });
+
   it('commits changed action and dialogue drafts through one block save', async () => {
     const saveBlock = jest.fn(async (_values: { action: string; dialogue: string }) => true);
 
@@ -149,6 +246,7 @@ describe('ScriptEditableDialogBlock', () => {
         onFinishEdit={jest.fn()}
         onInsertCharacter={jest.fn(async () => true)}
         onChangeSpeaker={jest.fn(async () => true)}
+        onChangeSpeakerSide={jest.fn(async () => true)}
         onSaveBlock={jest.fn(async () => true)}
         onDelete={onDelete}
       />,

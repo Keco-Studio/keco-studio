@@ -124,6 +124,11 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       await redoLibraryTableOperation(supabase, operationId);
       await refreshAssetsFromServer();
     },
+    channel: {
+      projectId,
+      libraryId,
+      enabled: overrideRows == null,
+    },
   });
 
   const applyTableCellUpdates = useCallback(async (

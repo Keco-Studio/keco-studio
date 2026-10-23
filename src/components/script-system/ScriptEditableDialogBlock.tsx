@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MenuOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, MenuOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { CSS } from '@dnd-kit/utilities';
 import { useSortable } from '@dnd-kit/sortable';
 import type {
@@ -19,6 +19,7 @@ export type ScriptEditableDialogBlockProps = {
   onFinishEdit: () => void;
   onInsertCharacter: (speaker: string) => Promise<boolean>;
   onChangeSpeaker: (speaker: string) => Promise<boolean>;
+  onChangeSpeakerSide: (speaker: string, side: 'left' | 'right') => Promise<boolean>;
   onSaveBlock: (values: { action: string; dialogue: string }) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
 };
@@ -115,12 +116,16 @@ export function ScriptEditableDialogBlock({
   onFinishEdit,
   onInsertCharacter,
   onChangeSpeaker,
+  onChangeSpeakerSide,
   onSaveBlock,
   onDelete,
 }: ScriptEditableDialogBlockProps) {
   const [hovered, setHovered] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [speakerPickerOpen, setSpeakerPickerOpen] = useState(false);
+  const [speakerSideMenuOpen, setSpeakerSideMenuOpen] = useState(false);
+  const [speakerSideMenuPosition, setSpeakerSideMenuPosition] = useState({ x: 0, y: 0 });
+  const [speakerSideMenuFocusIndex, setSpeakerSideMenuFocusIndex] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [editTarget, setEditTarget] = useState<DialogueEditTarget>('action');
   const [drafts, setDrafts] = useState<DialogueDraftState>(() => ({
@@ -135,6 +140,8 @@ export function ScriptEditableDialogBlock({
   const rootRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const speakerButtonRef = useRef<HTMLButtonElement>(null);
+  const speakerSideMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const actionInputRef = useRef<HTMLInputElement>(null);
   const dialogueInputRef = useRef<HTMLTextAreaElement>(null);
   const commitRef = useRef<Promise<boolean> | null>(null);
@@ -185,18 +192,50 @@ export function ScriptEditableDialogBlock({
     return saved;
   }, [commitDrafts, onDelete, onFinishEdit, reconciledDrafts]);
 
+  const openSpeakerSideMenuAt = useCallback((x: number, y: number) => {
+    setSpeakerPickerOpen(false);
+    const menuWidth = 176;
+    const menuHeight = 100;
+    setSpeakerSideMenuPosition({
+      x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
+    });
+    setSpeakerSideMenuFocusIndex(block.alignment === 'left' ? 0 : 1);
+    setSpeakerSideMenuOpen(true);
+  }, [block.alignment]);
+
+  const openSpeakerSideMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openSpeakerSideMenuAt(event.clientX, event.clientY);
+  }, [openSpeakerSideMenuAt]);
+
+  const openSpeakerSideMenuFromKeyboard = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    openSpeakerSideMenuAt(rect.left, rect.bottom);
+  }, [openSpeakerSideMenuAt]);
+
   useEffect(() => {
-    if (!pickerOpen && !speakerPickerOpen) return;
+    if (!speakerSideMenuOpen) return;
+    speakerSideMenuItemRefs.current[speakerSideMenuFocusIndex]?.focus();
+  }, [speakerSideMenuFocusIndex, speakerSideMenuOpen]);
+
+  useEffect(() => {
+    if (!pickerOpen && !speakerPickerOpen && !speakerSideMenuOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (pickerRef.current?.contains(target)) return;
       if (rootRef.current?.contains(target)) return;
       setSpeakerPickerOpen(false);
+      setSpeakerSideMenuOpen(false);
       setPickerOpen(false);
     };
     window.addEventListener('mousedown', onPointerDown);
     return () => window.removeEventListener('mousedown', onPointerDown);
-  }, [pickerOpen, speakerPickerOpen]);
+  }, [pickerOpen, speakerPickerOpen, speakerSideMenuOpen]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -210,20 +249,22 @@ export function ScriptEditableDialogBlock({
   }, [finishEditing, isEditing]);
 
   useEffect(() => {
-    if (!pickerOpen && !speakerPickerOpen) return;
+    if (!pickerOpen && !speakerPickerOpen && !speakerSideMenuOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       setPickerOpen(false);
       setSpeakerPickerOpen(false);
+      setSpeakerSideMenuOpen(false);
       setHovered(false);
-      addButtonRef.current?.focus();
+      if (speakerSideMenuOpen) speakerButtonRef.current?.focus();
+      else addButtonRef.current?.focus();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pickerOpen, speakerPickerOpen]);
+  }, [pickerOpen, speakerPickerOpen, speakerSideMenuOpen]);
 
-  const showChrome = hovered || isEditing || pickerOpen || speakerPickerOpen;
+  const showChrome = hovered || isEditing || pickerOpen || speakerPickerOpen || speakerSideMenuOpen;
   const avatarClass = `${styles.avatar} ${accentClass(block.accent)}`;
   const bubbleClass = `${styles.dialogBubble} ${accentClass(block.accent)}`;
 
@@ -294,13 +335,19 @@ export function ScriptEditableDialogBlock({
             </div>
             <div className={styles.speakerPickerWrap}>
               <button
+                ref={speakerButtonRef}
                 type="button"
                 className={`${avatarClass} ${styles.editEntryButton}`}
                 aria-label={`Switch ${block.speaker} character`}
+                aria-haspopup="menu"
+                aria-expanded={speakerPickerOpen || speakerSideMenuOpen}
                 onClick={(event) => {
                   event.stopPropagation();
+                  setSpeakerSideMenuOpen(false);
                   setSpeakerPickerOpen((open) => !open);
                 }}
+                onContextMenu={openSpeakerSideMenu}
+                onKeyDown={openSpeakerSideMenuFromKeyboard}
               >
                 {block.speaker.charAt(0) || '?'}
               </button>
@@ -337,8 +384,64 @@ export function ScriptEditableDialogBlock({
                 </ul>
                 </div>
               ) : null}
+              {speakerSideMenuOpen ? (
+                <div
+                  className={`${styles.characterPicker} ${styles.characterSideMenu}`}
+                  role="menu"
+                  aria-label="CHARACTER POSITION"
+                  style={{
+                    left: speakerSideMenuPosition.x,
+                    top: speakerSideMenuPosition.y,
+                  }}
+                >
+                  <div className={styles.characterPickerTitle}>CHARACTER POSITION</div>
+                  {(['left', 'right'] as const).map((side) => {
+                    const selected = block.alignment === side;
+                    return (
+                      <button
+                        key={side}
+                        ref={(node) => {
+                          speakerSideMenuItemRefs.current[side === 'left' ? 0 : 1] = node;
+                        }}
+                        type="button"
+                        className={`${styles.characterPickerItem} ${styles.characterSideMenuItem}`}
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        tabIndex={speakerSideMenuFocusIndex === (side === 'left' ? 0 : 1) ? 0 : -1}
+                        onKeyDown={(event) => {
+                          const currentIndex = side === 'left' ? 0 : 1;
+                          let nextIndex: number | null = null;
+                          if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % 2;
+                          if (event.key === 'ArrowUp') nextIndex = (currentIndex + 1) % 2;
+                          if (event.key === 'Home') nextIndex = 0;
+                          if (event.key === 'End') nextIndex = 1;
+                          if (nextIndex === null) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSpeakerSideMenuFocusIndex(nextIndex);
+                        }}
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          setSpeakerSideMenuOpen(false);
+                          if (!selected) await onChangeSpeakerSide(block.speaker, side);
+                        }}
+                      >
+                        <span className={styles.characterSideMenuCheck} aria-hidden>
+                          {selected ? <CheckOutlined /> : null}
+                        </span>
+                        <span>{side === 'left' ? 'Show on left' : 'Show on right'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-            <span className={styles.speakerName}>{block.speaker}</span>
+            <span
+              className={styles.speakerName}
+              onContextMenu={openSpeakerSideMenu}
+            >
+              {block.speaker}
+            </span>
             {isEditing ? (
               <input
                 ref={actionInputRef}

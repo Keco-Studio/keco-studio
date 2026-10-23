@@ -61,6 +61,36 @@
   border-color: transparent;
 }
 
+.historyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+}
+
+.historyButton:hover:not(:disabled),
+.historyButton:focus-visible:not(:disabled) {
+  background: var(--keco-control-hover-bg);
+  color: #0B99FF;
+}
+
+.historyButton:focus-visible:not(:disabled) {
+  outline: 1px solid #0B99FF;
+  outline-offset: -1px;
+}
+
+.historyButton:disabled {
+  color: #bfbfbf;
+  cursor: default;
+}
+
 /* Share Section */
 .shareSection {
   display: flex;

@@ -25,9 +25,76 @@ jest.mock('@/lib/services/libraryAssetsService', () => ({
 import {
   deleteDialogueBlock,
   insertDialogueThreadAfter,
+  rollbackDialogueSpeakerSide,
   updateDialogueBlockSpeaker,
   updateDialogueRowsContent,
+  updateDialogueSpeakerSide,
 } from './scriptDialogueMutations';
+
+describe('updateDialogueSpeakerSide rollback', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    updateAsset.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('restores successful rows when another speaker-side write fails', async () => {
+    const failure = new Error('second row failed');
+    updateAsset
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(undefined);
+
+    await expect(updateDialogueSpeakerSide({
+      supabase: {} as never,
+      rows: [
+        {
+          id: 'speech-a',
+          libraryId: 'library',
+          name: 'Hero',
+          propertyValues: { type: '2', name: 'Hero', content: 'A' },
+        },
+        {
+          id: 'speech-b',
+          libraryId: 'library',
+          name: 'Hero',
+          propertyValues: { type: '2', name: 'Hero', content: 'B' },
+        },
+      ],
+      fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
+      speaker: 'Hero',
+      side: 'right',
+    })).rejects.toBe(failure);
+
+    expect(updateAsset).toHaveBeenCalledTimes(3);
+    expect(updateAsset).toHaveBeenNthCalledWith(3, {}, 'speech-a', 'Hero', {
+      type: '2',
+      name: 'Hero',
+      content: 'A',
+    });
+  });
+
+  it('restores only the side field and preserves newer row values', () => {
+    const currentRows = [{
+      id: 'speech-a',
+      libraryId: 'library',
+      name: 'Hero',
+      propertyValues: { type: '1', name: 'Hero', content: 'edited while saving' },
+    }];
+
+    expect(rollbackDialogueSpeakerSide(currentRows, [{
+      rowId: 'speech-a',
+      oldName: 'Hero',
+      newName: 'Hero',
+      oldPropertyValues: { type: '2', name: 'Hero', content: 'old content' },
+      newPropertyValues: { type: '1', name: 'Hero', content: 'old content' },
+    }], 'type')).toEqual([{
+      id: 'speech-a',
+      libraryId: 'library',
+      name: 'Hero',
+      propertyValues: { type: '2', name: 'Hero', content: 'edited while saving' },
+    }]);
+  });
+});
 
 describe('updateDialogueRowsContent', () => {
   beforeEach(() => {
