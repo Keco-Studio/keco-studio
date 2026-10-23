@@ -427,6 +427,7 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('button', { name: 'Start version iteration' }));
+    expect(screen.queryByRole('list', { name: 'Version iteration steps' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Copy and edit' })).toBeNull();
     const intent = screen.getByLabelText('Design intent');
     await user.clear(intent);
