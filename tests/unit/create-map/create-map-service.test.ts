@@ -197,20 +197,50 @@ describe('Create Map browser service', () => {
     }));
   });
 
-  it('lists only V3 maps even when a mixed-version response reaches the browser', async () => {
+  it('lists standalone V3 maps and only the latest Plan per conversation', async () => {
     const limit = jest.fn(async () => ({
       data: [
+        {
+          id: 'map-conversation-latest', project_id: 'project-1', name: 'River Town with clinic',
+          current_revision_id: 'revision-4', updated_at: '2026-08-10T03:00:00.000Z',
+          current_revision: { schema_version: 3 },
+          projects: { name: 'Adventure' },
+          map_conversation_nodes: [{
+            id: 'conversation-plan-node-2', conversation_id: 'conversation-1',
+            node_type: 'plan', plan_display_version: 2,
+            conversation: {
+              id: 'conversation-1', title: 'River Town conversation',
+              created_at: '2026-08-10T00:00:00.000Z',
+            },
+          }],
+        },
         {
           id: 'map-1', project_id: 'project-1', name: 'River Town',
           current_revision_id: 'revision-2', updated_at: '2026-08-10T01:00:00.000Z',
           current_revision: { schema_version: 3 },
           projects: { name: 'Adventure' },
+          map_conversation_nodes: [],
+        },
+        {
+          id: 'map-conversation-old', project_id: 'project-1', name: 'River Town first Plan',
+          current_revision_id: 'revision-3', updated_at: '2026-08-10T02:00:00.000Z',
+          current_revision: { schema_version: 3 },
+          projects: { name: 'Adventure' },
+          map_conversation_nodes: [{
+            id: 'conversation-plan-node-1', conversation_id: 'conversation-1',
+            node_type: 'plan', plan_display_version: 1,
+            conversation: {
+              id: 'conversation-1', title: 'River Town conversation',
+              created_at: '2026-08-10T00:00:00.000Z',
+            },
+          }],
         },
         {
           id: 'map-v2', project_id: 'project-1', name: 'Legacy Town',
           current_revision_id: 'revision-v2', updated_at: '2026-08-09T01:00:00.000Z',
           current_revision: { schema_version: 2 },
           projects: { name: 'Adventure' },
+          map_conversation_nodes: [],
         },
       ],
       error: null,
@@ -220,10 +250,19 @@ describe('Create Map browser service', () => {
     const select = jest.fn(() => ({ eq }));
     const from = jest.fn(() => ({ select }));
 
-    await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([{
-      id: 'map-1', projectId: 'project-1', projectName: 'Adventure', name: 'River Town',
-      currentRevisionId: 'revision-2', updatedAt: '2026-08-10T01:00:00.000Z', schemaVersion: 3,
-    }]);
+    await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([
+      {
+        id: 'map-conversation-latest', conversationId: 'conversation-1',
+        projectId: 'project-1', projectName: 'Adventure',
+        name: 'River Town conversation', currentRevisionId: 'revision-4',
+        updatedAt: '2026-08-10T03:00:00.000Z', schemaVersion: 3,
+      },
+      {
+        id: 'map-1', conversationId: null, projectId: 'project-1',
+        projectName: 'Adventure', name: 'River Town',
+        currentRevisionId: 'revision-2', updatedAt: '2026-08-10T01:00:00.000Z', schemaVersion: 3,
+      },
+    ]);
     expect(eq).toHaveBeenCalledWith('current_revision.schema_version', 3);
     expect(order).toHaveBeenCalledWith('updated_at', { ascending: false });
     expect(limit).toHaveBeenCalledWith(50);

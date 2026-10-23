@@ -21,7 +21,7 @@ import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import { inferGddOutputLanguage, type GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { wakeQueuedGameDesignSystemJob } from './gds-job-wake';
 import { wakeQueuedGddJob } from './gdd-job-wake';
-import { CopyOutputDeletedError, copyAgentGameDesignSystem } from './agent-gds-copy-service';
+import { CopyOutputDeletedError, LegacyGameDesignSystemCopyError, copyAgentGameDesignSystem } from './agent-gds-copy-service';
 
 export const GDD_GENERATION_WARNING = 'Professional GDD generation may automatically submit up to three paid map images. Quick mode does not automatically submit paid map images.';
 const keySchema = z.string().trim().regex(/^[A-Za-z0-9._:-]{8,128}$/);
@@ -44,7 +44,8 @@ export async function designToolResult(operation: () => Promise<unknown>, displa
   catch (error) {
     // Never expose provider, database, source, or private job payloads in errors.
     return { success: false, error: error instanceof z.ZodError ? 'Invalid game design parameters.'
-      : error instanceof DesignToolError || error instanceof IdempotencyConflictError || error instanceof CopyOutputDeletedError ? error.message
+      : error instanceof DesignToolError || error instanceof IdempotencyConflictError
+        || error instanceof CopyOutputDeletedError || error instanceof LegacyGameDesignSystemCopyError ? error.message
         : 'Game design operation failed. Check access and request parameters.' };
   }
 }

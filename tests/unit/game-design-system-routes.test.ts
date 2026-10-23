@@ -10,6 +10,7 @@ import { POST as startGeneration } from '@/app/api/game-design-systems/generatio
 import { PUT as applyProject } from '@/app/api/projects/[projectId]/game-design-system/route';
 import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
 import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
+import { buildGameRulesKernelFixture } from './shared/gameRulesKernelFixture';
 import {
   RLS_DB_TESTS_ENABLED,
   TEST_PASSWORD,
@@ -24,28 +25,25 @@ const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 
 const retainedRule = {
   id: 'retained-rule',
+  domain: 'spatiotemporal' as const,
   kind: 'principle',
   title: 'Retained rule',
   statement: 'Keep decisions readable.',
   appliesWhen: 'Presenting a decision.',
-  severity: 'required',
+  severity: 'warning',
 };
 
 const deletedRule = {
   ...retainedRule,
   id: 'deleted-rule',
+  domain: 'randomness' as const,
   title: 'Deleted rule',
 };
 
 function ruleSet(ruleIds: Array<'retained' | 'deleted'> = ['retained']) {
-  return {
-    schemaVersion: 1,
-    genres: ['Strategy'],
-    philosophies: ['Readable Systems'],
-    suitableFor: 'Tactical games',
-    rules: ruleIds.map((id) => id === 'retained' ? retainedRule : deletedRule),
-    tableGuidance: [],
-  };
+  return buildGameRulesKernelFixture({
+    extraRules: ruleIds.map((id) => id === 'retained' ? retainedRule : deletedRule),
+  });
 }
 
 const designDocument = {
@@ -526,7 +524,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
           suitableFor: 'Tactical games',
           philosophies: ['Readable Systems'],
           genres: ['Strategy'],
-          schemaVersion: 1,
+          schemaVersion: 2,
         },
       },
     ), { params: Promise.resolve({ id: system.id }) });

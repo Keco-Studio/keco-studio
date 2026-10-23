@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MapPlanV3Schema } from '@/features/create-map/model/directMapSchema';
 import { publishCreateMapAgentRefresh } from '@/lib/create-map/agentRefresh';
+import type { MapPlanPreviewTarget } from '@/components/documents/GddMapPlanPreviewModal';
 import { parseMapToolData, type ConfirmationView } from './types';
 import styles from './ChatPanel.module.css';
 
@@ -16,14 +17,20 @@ function imageDownloadUrl(value: string | null): string | null {
   } catch { return null; }
 }
 
-export function MapToolResultCard({ data }: { data: unknown }) {
+export function MapToolResultCard({
+  data,
+  onOpenMap,
+}: {
+  data: unknown;
+  onOpenMap?: (target: MapPlanPreviewTarget) => void;
+}) {
   const map = parseMapToolData(data);
   if (!map) return null;
   if (map.kind === 'list') return (
     <section className={styles.confirmCard} aria-label="Saved maps" data-testid="agent-map-result">
       <strong>Saved maps</strong>
       {map.maps.length === 0 ? <p>No saved maps in this project.</p> : map.maps.map((entry) => (
-        <p key={entry.mapId}><a href={`/create-map?mapId=${encodeURIComponent(entry.mapId)}`}>{entry.title}</a></p>
+        <p key={entry.mapId}><button type="button" disabled={!onOpenMap} onClick={() => onOpenMap?.({ title: entry.title, mapProjectId: entry.mapId, mapRevisionId: entry.revisionId, imageUrl: null, width: null, height: null })}>{entry.title}</button></p>
       ))}
       {map.nextCursor ? <p>More maps are available.</p> : null}
     </section>
@@ -41,7 +48,20 @@ export function MapToolResultCard({ data }: { data: unknown }) {
           {map.generation.lastErrorCode ? <p>{map.generation.lastErrorCode}</p> : null}
         </>
       ) : null}
-      <a href={`/create-map?mapId=${encodeURIComponent(map.mapId)}`}>View map plan</a>
+      <button
+        type="button"
+        disabled={!onOpenMap}
+        onClick={() => onOpenMap?.({
+          title: map.plan?.title ?? 'Map generation',
+          mapProjectId: map.mapId,
+          mapRevisionId: map.revisionId,
+          imageUrl: downloadUrl,
+          width: map.plan?.width ?? null,
+          height: map.plan?.height ?? null,
+        })}
+      >
+        View map plan
+      </button>
       {downloadUrl ? <p><a href={downloadUrl} download target="_blank" rel="noopener noreferrer">Download map</a></p> : null}
     </section>
   );

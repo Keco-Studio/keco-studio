@@ -39,6 +39,22 @@ describe('shared agent Map cards', () => {
     expect(markup).not.toContain('<textarea');
   });
 
+  it('opens a map plan in the current chat instead of navigating to Create Map', () => {
+    const onOpenMap = jest.fn();
+    const Card = MapToolResultCard as unknown as (props: {
+      data: unknown;
+      onOpenMap: (target: { mapProjectId: string; mapRevisionId: string }) => void;
+    }) => React.ReactElement;
+    render(<Card data={data} onOpenMap={onOpenMap} />);
+
+    expect(screen.queryByRole('link', { name: 'View map plan' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'View map plan' }));
+    expect(onOpenMap).toHaveBeenCalledWith(expect.objectContaining({
+      mapProjectId: id(2),
+      mapRevisionId: id(3),
+    }));
+  });
+
   it.each([null, [], 'untrusted', { ...data, revisionNumber: '4' }, { ...data, plan: { title: {} } }])('safely rejects malformed payload %#', (value) => {
     expect(renderToStaticMarkup(<MapToolResultCard data={value} />)).toBe('');
   });

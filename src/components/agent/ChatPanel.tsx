@@ -14,6 +14,11 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
 import { AgentPanelHeader } from './AgentPanelHeader';
+import { GddMapPlanPreviewModal, type MapPlanPreviewTarget } from '@/components/documents/GddMapPlanPreviewModal';
+import { AgentMapVersionLibrary } from './AgentMapVersionLibrary';
+import { useAgentMapConversation } from '@/features/create-map/hooks/useMapConversation';
+import { parseMapToolData } from './types';
+import { peekMapAgentHandoff, takeMapAgentHandoff } from '@/lib/map-agent-handoff';
 import styles from './ChatPanel.module.css';
 
 export function ChatPanel({ context, open, onOpenChange }: {
@@ -25,6 +30,8 @@ export function ChatPanel({ context, open, onOpenChange }: {
     currentFolderName, currentLibraryId, currentLibraryName } = context;
   const { userProfile } = useAuth();
   const [showHistory, setShowHistory] = useState(false);
+  const [mapPlanPreview, setMapPlanPreview] = useState<MapPlanPreviewTarget | null>(null);
+  const [mapBasePlanNodeId, setMapBasePlanNodeId] = useState<string | null>(null);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
   const [inputFocusRequest, setInputFocusRequest] = useState(0);
   const [showScrollJump, setShowScrollJump] = useState(false);
@@ -32,6 +39,7 @@ export function ChatPanel({ context, open, onOpenChange }: {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastScrollSampleRef = useRef<{ top: number; time: number } | null>(null);
   const scrollJumpHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consumingMapHandoffRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
@@ -80,6 +88,16 @@ export function ChatPanel({ context, open, onOpenChange }: {
     loadConversation,
     appendNote,
   } = useAgentChat(ctx, open);
+  const mapLibraryProjectId = useMemo(() => {
+    if (projectId) return projectId;
+    for (const item of [...items].reverse()) {
+      if (item.role !== 'tool' || item.toolCall?.status !== 'success') continue;
+      const data = parseMapToolData(item.toolCall.data);
+      if (data?.kind === 'map') return data.projectId;
+    }
+    return '';
+  }, [items, projectId]);
+  const agentMapConversation = useAgentMapConversation(mapLibraryProjectId, conversationId);
   const draftScopeKey = agentRuntimeScopeKey({
     userId: userProfile?.id,
     workspace,
@@ -116,6 +134,10 @@ export function ChatPanel({ context, open, onOpenChange }: {
     const oneLine = source.replace(/\s+/g, ' ');
     return oneLine.length > 18 ? `${oneLine.slice(0, 18)}...` : oneLine;
   }, [items]);
+
+  useEffect(() => {
+    setMapBasePlanNodeId(null);
+  }, [conversationId]);
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -191,6 +213,29 @@ export function ChatPanel({ context, open, onOpenChange }: {
   useEffect(() => {
     if (open) consumeDesignHandoff();
   }, [open, consumeDesignHandoff]);
+
+  const consumeMapHandoff = useCallback(async () => {
+    if (workspace !== 'game-design-systems' || !open || consumingMapHandoffRef.current) return;
+    const queued = peekMapAgentHandoff();
+    if (!queued) return;
+    consumingMapHandoffRef.current = true;
+    try {
+      const loaded = await loadConversation(queued.agentConversationId);
+      if (!loaded) return;
+      const handoff = takeMapAgentHandoff();
+      if (!handoff) return;
+      setShowHistory(false);
+      setPendingSelectionContext(undefined);
+      setMapBasePlanNodeId(handoff.planNodeId);
+      await send(handoff.message, { mapBasePlanNodeId: handoff.planNodeId });
+    } finally {
+      consumingMapHandoffRef.current = false;
+    }
+  }, [loadConversation, open, send, workspace]);
+
+  useEffect(() => {
+    void consumeMapHandoff();
+  }, [consumeMapHandoff]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -270,6 +315,7 @@ export function ChatPanel({ context, open, onOpenChange }: {
                   item={item}
                   streaming={isStreaming && item.id === streamingAssistantId}
                   onDecision={confirm}
+                  onOpenMap={setMapPlanPreview}
                 />
               ))
             )}
@@ -297,9 +343,34 @@ export function ChatPanel({ context, open, onOpenChange }: {
             selectionContext={pendingSelectionContext}
             onClearSelectionContext={() => setPendingSelectionContext(undefined)}
             onToggleMode={() => void setAutoExecute(!autoExecute)}
-            onSend={send}
+            onSend={(message, options) => send(message, {
+              ...options,
+              mapBasePlanNodeId,
+            })}
             onStop={stopStreaming}
           />
+          {workspace !== 'create-map' ? (
+            <AgentMapVersionLibrary
+              snapshot={agentMapConversation.snapshot}
+              basePlanNodeId={mapBasePlanNodeId}
+              onBasePlanChange={setMapBasePlanNodeId}
+              onOpenMap={({ mapProjectId, mapRevisionId }) => setMapPlanPreview({
+                title: agentMapConversation.snapshot?.title ?? 'Map',
+                mapProjectId,
+                mapRevisionId,
+                imageUrl: null,
+                width: null,
+                height: null,
+              })}
+            />
+          ) : null}
+          {mapLibraryProjectId ? (
+            <GddMapPlanPreviewModal
+              projectId={mapLibraryProjectId}
+              target={mapPlanPreview}
+              onClose={() => setMapPlanPreview(null)}
+            />
+          ) : null}
         </>
       )}
       </div>

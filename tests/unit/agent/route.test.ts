@@ -112,6 +112,20 @@ describe('agent workspace route binding', () => {
     }));
   });
 
+  it('passes the selected base Plan into the current conversation tool context', async () => {
+    const response = await chatPost(request('/api/agent-chat', {
+      conversationId: conversation.id,
+      message: 'Move the dock east',
+      mapBasePlanNodeId: OTHER_PROJECT_ID,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(runAgentTurn.mock.calls[0][0].toolContext).toEqual(expect.objectContaining({
+      conversationId: conversation.id,
+      mapBasePlanNodeId: OTHER_PROJECT_ID,
+    }));
+  });
+
   it('rejects a library hint that does not belong to the bound project', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
     const query = { eq: jest.fn(), maybeSingle };

@@ -51,6 +51,8 @@ export interface ToolContext {
   supabase: SupabaseClient;
   userRole?: UserRole;
   workspace: AgentWorkspace;
+  /** Explicit Plan selected in the current Agent conversation for a map follow-up. */
+  mapBasePlanNodeId?: string;
   /** Server-validated source binding for tables generated from a document. */
   documentExport?: DocumentTableExportContext;
   /** Request-scoped authorization results; a new map is created for every turn. */

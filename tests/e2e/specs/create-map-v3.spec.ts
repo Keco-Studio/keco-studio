@@ -63,6 +63,43 @@ type MockMap = {
   delayMs?: number;
 };
 
+type MockConversationPlanNode = {
+  id: string;
+  type: 'plan';
+  displayVersion: number;
+  parentPlanNodeId: string | null;
+  mapProjectId: string;
+  mapPlanVersionId: string;
+  createdAt: string;
+};
+
+type MockConversationMapNode = {
+  id: string;
+  type: 'map';
+  planNodeId: string;
+  revisionId: string;
+  assetId: string;
+  mapVersionNumber: number;
+  createdAt: string;
+};
+
+type MockConversationMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  artifactNodeId: string | null;
+  basePlanNodeId: string | null;
+  createdAt: string;
+};
+
+type MockConversation = {
+  id: string;
+  projectId: string;
+  title: string;
+  nodes: Array<MockConversationPlanNode | MockConversationMapNode>;
+  messages: MockConversationMessage[];
+};
+
 type ReferenceRecord = {
   id: string;
   projectId: string;
@@ -159,6 +196,7 @@ function queryValue(url: URL, key: string): string | null {
 class CreateMapV3MockBackend {
   readonly maps = new Map<string, MockMap>();
   readonly assets = new Map<string, AssetRecord>();
+  readonly conversations = new Map<string, MockConversation>();
   readonly references: ReferenceRecord[] = [];
   readonly edgeBodies: Array<Record<string, unknown>> = [];
   lastPlanRequest: Record<string, unknown> | null = null;
@@ -558,6 +596,156 @@ class CreateMapV3MockBackend {
 
   private async handleRpc(route: Route, rpc: string): Promise<void> {
     const body = route.request().postDataJSON() as Record<string, any>;
+    if (rpc === 'create_map_conversation_plan_v1') {
+      const conversationId = body.p_conversation_id ?? uuid(++this.sequence);
+      const conversation = this.conversations.get(conversationId) ?? {
+        id: conversationId,
+        projectId: body.p_project_id,
+        title: body.p_title,
+        nodes: [],
+        messages: [],
+      };
+      const displayVersion = conversation.nodes.filter((node) => node.type === 'plan').length + 1;
+      const planNodeId = uuid(++this.sequence);
+      const planVersionId = uuid(++this.sequence);
+      const mapId = this.maps.has(MAP_ID) ? uuid(++this.sequence) : MAP_ID;
+      const draftRevisionId = this.maps.has(MAP_ID) ? uuid(++this.sequence) : DRAFT_REVISION_ID;
+      const createdAt = new Date().toISOString();
+      const revision: RevisionV3 = {
+        id: draftRevisionId,
+        revision_number: 1,
+        save_version: 0,
+        source_document_id: body.p_source_document_id,
+        schema_version: 3,
+        plan: body.p_plan,
+        scene: body.p_scene,
+      };
+      this.maps.set(mapId, {
+        id: mapId,
+        name: body.p_name,
+        currentRevisionId: draftRevisionId,
+        updatedAt: createdAt,
+        revisions: new Map([[draftRevisionId, revision]]),
+      });
+      conversation.nodes.push({
+        id: planNodeId,
+        type: 'plan',
+        displayVersion,
+        parentPlanNodeId: body.p_parent_plan_node_id,
+        mapProjectId: mapId,
+        mapPlanVersionId: planVersionId,
+        createdAt,
+      });
+      conversation.messages.push(
+        {
+          id: uuid(++this.sequence),
+          role: 'user',
+          text: body.p_message,
+          artifactNodeId: null,
+          basePlanNodeId: body.p_parent_plan_node_id,
+          createdAt,
+        },
+        {
+          id: uuid(++this.sequence),
+          role: 'assistant',
+          text: 'Map Plan created',
+          artifactNodeId: planNodeId,
+          basePlanNodeId: null,
+          createdAt,
+        },
+      );
+      this.conversations.set(conversationId, conversation);
+      return json(route, [{
+        conversation_id: conversationId,
+        plan_node_id: planNodeId,
+        map_id: mapId,
+        draft_revision_id: draftRevisionId,
+        plan_version_id: planVersionId,
+        plan_display_version: displayVersion,
+      }]);
+    }
+    if (rpc === 'read_map_conversation_v1') {
+      const conversation = this.conversations.get(body.p_conversation_id);
+      if (!conversation) return json(route, null, 404);
+      return json(route, {
+        ...conversation,
+        nodes: conversation.nodes.map((node) => node.type === 'map'
+          ? { ...node, status: this.assets.get(node.assetId)?.status ?? 'planned' }
+          : node),
+      });
+    }
+    if (rpc === 'find_map_conversation_by_map_id_v1') {
+      for (const conversation of this.conversations.values()) {
+        const planNode = conversation.nodes.find((node) =>
+          node.type === 'plan' && node.mapProjectId === body.p_map_project_id
+        );
+        if (planNode?.type === 'plan') {
+          return json(route, [{ conversation_id: conversation.id, plan_node_id: planNode.id }]);
+        }
+      }
+      return json(route, []);
+    }
+    if (rpc === 'attach_map_conversation_output_v1') {
+      for (const conversation of this.conversations.values()) {
+        const planNode = conversation.nodes.find((node) =>
+          node.type === 'plan' && node.id === body.p_plan_node_id
+        );
+        if (planNode?.type !== 'plan') continue;
+        const existing = conversation.nodes.find((node) =>
+          node.type === 'map'
+          && node.planNodeId === planNode.id
+          && node.revisionId === body.p_map_revision_id
+          && node.assetId === body.p_map_asset_id
+        );
+        const map = this.maps.get(planNode.mapProjectId);
+        const revision = map?.revisions.get(body.p_map_revision_id);
+        const mapNodeId = existing?.id ?? uuid(++this.sequence);
+        const mapVersionNumber = revision?.revision_number ?? 1;
+        if (!existing) {
+          const createdAt = new Date().toISOString();
+          conversation.nodes.push({
+            id: mapNodeId,
+            type: 'map',
+            planNodeId: planNode.id,
+            revisionId: body.p_map_revision_id,
+            assetId: body.p_map_asset_id,
+            mapVersionNumber,
+            createdAt,
+          });
+          conversation.messages.push({
+            id: uuid(++this.sequence),
+            role: 'assistant',
+            text: 'Map generated',
+            artifactNodeId: mapNodeId,
+            basePlanNodeId: null,
+            createdAt,
+          });
+        }
+        return json(route, [{
+          map_node_id: mapNodeId,
+          plan_display_version: planNode.displayVersion,
+          map_version_number: mapVersionNumber,
+        }]);
+      }
+      return json(route, [], 404);
+    }
+    if (rpc === 'resolve_map_conversation_node_v1') {
+      for (const conversation of this.conversations.values()) {
+        const node = conversation.nodes.find((candidate) => candidate.id === body.p_node_id);
+        if (!node) continue;
+        const planNode = node.type === 'plan'
+          ? node
+          : conversation.nodes.find((candidate) => candidate.type === 'plan' && candidate.id === node.planNodeId);
+        if (planNode?.type !== 'plan') return json(route, [], 404);
+        return json(route, [{
+          plan_node_id: planNode.id,
+          map_project_id: planNode.mapProjectId,
+          map_plan_version_id: planNode.mapPlanVersionId,
+          selected_map_asset_id: node.type === 'map' ? node.assetId : null,
+        }]);
+      }
+      return json(route, [], 404);
+    }
     if (rpc === 'create_map_project_v3') {
       const revision: RevisionV3 = {
         id: DRAFT_REVISION_ID,
@@ -863,11 +1051,12 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
     await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
     await expect(conversation.getByText(description)).toBeVisible();
-    await expect(conversation.getByText('Here is the created map plan')).toBeVisible();
-    await expect(conversation.getByRole('button', { name: 'View map plan' })).toBeVisible();
-    await expect(conversation.getByRole('button', { name: 'Show map generation history' })).toBeDisabled();
+    await expect(conversation.getByText('Map Plan created')).toBeVisible();
+    await expect(conversation.getByRole('button', { name: 'View Plan V1' })).toBeVisible();
+    await conversation.getByRole('button', { name: 'Show map generation history' }).click();
+    await expect(conversation.getByRole('menuitem', { name: 'Plan V1' })).toBeVisible();
     await conversation.getByRole('searchbox', { name: 'Search messages' }).fill(description);
-    await expect(conversation.getByText('Here is the created map plan')).toHaveCount(0);
+    await expect(conversation.getByText('Map Plan created')).toHaveCount(0);
     expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
     expect(backend.lastPlanRequest).not.toHaveProperty('documentId');
   });
@@ -929,11 +1118,12 @@ test.describe('Create Map V3 mocked workflow', () => {
       .toBe(exactDescription);
     await generateReadyMap(page);
     const conversation = page.getByRole('region', { name: 'Map conversation' });
-    await expect(conversation.getByRole('link', { name: 'Download map' })).toBeVisible();
+    await expect(conversation.getByRole('button', { name: 'View Map V1.1' })).toBeVisible();
     await conversation.getByRole('button', { name: 'Show map generation history' }).click();
-    await expect(conversation.locator('[data-history-version]')).toHaveCount(1);
+    await expect(conversation.getByRole('menuitem', { name: 'Plan V1' })).toBeVisible();
+    await expect(conversation.getByRole('menuitem', { name: 'Map V1.1 ready' })).toBeVisible();
 
-    await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
+    await expect(page).toHaveURL(new RegExp(`^${APP_ORIGIN}/create-map\\?conversationId=[a-f0-9-]{36}$`));
 
     const createAssetRpc = backend.createAssetRpc;
     expect(createAssetRpc).toEqual({
@@ -1009,7 +1199,6 @@ test.describe('Create Map V3 mocked workflow', () => {
     expect(savedGrid?.cells[32 * 64 + 32]).toBe(0);
 
     await page.reload();
-    await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Grid ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Editable collision grid')).toBeVisible();
@@ -1040,15 +1229,20 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible({ timeout: 5_000 });
     await page.reload();
-    await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Map conversation' }).getByRole('link', { name: 'Download map' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Map conversation' }).getByRole('button', { name: 'View Map V1.1' })).toBeVisible();
 
     backend.seedReadyV3Map(SLOW_MAP_ID, 'Slow Marsh', 600);
     backend.seedReadyV3Map(FAST_MAP_ID, 'Fast Harbor');
     await page.reload();
-    await page.getByRole('button', { name: /Slow Marsh/ }).click();
+    await page.getByRole('button', { name: 'Back to saved maps' }).click();
+    await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
+    const slowMap = page.getByRole('button', { name: /Slow Marsh/ });
+    await expect(slowMap).toBeVisible();
+    await slowMap.evaluate((element: HTMLButtonElement) => element.click());
+    await page.getByRole('button', { name: 'Back to saved maps' }).click();
+    await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
     await page.getByRole('button', { name: /Fast Harbor/ }).click();
     await expect(page.getByRole('heading', { name: 'Fast Harbor' })).toBeVisible();
     await page.waitForTimeout(800);
@@ -1157,7 +1351,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('button', { name: 'Open source panel' }).click();
     await expect.poll(async () => (await sourcePanel.boundingBox())?.x ?? Number.NEGATIVE_INFINITY)
       .toBeGreaterThanOrEqual(workbenchBox.x - 1);
-    await page.getByRole('button', { name: 'View map plan' }).click();
+    await page.getByRole('button', { name: 'View Plan V1' }).click();
     await page.getByRole('button', { name: 'Close source panel' }).click();
     await expect.poll(async () => (await inspector.boundingBox())?.x ?? Number.POSITIVE_INFINITY)
       .toBeLessThan(workbenchBox.x + workbenchBox.width - 1);
@@ -1223,7 +1417,6 @@ test.describe('Create Map V3 mocked workflow', () => {
 
     await page.reload();
     await page.getByRole('button', { name: 'Open source panel' }).click();
-    await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
     await page.getByRole('button', { name: 'Close source panel' }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Grid ready', { exact: true })).toBeVisible();

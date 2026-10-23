@@ -19,7 +19,7 @@ import {
 import { parseGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 
-const ruleSet = parseRuleSet({
+const legacyRuleSet = parseRuleSet({
   schemaVersion: 1,
   genres: ['Strategy'],
   philosophies: ['Readable Systems'],
@@ -32,6 +32,26 @@ const ruleSet = parseRuleSet({
     appliesWhen: 'Presenting choices.',
     severity: 'required',
   }],
+  tableGuidance: [],
+});
+
+const ruleSet = parseRuleSet({
+  schemaVersion: 2,
+  genres: ['Strategy'],
+  philosophies: ['Readable Systems'],
+  suitableFor: 'Tactical games',
+  rules: [
+    'player', 'objective', 'action', 'object_state', 'sequence',
+    'resource_cost', 'resolution_feedback', 'fallback',
+  ].map((domain) => ({
+    id: `${domain.replaceAll('_', '-')}-rule`,
+    domain,
+    kind: 'constraint',
+    title: `${domain} rule`,
+    statement: `Define ${domain} runtime behavior.`,
+    appliesWhen: 'Resolving gameplay.',
+    severity: 'required',
+  })),
   tableGuidance: [],
 });
 
@@ -70,6 +90,34 @@ describe('gameDesignSystemService version and job behavior', () => {
       p_actor_id: 'owner-1', p_idempotency_key: '10000000-0000-4000-8000-000000000001',
       p_rules: ruleSet, p_document: expect.any(Object), p_diff: expect.any(Object),
     }));
+  });
+
+  it('rejects a legacy Agent structured create before the atomic RPC', async () => {
+    const rpc = jest.fn();
+
+    await expect(createAgentStructuredGameDesignSystem({ rpc } as never, 'owner-1', {
+      idempotencyKey: '10000000-0000-4000-8000-000000000001',
+      title: 'Legacy Rules',
+      rules: legacyRuleSet,
+    })).rejects.toThrow('schemaVersion: 2');
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy and implicit-v1 system creation before inserting a new row', async () => {
+    const from = jest.fn();
+    const service = { from } as never;
+
+    await expect(createGameDesignSystem(service, 'owner-1', {
+      title: 'Legacy Rules', genres: legacyRuleSet.genres,
+      philosophies: legacyRuleSet.philosophies, rules: legacyRuleSet,
+    })).rejects.toThrow('schemaVersion: 2');
+    await expect(createGameDesignSystem(service, 'owner-1', {
+      title: 'Implicit Legacy Rules', genres: ['Strategy'], philosophies: ['Readable Systems'],
+      body: 'This must not be converted into a v1 write.',
+    })).rejects.toThrow('schemaVersion: 2');
+
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('creates an immutable version through the atomic RPC with a deterministic diff', async () => {
@@ -195,15 +243,15 @@ describe('gameDesignSystemService version and job behavior', () => {
     }));
   });
 
-  it('stores null for direct legacy creation without a parent style', async () => {
+  it('stores null for direct v2 creation without a parent style', async () => {
     const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
-      data: { id: 'legacy-version', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
+      data: { id: 'version-1', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
       error: null,
     }));
 
     const created = await createGameDesignSystemVersion({ rpc } as never, {
-      systemId: 'legacy-system',
-      title: 'Legacy Rules',
+      systemId: 'system-1',
+      title: 'Runtime Rules',
       createdBy: 'user-1',
       rules: ruleSet,
     });
@@ -214,6 +262,37 @@ describe('gameDesignSystemService version and job behavior', () => {
       p_art_style: null,
       p_content_hash: createHash('sha256').update(JSON.stringify({ document: created.document, rules: ruleSet, artStyle: null })).digest('hex'),
     }));
+  });
+
+  it('rejects direct legacy version persistence before the atomic RPC', async () => {
+    const rpc = jest.fn();
+
+    await expect(createGameDesignSystemVersion({ rpc } as never, {
+      systemId: 'legacy-system',
+      title: 'Legacy Rules',
+      createdBy: 'user-1',
+      rules: legacyRuleSet,
+    })).rejects.toThrow('schemaVersion: 2');
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a direct v2 version when its selected parent is legacy v1', async () => {
+    const rpc = jest.fn();
+
+    await expect(createGameDesignSystemVersion({ rpc } as never, {
+      systemId: 'legacy-system',
+      title: 'Legacy Rules',
+      createdBy: 'user-1',
+      rules: ruleSet,
+      parentVersion: {
+        id: 'legacy-version-1',
+        rules: legacyRuleSet,
+        artStyle: null,
+      } as GameDesignSystemVersion,
+    })).rejects.toThrow('read-only');
+
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('returns the persisted RPC art style without leaking the database column name', async () => {
@@ -410,6 +489,40 @@ describe('gameDesignSystemService version and job behavior', () => {
     }));
   });
 
+  it('rejects copying a readable legacy source before creating a new system', async () => {
+    const source = {
+      id: 'source-system', owner_id: 'user-1', source: 'user', title: 'Legacy Source', summary: null,
+      provenance: {}, current_version_id: 'version-1', migration_status: 'ready',
+    } as never;
+    const legacyVersion = {
+      id: 'version-1', system_id: 'source-system', version_number: 1, document,
+      rules: legacyRuleSet, art_style: null, rendered_markdown: '# Legacy', source_snapshots: [],
+      diff: { added: [], removed: [], changed: [], conflicts: [] }, conflicts: [],
+    };
+    const insert = jest.fn();
+    const rpc = jest.fn();
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: source, error: null }) }) }),
+          insert,
+        }
+        : {
+          select: () => ({
+            eq: () => ({ order: async () => ({ data: [legacyVersion], error: null }) }),
+            in: async () => ({ data: [{ id: legacyVersion.id, source_snapshots: [] }], error: null }),
+          }),
+        }),
+      rpc,
+    };
+
+    await expect(copyGameDesignSystem(supabase as never, source, 'user-1'))
+      .rejects.toThrow('Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be copied');
+
+    expect(insert).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('returns an existing job for the same idempotency payload', async () => {
     const existing = { id: 'job-1', input_hash: 'hash-a', status: 'queued' };
     const maybeSingle = jest.fn(async () => ({ data: existing, error: null }));
@@ -451,8 +564,8 @@ describe('gameDesignSystemService version and job behavior', () => {
       current_version_id: 'version-3', migration_status: 'ready', body: '# Secret version 3',
     };
     const versions = [
-      { id: 'version-3', system_id: 'system-1', version_number: 3, rules: ruleSet, rendered_markdown: '# Secret version 3' },
-      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: ruleSet, rendered_markdown: '# Pinned version 2' },
+      { id: 'version-3', system_id: 'system-1', version_number: 3, rules: legacyRuleSet, rendered_markdown: '# Secret version 3' },
+      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: legacyRuleSet, rendered_markdown: '# Pinned version 2' },
     ];
     const projectClient = {
       from: jest.fn((table: string) => {
@@ -492,7 +605,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       current_version_id: 'version-3', migration_status: 'ready', body: '# Secret version 3',
     };
     const readableVersions = [
-      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: ruleSet, rendered_markdown: '# Pinned version 2' },
+      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: legacyRuleSet, rendered_markdown: '# Pinned version 2' },
     ];
     const supabase = {
       from: jest.fn((table: string) => table === 'game_design_systems'
@@ -513,7 +626,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     };
     const legacyVersion = {
       id: 'version-1', system_id: 'system-1', version_number: 1, document: null,
-      rules: ruleSet, art_style: { schemaVersion: 999 }, rendered_markdown: '# Legacy version',
+      rules: legacyRuleSet, art_style: { schemaVersion: 999 }, rendered_markdown: '# Legacy version',
     };
     const supabase = {
       from: jest.fn((table: string) => table === 'game_design_systems'
@@ -531,6 +644,29 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(detail?.current_version).not.toHaveProperty('art_style');
   });
 
+  it('hydrates an existing v1 version without changing its stored rule set', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: null,
+      current_version_id: 'version-1', body: '# Legacy version', genres: [], philosophies: [], suitable_for: null,
+    };
+    const legacyVersion = {
+      id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
+      document: null, rules: legacyRuleSet, art_style: null, rendered_markdown: '# Legacy version',
+      diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] }, conflicts: [],
+    };
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: async () => ({ data: [legacyVersion], error: null }) }) }) }),
+    };
+
+    const detail = await getGameDesignSystemDetail(supabase as never, 'system-1');
+
+    expect(detail?.current_version?.rules).toEqual(legacyRuleSet);
+    expect(detail?.current_version?.rules.schemaVersion).toBe(1);
+    expect(legacyVersion.rules).toEqual(legacyRuleSet);
+  });
+
   it('derives cross-domain changes for legacy diffs when their parent is readable', async () => {
     const system = {
       id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: null,
@@ -546,11 +682,11 @@ describe('gameDesignSystemService version and job behavior', () => {
     const versions = [
       {
         id: 'version-2', system_id: 'system-1', version_number: 2, parent_version_id: 'version-1',
-        document: currentDocument, rules: ruleSet, art_style: artStyle, rendered_markdown: '# Version 2', diff: legacyRuleDiff,
+        document: currentDocument, rules: legacyRuleSet, art_style: artStyle, rendered_markdown: '# Version 2', diff: legacyRuleDiff,
       },
       {
         id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
-        document: parentDocument, rules: ruleSet, art_style: null, rendered_markdown: '# Version 1',
+        document: parentDocument, rules: legacyRuleSet, art_style: null, rendered_markdown: '# Version 1',
         diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] },
       },
     ];
@@ -581,7 +717,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       current_version_id: 'version-3', body: '', genres: [], philosophies: [], suitable_for: null,
     };
     const visibleRules = {
-      ...ruleSet,
+      ...legacyRuleSet,
       genres: ['Pinned Genre'],
       philosophies: ['Pinned Philosophy'],
       suitableFor: 'Pinned audience',
@@ -636,7 +772,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       current_version_id: 'version-9', body: '', genres: [], philosophies: [], suitable_for: null,
     };
     const readableRules = {
-      ...ruleSet,
+      ...legacyRuleSet,
       genres: ['Pinned Genre'],
       philosophies: ['Pinned Philosophy'],
       suitableFor: 'Pinned audience',
@@ -686,7 +822,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     const rpc = jest.fn(async (_name: string, _args: { p_system_ids: string[] }) => ({
       data: [{
         id: 'legacy-version-1', system_id: 'legacy-system', version_number: 1,
-        rules: ruleSet, rendered_markdown: '# Legacy version 1',
+        rules: legacyRuleSet, rendered_markdown: '# Legacy version 1',
       }],
       error: null,
     }));

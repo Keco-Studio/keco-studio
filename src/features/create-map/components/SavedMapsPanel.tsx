@@ -95,7 +95,7 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
             const active = map.id === props.activeMapId;
             const opening = map.id === props.openingMapId;
             return (
-              <li key={map.id}>
+              <li key={map.conversationId ?? map.id}>
                 <button
                   type="button"
                   className={active ? styles.savedMapButtonActive : styles.savedMapButton}

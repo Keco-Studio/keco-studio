@@ -668,6 +668,7 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
               gameMediaSubmissionId,
               mapReferenceSubmissionId,
               selectionContext: opts?.selectionContext,
+              mapBasePlanNodeId: opts?.mapBasePlanNodeId,
               documentExport: opts?.documentExport,
               autoExecute: selectedRuntime.autoExecute,
               currentFolderId: ctx.currentFolderId,
@@ -685,6 +686,7 @@ export function useAgentChat(ctx: SendContext, open: boolean) {
               gameMediaSubmissionId,
               mapReferenceSubmissionId,
               selectionContext: opts?.selectionContext,
+              mapBasePlanNodeId: opts?.mapBasePlanNodeId,
             };
         const form = opts?.gameMediaFile || opts?.mapReferenceFile ? new FormData() : null;
         if (form) {

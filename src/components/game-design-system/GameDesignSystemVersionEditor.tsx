@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { gameArtStyleInputSchema, type GameArtStyleInput, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
-import { gameDesignDocumentSchema, gameDesignRuleSetSchema, type GameDesignDocument, type GameDesignRule, type GameDesignRuleSet, type TableGuidance } from '@/lib/game-design-system/ruleSchema';
+import { gameDesignDocumentSchema, gameDesignRuleSetSchema, isGameRulesKernel, type GameDesignDocument, type GameDesignRule, type GameDesignRuleSet, type TableGuidance } from '@/lib/game-design-system/ruleSchema';
 import type { CreateGameDesignSystemVersionRequest } from '@/lib/game-design-system/versionRequest';
 import type { GameDesignSystemVersion } from '@/lib/services/gameDesignSystemService';
 import { GameDesignSystemArtStyleFields } from './GameDesignSystemArtStyleFields';
@@ -39,6 +39,7 @@ type Recovery = {
 };
 
 type ValidationTarget = { domain: 'rules' | 'art-style'; path: Array<string | number> } | null;
+type RuleField = { key: keyof GameDesignRule | 'domain'; label: string };
 
 type Props = {
   baseVersion: GameDesignSystemVersion;
@@ -49,7 +50,7 @@ type Props = {
   onRefreshLatest: () => Promise<GameDesignSystemVersion>;
 };
 
-const ruleFields: Array<{ key: keyof GameDesignRule; label: string }> = [
+const ruleFields: RuleField[] = [
   { key: 'id', label: 'Rule ID' },
   { key: 'kind', label: 'Kind' },
   { key: 'title', label: 'Rule title' },
@@ -100,6 +101,11 @@ function display(value: unknown): string {
 
 function guidanceValue(value: TableGuidance | undefined, field: keyof TableGuidance): string {
   return display(value?.[field]);
+}
+
+function ruleFieldValue(rule: GameDesignRule | undefined, key: RuleField['key']): unknown {
+  if (key === 'domain') return rule && 'domain' in rule ? rule.domain : undefined;
+  return rule?.[key];
 }
 
 function ChangeRow({ label, before, after }: { label: string; before: unknown; after: unknown }) {
@@ -331,19 +337,30 @@ export function GameDesignSystemVersionEditor({
   const panelId = `gds-version-panel-${activeSection}`;
   const tabId = `gds-version-tab-${activeSection}`;
 
+  if (!isGameRulesKernel(workingBase.rules)) {
+    return (
+      <section className={styles.versionEditor} aria-label="Legacy Game Design System version">
+        <header className={styles.versionEditorHeader}>
+          <div>
+            <span className={styles.eyebrow}>Legacy version</span>
+            <h1>Legacy version is read-only</h1>
+            <p>Version {workingBase.version_number} uses the historical schemaVersion: 1 design-policy format.</p>
+          </div>
+          <button className={styles.secondaryButton} type="button" aria-label="Close legacy version" onClick={onCancel}>Close</button>
+        </header>
+        <div className={styles.notice} role="status">
+          This legacy v1 version is read-only. It remains readable, diffable, and available to bound projects, but it cannot be edited, reviewed, copied, or saved as a new version. Author a separate schemaVersion: 2 Game Rules Kernel with fresh rule IDs to continue; this editor will not auto-convert legacy policy text into gameplay facts.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className={styles.versionEditor} aria-label="Create Game Design System version">
       <header className={styles.versionEditorHeader}>
         <div><span className={styles.eyebrow}>Version iteration</span><h1>Create new version</h1><p>{rebasedVersionNumber ? `Based on current version ${rebasedVersionNumber}` : `Based on version ${workingBase.version_number}`}</p><p>Nothing changes until you confirm the reviewed draft.</p></div>
         <button className={styles.secondaryButton} type="button" aria-label="Cancel version draft" disabled={busy} onClick={cancel}>Cancel</button>
       </header>
-
-      <ol className={styles.versionWorkflowSteps} aria-label="Version iteration steps">
-        <li><strong>1. Edit Document</strong><span>Background, intent, loop and presentation</span></li>
-        <li><strong>2. Edit Rules</strong><span>Add, remove, reorder and refine rules or table guidance</span></li>
-        <li><strong>3. Edit Art Style</strong><span>Preset, art direction, references and avoid guidance</span></li>
-        <li><strong>4. Review &amp; create</strong><span>Inspect Before / After, then save the immutable version</span></li>
-      </ol>
 
       {workingBase.id !== workingCurrentVersionId && rebasedVersionNumber === null ? <div className={styles.notice} role="status">Version {workingBase.version_number} is historical. The current version will still be checked before creation.</div> : null}
 
@@ -413,7 +430,14 @@ function VersionReview({ base, reviewed }: { base: GameDesignSystemVersion; revi
         {!equal(base.rules.philosophies, nextRules.philosophies) ? <ChangeRow label="Philosophies" before={base.rules.philosophies} after={nextRules.philosophies} /> : null}
         {!equal(base.rules.suitableFor, nextRules.suitableFor) ? <ChangeRow label="Suitable for" before={base.rules.suitableFor} after={nextRules.suitableFor} /> : null}
         {pairRules(base.rules.rules, nextRules.rules).map(({ before, after }, index) => {
-          return ruleFields.map((field) => equal(before?.[field.key], after?.[field.key]) ? null : <ChangeRow key={`${index}-${field.key}`} label={`Rule ${index + 1} / ${field.label}`} before={before?.[field.key]} after={after?.[field.key]} />);
+          const fields = isGameRulesKernel(base.rules) || isGameRulesKernel(nextRules)
+            ? [...ruleFields, { key: 'domain' as const, label: 'Domain' }]
+            : ruleFields;
+          return fields.map((field) => {
+            const beforeValue = ruleFieldValue(before, field.key);
+            const afterValue = ruleFieldValue(after, field.key);
+            return equal(beforeValue, afterValue) ? null : <ChangeRow key={`${index}-${field.key}`} label={`Rule ${index + 1} / ${field.label}`} before={beforeValue} after={afterValue} />;
+          });
         })}
         {Array.from({ length: Math.max(base.rules.tableGuidance.length, nextRules.tableGuidance.length) }, (_, index) => {
           const before = base.rules.tableGuidance[index];

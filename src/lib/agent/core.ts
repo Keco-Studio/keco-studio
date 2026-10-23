@@ -166,6 +166,7 @@ export async function buildAgentSystemContext(
   let currentFolderName = ctx.currentFolderName;
   let gameDesignSystem: {
     version: number;
+    schemaVersion: 1 | 2;
     policyText: string;
     appliedRuleIds: string[];
   } | undefined;
@@ -232,10 +233,12 @@ export async function buildAgentSystemContext(
           && typeof row?.design_system_id === 'string'
           && typeof row.version_id === 'string'
         ) {
-          const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
+          const ruleSet = parseRuleSet(version.rules);
+          const policy = buildAgentRulePolicy(ruleSet);
           const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
           artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
-          gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
+          gameDesignSystem = { version: version.version_number, schemaVersion: ruleSet.schemaVersion,
+            policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
           gameDesignPolicy = {
             systemId: row.design_system_id,
             versionId: row.version_id,

@@ -59,7 +59,7 @@ import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluati
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 import { useLibraryTableReordering, type LibraryTableOperationHistory } from './hooks/useLibraryTableReordering';
 import { resolveLibraryViewMode } from './libraryViewMode';
-import { getAutoColumnWidths, getAutoTableWidth } from './utils/autoColumnWidths';
+import { getAutoColumnWidths, getAutoTableLayout, getAutoTableWidth } from './utils/autoColumnWidths';
 import { useElementClientWidth } from './hooks/useElementClientWidth';
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import { resolveTableUserRole, type TableUserRole } from './utils/tableUserRole';
@@ -574,7 +574,19 @@ export function LibraryAssetsTable({
     }),
     [activeProperties, displayRows, showAddColumn, tableContainerWidth],
   );
+  const fixedColumnWidth = 60 + (showAddColumn ? 40 : 0);
+  const autoTableLayout = useMemo(() => getAutoTableLayout(
+    autoColumnWidths,
+    fixedColumnWidth,
+    tableContainerWidth,
+  ), [autoColumnWidths, fixedColumnWidth, tableContainerWidth]);
   const getAutoColStyle = useCallback((propertyId: string): React.CSSProperties | undefined => {
+    if (autoTableLayout.unmeasuredColumnWidth) {
+      return {
+        width: autoTableLayout.unmeasuredColumnWidth,
+        minWidth: '96px',
+      };
+    }
     const width = autoColumnWidths[propertyId];
     if (!width) return undefined;
     return {
@@ -582,18 +594,15 @@ export function LibraryAssetsTable({
       minWidth: '96px',
       maxWidth: `${width}px`,
     };
-  }, [autoColumnWidths]);
-  const autoTableStyle = useMemo(() => ({
-    width: `${getAutoTableWidth(
-      autoColumnWidths,
-      60 + (showAddColumn ? 40 : 0),
-      tableContainerWidth,
-    )}px`,
-  }), [autoColumnWidths, showAddColumn, tableContainerWidth]);
+  }, [autoColumnWidths, autoTableLayout.unmeasuredColumnWidth]);
+  const autoTableStyle = useMemo<React.CSSProperties>(() => ({
+    width: autoTableLayout.tableWidth,
+    minWidth: autoTableLayout.tableMinWidth,
+  }), [autoTableLayout]);
   const autoTableHasOverflow = tableContainerWidth > 0 &&
     getAutoTableWidth(
       autoColumnWidths,
-      60 + (showAddColumn ? 40 : 0),
+      fixedColumnWidth,
       tableContainerWidth,
     ) > tableContainerWidth + 1;
   const {

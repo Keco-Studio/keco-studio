@@ -1,5 +1,7 @@
 import type { GameDesignRuleSet } from './ruleSchema';
 
+type GameDesignRule = GameDesignRuleSet['rules'][number];
+
 export type GameDesignRuleDiff = {
   added: string[];
   removed: string[];
@@ -21,8 +23,12 @@ export function findReintroducedRuleIds(
 }
 
 export function diffRuleSets(parent: GameDesignRuleSet, next: GameDesignRuleSet): GameDesignRuleDiff {
-  const previousById = new Map(parent.rules.map((rule) => [rule.id, rule]));
-  const nextById = new Map(next.rules.map((rule) => [rule.id, rule]));
+  const previousById = new Map<string, GameDesignRule>(
+    parent.rules.map((rule) => [rule.id, rule] as [string, GameDesignRule]),
+  );
+  const nextById = new Map<string, GameDesignRule>(
+    next.rules.map((rule) => [rule.id, rule] as [string, GameDesignRule]),
+  );
   const added = [...nextById.keys()].filter((id) => !previousById.has(id)).sort();
   const removed = [...previousById.keys()].filter((id) => !nextById.has(id)).sort();
   const changed: string[] = [];
@@ -35,6 +41,15 @@ export function diffRuleSets(parent: GameDesignRuleSet, next: GameDesignRuleSet)
     if (JSON.stringify(previous) !== JSON.stringify(current)) changed.push(id);
     if (previous.kind !== current.kind) {
       conflicts.push({ ruleId: id, reason: `Rule kind changed from ${previous.kind} to ${current.kind}.` });
+    }
+    const previousHasDomain = 'domain' in previous;
+    const currentHasDomain = 'domain' in current;
+    if (previousHasDomain && currentHasDomain && previous.domain !== current.domain) {
+      conflicts.push({ ruleId: id, reason: `Rule domain changed from ${previous.domain} to ${current.domain}.` });
+    } else if (previousHasDomain !== currentHasDomain) {
+      const previousDomain = previousHasDomain ? previous.domain : 'legacy v1';
+      const currentDomain = currentHasDomain ? current.domain : 'legacy v1';
+      conflicts.push({ ruleId: id, reason: `Rule domain changed from ${previousDomain} to ${currentDomain}.` });
     }
   });
 

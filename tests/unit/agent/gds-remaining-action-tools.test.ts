@@ -7,12 +7,19 @@ jest.mock('@/lib/services/gameDesignSystemService', () => ({
   getGameDesignSystem: jest.fn(), getGameDesignSystemGenerationJob: jest.fn(),
   getGameDesignSystemVersion: jest.fn(),
   IdempotencyConflictError: class IdempotencyConflictError extends Error {},
+  LegacyGameDesignSystemMutationError: class LegacyGameDesignSystemMutationError extends Error {},
 }));
 jest.mock('@/lib/services/gameDesignSystemWriteService.server', () => ({
   createPublicGameDesignSystemVersion: jest.fn(),
   PublicGameDesignSystemVersionError: class PublicGameDesignSystemVersionError extends Error {
     publicMessage: string;
-    constructor(code: string) { super(code); this.publicMessage = code; }
+    constructor(code: string) {
+      const publicMessage = code === 'VERSION_LEGACY_READ_ONLY'
+        ? 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be versioned. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.'
+        : code;
+      super(publicMessage);
+      this.publicMessage = publicMessage;
+    }
   },
 }));
 jest.mock('@/lib/server/supabaseServiceRole', () => ({ getSupabaseServiceRoleClient: jest.fn() }));
@@ -26,7 +33,7 @@ jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({ resolveGameDesign
 import { createAgentStructuredGameDesignSystem, createGameDesignSystemGenerationJob, getGameDesignSystem,
   getGameDesignSystemGenerationJob, getGameDesignSystemVersion } from '@/lib/services/gameDesignSystemService';
 import { resolveGameDesignSourceSnapshots } from '@/lib/game-design-system/sourceSnapshots';
-import { createPublicGameDesignSystemVersion } from '@/lib/services/gameDesignSystemWriteService.server';
+import { createPublicGameDesignSystemVersion, PublicGameDesignSystemVersionError } from '@/lib/services/gameDesignSystemWriteService.server';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { getPublicGddGenerationJob, cancelGddGenerationJob } from '@/lib/services/gddGenerationService';
@@ -70,16 +77,33 @@ beforeEach(() => {
   jest.mocked(resolveGameDesignSourceSnapshots).mockResolvedValue([]);
 });
 
-it('creates a structured draft with the same service inputs as the UI', async () => {
-  const rules = { schemaVersion: 1, genres: ['RPG'], philosophies: [], suitableFor: 'Teams',
-    rules: [{ id: 'rule-one', kind: 'principle', title: 'Clarity', statement: 'Keep the loop clear',
-      appliesWhen: 'Always', severity: 'required' }], tableGuidance: [] };
+const v2Rules = { schemaVersion: 2, genres: ['RPG'], philosophies: [], suitableFor: 'Teams',
+  rules: [
+    'player', 'objective', 'action', 'object_state', 'sequence',
+    'resource_cost', 'resolution_feedback', 'fallback',
+  ].map((domain) => ({ id: `${domain.replaceAll('_', '-')}-rule`, domain, kind: 'constraint',
+    title: `${domain} rule`, statement: `Define ${domain}.`, appliesWhen: 'Always', severity: 'required' })),
+  tableGuidance: [] };
+
+it('creates a structured v2 draft with the same service inputs as the UI', async () => {
+  const rules = v2Rules;
   jest.mocked(createAgentStructuredGameDesignSystem).mockResolvedValue({ id: systemId, title: 'Rules', status: 'draft',
     current_version_id: versionId, updated_at: 'today' } as never);
   const result = await createGameDesignSystemTool.execute({ title: 'Rules', rules, idempotencyKey: id(8) }, ctx);
   expect(result).toMatchObject({ success: true, data: { designSystemId: systemId, currentVersionId: versionId } });
   expect(createAgentStructuredGameDesignSystem).toHaveBeenCalledWith(expect.anything(), userId,
     expect.objectContaining({ title: 'Rules', rules, idempotencyKey: id(8) }));
+});
+
+it('rejects an Agent v1 draft with an actionable schema-version error', async () => {
+  const rules = { schemaVersion: 1, genres: ['RPG'], philosophies: [], suitableFor: 'Teams',
+    rules: [{ id: 'rule-one', kind: 'principle', title: 'Clarity', statement: 'Keep the loop clear',
+      appliesWhen: 'Always', severity: 'required' }], tableGuidance: [] };
+
+  const result = await createGameDesignSystemTool.execute({ title: 'Rules', rules, idempotencyKey: id(8) }, ctx);
+
+  expect(result).toMatchObject({ success: false, error: expect.stringContaining('schemaVersion: 2') });
+  expect(createAgentStructuredGameDesignSystem).not.toHaveBeenCalled();
 });
 
 it('confirms version replacement and calls the atomic idempotent writer', async () => {
@@ -101,6 +125,19 @@ it('confirms version replacement and calls the atomic idempotent writer', async 
     .toMatchObject({ success: false, error: 'VERSION_STALE' });
 });
 
+it('returns actionable guidance when a legacy parent reaches the version writer', async () => {
+  const params = { designSystemId: systemId, idempotencyKey: id(8), request: {
+    parentVersionId: versionId, expectedCurrentVersionId: versionId, rules: v2Rules } };
+  jest.mocked(createPublicGameDesignSystemVersion).mockRejectedValueOnce(
+    new PublicGameDesignSystemVersionError('VERSION_LEGACY_READ_ONLY'),
+  );
+
+  expect(await createGameDesignSystemVersionTool.execute(params, ctx)).toMatchObject({
+    success: false,
+    error: expect.stringContaining('read-only'),
+  });
+});
+
 it('exposes the complete version schema so the model does not guess rule field names', () => {
   const request = (createGameDesignSystemVersionTool.parameters.properties as Record<string, any>).request;
   const rules = request.properties.rules;
@@ -110,11 +147,23 @@ it('exposes the complete version schema so the model does not guess rule field n
   expect(rule.properties.kind.enum).toEqual(['principle', 'constraint', 'pattern', 'anti_pattern', 'check']);
   expect(tableGuidance.required).toEqual(['table', 'purpose', 'fields']);
   expect(tableGuidance.properties.name).toBeUndefined();
+  expect(rules.properties.schemaVersion.const).toBe(2);
+  expect(rule.required).toContain('domain');
   expect(request.anyOf).toEqual(expect.arrayContaining([
     { required: ['document'] },
     { required: ['rules'] },
     { required: ['artStyle'] },
   ]));
+});
+
+it('exposes only the complete v2 kernel schema for structured Agent creation', () => {
+  const rules = (createGameDesignSystemTool.parameters.properties as Record<string, any>).rules;
+  const rule = rules.properties.rules.items;
+
+  expect(rules.properties.schemaVersion.const).toBe(2);
+  expect(rules.anyOf).toBeUndefined();
+  expect(rule.required).toContain('domain');
+  expect(rule.properties.domain.enum).toContain('fallback');
 });
 
 it('seals and conditionally removes an exact binding after role recheck', async () => {

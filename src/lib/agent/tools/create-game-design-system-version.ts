@@ -3,7 +3,7 @@ import { gameDesignSystemVersionRequestToolSchema } from './game-design-system-v
 
 export const createGameDesignSystemVersionTool: AgentTool = {
   name: 'create_game_design_system_version',
-  description: 'Create a new current version of an owned Game Design System with an exact parent and expected current version. Read the current system first. The request fields are complete replacements: include every required document field or every rule-set field you replace, and omit unchanged components. Use anti_pattern (snake_case) for anti-pattern rules and tableGuidance entries with table/purpose/fields. Replacing the current version always confirms.',
+  description: 'Create a new current version of an owned schemaVersion 2 Game Design System with an exact parent and expected current version. Legacy schemaVersion 1 versions are read-only; author a separate v2 Game Rules Kernel with fresh rule IDs instead of editing them. Read the current system first. The request fields are complete replacements: include every required document field or every v2 rule-set field you replace, and omit unchanged components. Use anti_pattern (snake_case) for anti-pattern rules and tableGuidance entries with table/purpose/fields. Replacing the current version always confirms.',
   category: 'write', permissionScope: 'account', confirmationMode: 'pre_execute', confirmationPolicy: 'always',
   parameters: { type: 'object', additionalProperties: false, properties: {
     designSystemId: { type: 'string', format: 'uuid' }, idempotencyKey: { type: 'string', format: 'uuid' },

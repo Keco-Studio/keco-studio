@@ -1,4 +1,5 @@
 import type { JSONSchema } from '../types';
+import { GAME_RULE_DOMAINS, REQUIRED_GAME_RULE_DOMAINS } from '@/lib/game-design-system/ruleSchema';
 
 const text = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength });
 
@@ -25,11 +26,12 @@ const documentSchema: JSONSchema = {
   ],
 };
 
-const ruleSchema: JSONSchema = {
+const gameRulesKernelRuleSchema: JSONSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
     id: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$', maxLength: 80 },
+    domain: { type: 'string', enum: GAME_RULE_DOMAINS },
     kind: { type: 'string', enum: ['principle', 'constraint', 'pattern', 'anti_pattern', 'check'] },
     title: text(120),
     statement: text(800),
@@ -38,34 +40,36 @@ const ruleSchema: JSONSchema = {
     severity: { type: 'string', enum: ['required', 'recommended', 'warning'] },
     evidence: { type: 'string', maxLength: 500 },
   },
-  required: ['id', 'kind', 'title', 'statement', 'appliesWhen', 'severity'],
+  required: ['id', 'domain', 'kind', 'title', 'statement', 'appliesWhen', 'severity'],
 };
 
-const rulesSchema: JSONSchema = {
+const tableGuidanceSchema: JSONSchema = {
+  type: 'array',
+  maxItems: 20,
+  description: 'Each entry uses table, purpose, and fields. Do not use name.',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      table: text(120),
+      purpose: text(500),
+      fields: { type: 'array', maxItems: 20, items: text(120) },
+    },
+    required: ['table', 'purpose', 'fields'],
+  },
+};
+
+export const gameRulesKernelToolSchema: JSONSchema = {
   type: 'object',
   additionalProperties: false,
-  description: 'Complete replacement rule set. kind must be anti_pattern (snake_case), never antiPattern.',
+  description: `Complete v2 Game Rules Kernel. Every rule requires domain. Required-severity rules must cover: ${REQUIRED_GAME_RULE_DOMAINS.join(', ')}. Allowed domains: ${GAME_RULE_DOMAINS.join(', ')}.`,
   properties: {
-    schemaVersion: { const: 1 },
+    schemaVersion: { const: 2 },
     genres: { type: 'array', maxItems: 20, items: text(80) },
     philosophies: { type: 'array', maxItems: 20, items: text(120) },
     suitableFor: text(500),
-    rules: { type: 'array', minItems: 1, maxItems: 80, items: ruleSchema },
-    tableGuidance: {
-      type: 'array',
-      maxItems: 20,
-      description: 'Each entry uses table, purpose, and fields. Do not use name.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          table: text(120),
-          purpose: text(500),
-          fields: { type: 'array', maxItems: 20, items: text(120) },
-        },
-        required: ['table', 'purpose', 'fields'],
-      },
-    },
+    rules: { type: 'array', minItems: 1, maxItems: 80, items: gameRulesKernelRuleSchema },
+    tableGuidance: tableGuidanceSchema,
   },
   required: ['schemaVersion', 'genres', 'philosophies', 'suitableFor', 'rules', 'tableGuidance'],
 };
@@ -106,7 +110,7 @@ export const gameDesignSystemVersionRequestToolSchema: JSONSchema = {
     parentVersionId: { type: 'string', format: 'uuid' },
     expectedCurrentVersionId: { type: 'string', format: 'uuid' },
     document: documentSchema,
-    rules: rulesSchema,
+    rules: gameRulesKernelToolSchema,
     artStyle: { anyOf: [artStyleSchema, { type: 'null' }] },
   },
   required: ['parentVersionId', 'expectedCurrentVersionId'],

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { resolveOfferedGameArtStylePreset } from '@/lib/game-art-style/presets';
 import { gameArtStyleInputSchema } from '@/lib/game-art-style/schema';
-import { gameDesignDocumentSchema, gameDesignRuleSetSchema } from './ruleSchema';
+import { gameDesignDocumentSchema, gameDesignRuleSetSchema, parseRuleSet } from './ruleSchema';
 
 export const gameDesignSystemVersionIdempotencyKeySchema = z.string().uuid();
 
@@ -17,6 +17,26 @@ export const createGameDesignSystemVersionRequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'At least one version component must be supplied.',
     });
+  }
+
+  if (value.rules?.schemaVersion === 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['rules', 'schemaVersion'],
+      message: 'New Game Design System versions require schemaVersion: 2.',
+    });
+  }
+
+  if (value.rules !== undefined) {
+    try {
+      parseRuleSet(value.rules);
+    } catch (error) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rules'],
+        message: error instanceof Error ? error.message : 'Invalid Game Design Rule Set.',
+      });
+    }
   }
 
   if (value.artStyle !== undefined && value.artStyle !== null) {

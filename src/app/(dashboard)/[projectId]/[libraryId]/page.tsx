@@ -44,6 +44,16 @@ import addColumIcon from "@/assets/images/addColumIcon.svg";
 import { getStudioLibraryRedirectPath } from '@/lib/studioLibraryIsolation';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { resolveTableUserRole } from '@/components/libraries/utils/tableUserRole';
+import {
+  shouldWaitForBlankLibraryBootstrap,
+  type BlankLibraryBootstrapStatus,
+} from '@/components/libraries/libraryBootstrapState';
+
+type BlankLibraryBootstrapState = {
+  libraryId: string;
+  status: Exclude<BlankLibraryBootstrapStatus, 'idle'>;
+  error?: string;
+};
 
 export default function LibraryPage() {
   const params = useParams();
@@ -59,7 +69,9 @@ export default function LibraryPage() {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
-  const hasInitializedBlankRowsRef = useRef(false);
+  const blankLibraryBootstrapInFlightRef = useRef<string | null>(null);
+  const [blankLibraryBootstrapState, setBlankLibraryBootstrapState] =
+    useState<BlankLibraryBootstrapState | null>(null);
 
   // Sync version-control open state to TopBar LibraryHeader.
   useEffect(() => {
@@ -170,6 +182,22 @@ export default function LibraryPage() {
   const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading;
   const error = projectError ? (projectError as any)?.message || 'Project not found' :
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
+  const viewingCurrentVersion = !selectedVersionId || selectedVersionId === '__current__';
+  const currentBlankLibraryBootstrap = blankLibraryBootstrapState?.libraryId === libraryId
+    ? blankLibraryBootstrapState
+    : null;
+  const blankLibraryBootstrapStatus = currentBlankLibraryBootstrap?.status ?? 'idle';
+  const waitingForBlankLibraryBootstrap = shouldWaitForBlankLibraryBootstrap({
+    schemaLoading,
+    propertyCount: tableProperties.length,
+    canInitialize: userRole !== 'viewer',
+    isGeneratedLibrary: Boolean(library?.gdd_generation_job_id),
+    viewingCurrentVersion,
+    bootstrapStatus: blankLibraryBootstrapStatus,
+  });
+  const blankLibraryBootstrapError = currentBlankLibraryBootstrap?.status === 'failed'
+    ? currentBlankLibraryBootstrap.error ?? 'Failed to initialize library'
+    : null;
 
   // Get presence and asset operations from LibraryDataContext (single source of truth)
   const {
@@ -198,16 +226,29 @@ export default function LibraryPage() {
 
   useEffect(() => {
     if (!libraryId) return;
-    if (selectedVersionId && selectedVersionId !== '__current__') return;
-    if (hasInitializedBlankRowsRef.current) return;
+    if (!viewingCurrentVersion) return;
     if (userRole === 'viewer') return;
     if (schemaLoading) return;
+    if (!librarySchema || tableProperties.length > 0) return;
     // Generated GDD tables already contain their complete rows. Never run the
     // blank-library bootstrap against them, even during a schema/data race.
-    if (library?.gdd_generation_job_id) {
-      hasInitializedBlankRowsRef.current = true;
-      return;
-    }
+    if (library?.gdd_generation_job_id) return;
+    if (currentBlankLibraryBootstrap?.status) return;
+    if (blankLibraryBootstrapInFlightRef.current === libraryId) return;
+
+    blankLibraryBootstrapInFlightRef.current = libraryId;
+    setBlankLibraryBootstrapState({ libraryId, status: 'running' });
+
+    const settleBootstrap = (
+      status: Exclude<BlankLibraryBootstrapStatus, 'idle' | 'running'>,
+      bootstrapError?: string,
+    ) => {
+      setBlankLibraryBootstrapState((current) => (
+        current?.libraryId === libraryId
+          ? { libraryId, status, error: bootstrapError }
+          : current
+      ));
+    };
 
     const initDefaultData = async () => {
       try {
@@ -218,62 +259,58 @@ export default function LibraryPage() {
           .eq('library_id', libraryId);
 
         if (error) {
-          console.error('Failed to check existing assets before initializing default data', error);
-          return;
+          throw error;
         }
         if ((count ?? 0) > 0) {
-          hasInitializedBlankRowsRef.current = true;
+          settleBootstrap('settled');
           return;
         }
 
-        const props = librarySchema?.properties ?? [];
+        // No schema and no assets: create the default ID field before the table mounts.
+        const { fieldId, created } = await ensureDefaultLibraryField(supabase, libraryId);
 
-        if (!librarySchema || props.length === 0) {
-          // 2) no schema and no assets: create the default ID field
-          const { fieldId, created } = await ensureDefaultLibraryField(supabase, libraryId);
+        // Keep the table hidden while the schema and initial rows become visible.
+        await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+        invalidateFormulaFieldMeta();
 
-          // Update the table with the latest schema (including the ID field)
-          await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
-          invalidateFormulaFieldMeta();
-
-          if (!created) {
-            hasInitializedBlankRowsRef.current = true;
-            return;
-          }
-
-          // Business requirement:
-          // When a brand new library is created (no schema & no assets),
-          // initialize the main table with 3 completely blank input rows
-          // instead of 2 pre-filled rows like "00001" / "00002".
+        if (created) {
+          // A brand-new library starts with three completely blank input rows.
           const now = Date.now();
           await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now) });
           await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 1) });
           await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 2) });
 
           await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
-        } else {
-          // 3) already has schema but no assets: don't create 3 empty rows, avoid extra empty rows in the table
         }
 
-        hasInitializedBlankRowsRef.current = true;
+        settleBootstrap('settled');
       } catch (e) {
         console.error('Failed to initialize default library data', e);
-        hasInitializedBlankRowsRef.current = false;
+        settleBootstrap(
+          'failed',
+          e instanceof Error && e.message ? e.message : 'Failed to initialize library',
+        );
+      } finally {
+        if (blankLibraryBootstrapInFlightRef.current === libraryId) {
+          blankLibraryBootstrapInFlightRef.current = null;
+        }
       }
     };
 
     void initDefaultData();
   }, [
     contextCreateAsset,
+    currentBlankLibraryBootstrap?.status,
     libraryId,
     library?.gdd_generation_job_id,
     librarySchema,
     schemaLoading,
     queryClient,
     invalidateFormulaFieldMeta,
-    selectedVersionId,
     supabase,
+    tableProperties.length,
     userRole,
+    viewingCurrentVersion,
   ]);
 
   // Presence tracking for real-time collaboration
@@ -422,7 +459,7 @@ export default function LibraryPage() {
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   };
 
-  if (loading || studioRedirectPath) {
+  if (loading || studioRedirectPath || waitingForBlankLibraryBootstrap) {
     return (
       <div className={styles.loadingContainer}>
         <div>Loading library...</div>
@@ -430,10 +467,10 @@ export default function LibraryPage() {
     );
   }
 
-  if (error) {
+  if (error || blankLibraryBootstrapError) {
     return (
       <div className={styles.errorContainer}>
-        <div className={styles.errorText}>{error}</div>
+        <div className={styles.errorText}>{error || blankLibraryBootstrapError}</div>
       </div>
     );
   }

@@ -21,6 +21,38 @@ export function getAutoTableWidth(
   return Math.max(containerWidth, columnsWidth);
 }
 
+export type AutoTableLayout = {
+  tableWidth: string;
+  tableMinWidth?: string;
+  unmeasuredColumnWidth?: string;
+};
+
+export function getAutoTableLayout(
+  columnWidths: Record<string, number>,
+  fixedColumnWidth: number,
+  containerWidth: number,
+): AutoTableLayout {
+  const columnCount = Object.keys(columnWidths).length;
+  if (columnCount === 0) {
+    const fixedWidth = `${fixedColumnWidth}px`;
+    return {
+      tableWidth: fixedWidth,
+      tableMinWidth: fixedWidth,
+    };
+  }
+
+  if (containerWidth <= 0) {
+    return {
+      tableWidth: '100%',
+      unmeasuredColumnWidth: `calc((100% - ${fixedColumnWidth}px) / ${columnCount})`,
+    };
+  }
+
+  return {
+    tableWidth: `${getAutoTableWidth(columnWidths, fixedColumnWidth, containerWidth)}px`,
+  };
+}
+
 function getDisplayLength(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === 'string') return Array.from(value).length;
