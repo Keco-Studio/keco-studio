@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { gameArtStyleInputSchema, type GameArtStyleInput, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
-import { gameDesignDocumentSchema, gameDesignRuleSetSchema, type GameDesignDocument, type GameDesignRule, type GameDesignRuleSet, type TableGuidance } from '@/lib/game-design-system/ruleSchema';
+import { gameDesignDocumentSchema, gameDesignRuleSetSchema, isGameRulesKernel, type GameDesignDocument, type GameDesignRule, type GameDesignRuleSet, type TableGuidance } from '@/lib/game-design-system/ruleSchema';
 import type { CreateGameDesignSystemVersionRequest } from '@/lib/game-design-system/versionRequest';
 import type { GameDesignSystemVersion } from '@/lib/services/gameDesignSystemService';
 import { GameDesignSystemArtStyleFields } from './GameDesignSystemArtStyleFields';
@@ -39,6 +39,7 @@ type Recovery = {
 };
 
 type ValidationTarget = { domain: 'rules' | 'art-style'; path: Array<string | number> } | null;
+type RuleField = { key: keyof GameDesignRule | 'domain'; label: string };
 
 type Props = {
   baseVersion: GameDesignSystemVersion;
@@ -49,7 +50,7 @@ type Props = {
   onRefreshLatest: () => Promise<GameDesignSystemVersion>;
 };
 
-const ruleFields: Array<{ key: keyof GameDesignRule; label: string }> = [
+const ruleFields: RuleField[] = [
   { key: 'id', label: 'Rule ID' },
   { key: 'kind', label: 'Kind' },
   { key: 'title', label: 'Rule title' },
@@ -100,6 +101,11 @@ function display(value: unknown): string {
 
 function guidanceValue(value: TableGuidance | undefined, field: keyof TableGuidance): string {
   return display(value?.[field]);
+}
+
+function ruleFieldValue(rule: GameDesignRule | undefined, key: RuleField['key']): unknown {
+  if (key === 'domain') return rule && 'domain' in rule ? rule.domain : undefined;
+  return rule?.[key];
 }
 
 function ChangeRow({ label, before, after }: { label: string; before: unknown; after: unknown }) {
@@ -366,7 +372,10 @@ export function GameDesignSystemVersionEditor({
 
       <div id={panelId} className={styles.versionEditorPanel} role="tabpanel" aria-labelledby={tabId} aria-label={sectionLabels[activeSection]}>
         {activeSection === 'document' ? <GameDesignSystemDocumentEditor value={draft.document} onChange={(documentValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, document: documentValue })); }} /> : null}
-        {activeSection === 'rules' ? <GameDesignSystemRuleEditor value={draft.rules} focusPath={validationTarget?.domain === 'rules' ? validationTarget.path : null} onChange={(rulesValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, rules: rulesValue })); }} /> : null}
+        {activeSection === 'rules' ? <>
+          {!isGameRulesKernel(draft.rules) ? <div className={styles.notice} role="status">This legacy v1 rule set does not define gameplay domains. Editing preserves the v1 rule shape and does not assign gameplay domains; create a separate v2 gameplay kernel to adopt them.</div> : null}
+          <GameDesignSystemRuleEditor value={draft.rules} focusPath={validationTarget?.domain === 'rules' ? validationTarget.path : null} onChange={(rulesValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, rules: rulesValue })); }} />
+        </> : null}
         {activeSection === 'art-style' ? <GameDesignSystemArtStyleFields originalSnapshot={workingBase.artStyle} artStyleReadError={workingBase.artStyleReadError} value={draft.artStyle} changed={domains.artStyle} focusPath={validationTarget?.domain === 'art-style' ? validationTarget.path : null} onChange={updateArtStyle} /> : null}
         {activeSection === 'review' ? (
           <section className={styles.versionReview} aria-labelledby="gds-version-review-heading">
@@ -413,7 +422,14 @@ function VersionReview({ base, reviewed }: { base: GameDesignSystemVersion; revi
         {!equal(base.rules.philosophies, nextRules.philosophies) ? <ChangeRow label="Philosophies" before={base.rules.philosophies} after={nextRules.philosophies} /> : null}
         {!equal(base.rules.suitableFor, nextRules.suitableFor) ? <ChangeRow label="Suitable for" before={base.rules.suitableFor} after={nextRules.suitableFor} /> : null}
         {pairRules(base.rules.rules, nextRules.rules).map(({ before, after }, index) => {
-          return ruleFields.map((field) => equal(before?.[field.key], after?.[field.key]) ? null : <ChangeRow key={`${index}-${field.key}`} label={`Rule ${index + 1} / ${field.label}`} before={before?.[field.key]} after={after?.[field.key]} />);
+          const fields = isGameRulesKernel(base.rules) || isGameRulesKernel(nextRules)
+            ? [...ruleFields, { key: 'domain' as const, label: 'Domain' }]
+            : ruleFields;
+          return fields.map((field) => {
+            const beforeValue = ruleFieldValue(before, field.key);
+            const afterValue = ruleFieldValue(after, field.key);
+            return equal(beforeValue, afterValue) ? null : <ChangeRow key={`${index}-${field.key}`} label={`Rule ${index + 1} / ${field.label}`} before={beforeValue} after={afterValue} />;
+          });
         })}
         {Array.from({ length: Math.max(base.rules.tableGuidance.length, nextRules.tableGuidance.length) }, (_, index) => {
           const before = base.rules.tableGuidance[index];

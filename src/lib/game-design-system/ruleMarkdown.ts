@@ -1,4 +1,10 @@
-import type { GameDesignDocument, GameDesignRuleSet } from './ruleSchema';
+import {
+  GAME_RULE_DOMAINS,
+  isGameRulesKernel,
+  type GameDesignDocument,
+  type GameDesignRule,
+  type GameDesignRuleSet,
+} from './ruleSchema';
 
 const headings: Record<GameDesignRuleSet['rules'][number]['kind'], string> = {
   principle: 'Principles',
@@ -8,7 +14,34 @@ const headings: Record<GameDesignRuleSet['rules'][number]['kind'], string> = {
   check: 'Checks',
 };
 
+const domainHeadings: Record<typeof GAME_RULE_DOMAINS[number], string> = {
+  player: 'Players',
+  objective: 'Objectives',
+  action: 'Actions',
+  object_state: 'Object States',
+  sequence: 'Sequences',
+  resource_cost: 'Resource Costs',
+  resolution_feedback: 'Resolution & Feedback',
+  spatiotemporal: 'Spatiotemporal Rules',
+  randomness: 'Randomness',
+  fallback: 'Fallbacks',
+};
+
 export const GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER = '__KECO_ATOMIC_VERSION_LINE__';
+
+function appendRule(lines: string[], rule: GameDesignRule): void {
+  lines.push(
+    '',
+    `### ${rule.id} - ${rule.title}`,
+    '',
+    rule.statement,
+    '',
+    `- Severity: ${rule.severity}`,
+    `- Applies when: ${rule.appliesWhen}`,
+  );
+  if (rule.rationale) lines.push(`- Rationale: ${rule.rationale}`);
+  if (rule.evidence) lines.push(`- Evidence: ${rule.evidence}`);
+}
 
 export function renderRuleSetMarkdown(
   ruleSet: GameDesignRuleSet,
@@ -83,24 +116,26 @@ export function renderRuleSetMarkdown(
     );
   }
 
-  (Object.keys(headings) as Array<keyof typeof headings>).forEach((kind) => {
-    const rules = ruleSet.rules.filter((rule) => rule.kind === kind);
-    if (rules.length === 0) return;
-    lines.push('', `## ${headings[kind]}`);
-    rules.forEach((rule) => {
-      lines.push(
-        '',
-        `### ${rule.id} - ${rule.title}`,
-        '',
-        rule.statement,
-        '',
-        `- Severity: ${rule.severity}`,
-        `- Applies when: ${rule.appliesWhen}`,
-      );
-      if (rule.rationale) lines.push(`- Rationale: ${rule.rationale}`);
-      if (rule.evidence) lines.push(`- Evidence: ${rule.evidence}`);
+  if (isGameRulesKernel(ruleSet)) {
+    GAME_RULE_DOMAINS.forEach((domain) => {
+      const domainRules = ruleSet.rules.filter((rule) => rule.domain === domain);
+      if (domainRules.length === 0) return;
+      lines.push('', `## ${domainHeadings[domain]}`);
+      (Object.keys(headings) as Array<keyof typeof headings>).forEach((kind) => {
+        const kindRules = domainRules.filter((rule) => rule.kind === kind);
+        if (kindRules.length === 0) return;
+        lines.push('', `### ${headings[kind]}`);
+        kindRules.forEach((rule) => appendRule(lines, rule));
+      });
     });
-  });
+  } else {
+    (Object.keys(headings) as Array<keyof typeof headings>).forEach((kind) => {
+      const rules = ruleSet.rules.filter((rule) => rule.kind === kind);
+      if (rules.length === 0) return;
+      lines.push('', `## ${headings[kind]}`);
+      rules.forEach((rule) => appendRule(lines, rule));
+    });
+  }
 
   lines.push('', '## Keco Table Guidance');
   if (ruleSet.tableGuidance.length === 0) {

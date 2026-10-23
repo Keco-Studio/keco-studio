@@ -346,6 +346,36 @@ describe('GameDesignSystemVersionEditor', () => {
     expect(screen.getByRole('status').textContent).toContain('current version');
   });
 
+  it('identifies v1 rules as legacy without assigning gameplay domains', async () => {
+    const user = userEvent.setup();
+    setup();
+
+    await openSection(user, 'Rules');
+
+    expect(screen.getByRole('status').textContent).toContain('legacy');
+    expect(screen.getByRole('status').textContent).toContain('does not assign gameplay domains');
+    expect(screen.queryByLabelText('Domain')).toBeNull();
+  });
+
+  it('routes missing v2 gameplay domain coverage back to Rules', async () => {
+    const user = userEvent.setup();
+    setup({
+      baseVersion: version({
+        rules: {
+          ...rules,
+          schemaVersion: 2,
+          rules: [{ ...rules.rules[0], domain: 'player' }],
+        },
+      }),
+    });
+    await user.type(screen.getByLabelText('Design intent'), ' changed');
+    await user.click(screen.getByRole('button', { name: 'Review changes' }));
+
+    expect(screen.getByRole('tab', { name: 'Rules' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('alert').textContent).toContain('Missing required gameplay rule domain: objective.');
+    await waitFor(() => expect(globalThis.document.activeElement).toBe(globalThis.document.getElementById('gds-version-rules-heading')));
+  });
+
   it('inherits an unsupported Art Style exactly unless replacement is explicit', async () => {
     const onCreate = jest.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

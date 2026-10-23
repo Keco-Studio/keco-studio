@@ -3,6 +3,69 @@ import { parseGameDesignDocument, parseRuleSet } from './ruleSchema';
 import { renderRuleSetMarkdown } from './ruleMarkdown';
 
 describe('Game Design System Markdown boundary', () => {
+  it('groups v2 gameplay rules by domain and then kind without changing v1 headings', () => {
+    const rules = parseRuleSet({
+      schemaVersion: 2,
+      genres: ['Strategy'],
+      philosophies: ['Readable Systems'],
+      suitableFor: 'Tactical games',
+      rules: [
+        ['player', 'principle'],
+        ['objective', 'check'],
+        ['action', 'constraint'],
+        ['object_state', 'pattern'],
+        ['sequence', 'constraint'],
+        ['resource_cost', 'constraint'],
+        ['resolution_feedback', 'check'],
+        ['fallback', 'anti_pattern'],
+      ].map(([domain, kind]) => ({
+        id: `${domain.replaceAll('_', '-')}-rule`,
+        domain,
+        kind,
+        title: `${domain} rule`,
+        statement: `Define ${domain}.`,
+        appliesWhen: 'Resolving gameplay.',
+        severity: 'required',
+      })),
+      tableGuidance: [],
+    });
+    const legacy = parseRuleSet({
+      schemaVersion: 1,
+      genres: ['Strategy'],
+      philosophies: ['Readable Systems'],
+      suitableFor: 'Tactical games',
+      rules: [{
+        id: 'legacy-constraint',
+        kind: 'constraint',
+        title: 'Legacy constraint',
+        statement: 'Keep the old structure.',
+        appliesWhen: 'Reviewing a v1 system.',
+        severity: 'required',
+      }, {
+        id: 'legacy-principle',
+        kind: 'principle',
+        title: 'Legacy principle',
+        statement: 'Render by kind.',
+        appliesWhen: 'Reviewing a v1 system.',
+        severity: 'required',
+      }],
+      tableGuidance: [],
+    });
+
+    const markdown = renderRuleSetMarkdown(rules, { title: 'Gameplay kernel', version: 2 });
+    const legacyMarkdown = renderRuleSetMarkdown(legacy, { title: 'Legacy rules', version: 1 });
+
+    expect(markdown).toContain('## Actions');
+    expect(markdown).toContain('## Resource Costs');
+    expect(markdown).toContain('### Constraints');
+    expect(markdown.indexOf('## Actions')).toBeLessThan(markdown.indexOf('## Resource Costs'));
+    expect(markdown.indexOf('## Keco Table Guidance')).toBeGreaterThan(markdown.indexOf('## Fallbacks'));
+    expect(legacyMarkdown).toContain('## Principles');
+    expect(legacyMarkdown).toContain('## Constraints');
+    expect(legacyMarkdown.indexOf('## Principles')).toBeLessThan(legacyMarkdown.indexOf('## Constraints'));
+    expect(legacyMarkdown).not.toContain('## Players');
+  });
+
   it('renders the game background section only when the document includes one', () => {
     const rules = parseRuleSet({
       schemaVersion: 1,

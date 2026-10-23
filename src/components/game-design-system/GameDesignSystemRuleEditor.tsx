@@ -10,8 +10,8 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import { diffRuleSets } from '@/lib/game-design-system/ruleDiff';
-import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
-import type { GameDesignRule, GameDesignRuleSet, TableGuidance } from '@/lib/game-design-system/ruleSchema';
+import { GAME_RULE_DOMAINS, isGameRulesKernel, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
+import type { GameDesignRule, GameDesignRuleSet, GameRuleDomain, GameRulesKernel, TableGuidance } from '@/lib/game-design-system/ruleSchema';
 import styles from './GameDesignSystemsPage.module.css';
 
 const kindLabels: Record<GameDesignRule['kind'], string> = {
@@ -20,6 +20,19 @@ const kindLabels: Record<GameDesignRule['kind'], string> = {
   pattern: 'Patterns',
   anti_pattern: 'Anti-patterns',
   check: 'Checks',
+};
+
+const domainLabels: Record<GameRuleDomain, string> = {
+  player: 'Players',
+  objective: 'Objectives',
+  action: 'Actions',
+  object_state: 'Object states',
+  sequence: 'Sequences',
+  resource_cost: 'Resource costs',
+  resolution_feedback: 'Resolution & feedback',
+  spatiotemporal: 'Spatiotemporal rules',
+  randomness: 'Randomness',
+  fallback: 'Fallbacks',
 };
 
 type ControlledProps = {
@@ -42,11 +55,13 @@ function splitList(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-function emptyRule(existing: GameDesignRule[]): GameDesignRule {
+function emptyRule(existing: GameDesignRule[], schemaVersion: 1): GameDesignRule;
+function emptyRule(existing: GameDesignRule[], schemaVersion: 2): GameRulesKernel['rules'][number];
+function emptyRule(existing: GameDesignRule[], schemaVersion: GameDesignRuleSet['schemaVersion']): GameDesignRule | GameRulesKernel['rules'][number] {
   const ids = new Set(existing.map((rule) => rule.id));
   let index = existing.length + 1;
   while (ids.has(`new-rule-${index}`)) index += 1;
-  return {
+  const rule: GameDesignRule = {
     id: `new-rule-${index}`,
     kind: 'principle',
     title: 'New rule',
@@ -54,6 +69,7 @@ function emptyRule(existing: GameDesignRule[]): GameDesignRule {
     appliesWhen: 'Describe when this rule applies.',
     severity: 'recommended',
   };
+  return schemaVersion === 2 ? { ...rule, domain: 'player' } : rule;
 }
 
 export function GameDesignSystemRuleEditor(props: Props) {
@@ -69,6 +85,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<GameDesignRule['kind'] | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<GameDesignRule['severity'] | 'all'>('all');
+  const [domainFilter, setDomainFilter] = useState<GameRuleDomain | 'all'>('all');
   const [genresText, setGenresText] = useState(() => value.genres.join(', '));
   const [philosophiesText, setPhilosophiesText] = useState(() => value.philosophies.join(', '));
   const [guidanceFieldsText, setGuidanceFieldsText] = useState(() => value.tableGuidance.map((item) => item.fields.join(', ')));
@@ -77,9 +94,10 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
     return value.rules.filter((rule) => (
       (kindFilter === 'all' || rule.kind === kindFilter)
       && (severityFilter === 'all' || rule.severity === severityFilter)
+      && (!isGameRulesKernel(value) || domainFilter === 'all' || rule.domain === domainFilter)
       && (!query || `${rule.id} ${rule.title} ${rule.statement}`.toLocaleLowerCase().includes(query))
     ));
-  }, [kindFilter, search, severityFilter, value.rules]);
+  }, [domainFilter, kindFilter, search, severityFilter, value]);
   const boundedSelectedRuleIndex = Math.min(selectedRuleIndex, Math.max(0, value.rules.length - 1));
   const selectedDraftRule = value.rules[boundedSelectedRuleIndex];
   const selectedRule = selectedDraftRule && visibleRules.includes(selectedDraftRule)
@@ -87,6 +105,9 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
     : visibleRules[0]
       ?? null;
   const actualSelectedIndex = selectedRule ? value.rules.indexOf(selectedRule) : -1;
+  const selectedKernelRule = isGameRulesKernel(value) && actualSelectedIndex >= 0
+    ? value.rules[actualSelectedIndex]
+    : null;
 
   useEffect(() => {
     if (!focusPath) return;
@@ -100,6 +121,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
         setSearch('');
         setKindFilter('all');
         setSeverityFilter('all');
+        setDomainFilter('all');
         const fieldIds: Partial<Record<keyof GameDesignRule, string>> = {
           id: 'rule-id', kind: 'rule-kind', title: 'rule-title', statement: 'rule-statement',
           appliesWhen: 'rule-applies', rationale: 'rule-rationale', severity: 'rule-severity', evidence: 'rule-evidence',
@@ -126,10 +148,23 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
   }
 
   function addRule() {
-    const rule = emptyRule(value.rules);
-    onChange({ ...value, rules: [...value.rules, rule] });
+    if (isGameRulesKernel(value)) {
+      const rule = emptyRule(value.rules, 2);
+      onChange({ ...value, rules: [...value.rules, rule] });
+    } else {
+      const rule = emptyRule(value.rules, 1);
+      onChange({ ...value, rules: [...value.rules, rule] });
+    }
     setSelectedRuleIndex(value.rules.length);
     setSettingsOpen(false);
+  }
+
+  function updateDomain(nextValue: GameRuleDomain) {
+    if (actualSelectedIndex < 0 || !isGameRulesKernel(value)) return;
+    onChange({
+      ...value,
+      rules: value.rules.map((rule, index) => index === actualSelectedIndex ? { ...rule, domain: nextValue } : rule),
+    });
   }
 
   function deleteRule() {
@@ -165,9 +200,10 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
           <button className={settingsOpen ? styles.outlineButtonActive : styles.outlineButton} type="button" aria-label="System settings" onClick={() => setSettingsOpen(true)}><SettingOutlined /> System settings</button>
         </div>
         <div className={styles.ruleFilters}>
-          <label className={styles.field}>Search rules<input className={styles.input} value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+          <label className={styles.field}>{isGameRulesKernel(value) ? 'Search gameplay rules' : 'Search rules'}<input className={styles.input} value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <label className={styles.field}>Filter by kind<select className={styles.select} value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}><option value="all">All kinds</option>{Object.entries(kindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
           <label className={styles.field}>Filter by severity<select className={styles.select} value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All severities</option><option value="required">Required</option><option value="recommended">Recommended</option><option value="warning">Warning</option></select></label>
+          {isGameRulesKernel(value) ? <label className={styles.field}>Filter by gameplay domain<select className={styles.select} value={domainFilter} onChange={(event) => setDomainFilter(event.target.value as typeof domainFilter)}><option value="all">All gameplay domains</option>{GAME_RULE_DOMAINS.map((domain) => <option key={domain} value={domain}>{domainLabels[domain]}</option>)}</select></label> : null}
           <label className={styles.compactRuleSelect}>Selected rule<select className={styles.select} value={settingsOpen ? '__settings__' : selectedRule ? String(value.rules.indexOf(selectedRule)) : ''} onChange={(event) => { if (event.target.value === '__settings__') setSettingsOpen(true); else { setSelectedRuleIndex(Number(event.target.value)); setSettingsOpen(false); } }}><option value="__settings__">System settings</option>{visibleRules.map((rule) => { const index = value.rules.indexOf(rule); return <option key={index} value={index}>{rule.title}</option>; })}</select></label>
         </div>
         {Object.entries(kindLabels).map(([kind, label]) => {
@@ -217,6 +253,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
             <div className={styles.formGrid}>
               <div className={styles.field}><label htmlFor="rule-id">Rule ID</label><input id="rule-id" className={styles.input} value={selectedRule.id} onChange={(event) => updateRule('id', event.target.value)} /></div>
               <div className={styles.field}><label htmlFor="rule-kind">Kind</label><select id="rule-kind" className={styles.select} value={selectedRule.kind} onChange={(event) => updateRule('kind', event.target.value as GameDesignRule['kind'])}>{Object.entries(kindLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></div>
+              {selectedKernelRule ? <div className={styles.field}><label htmlFor="rule-domain">Domain</label><select id="rule-domain" className={styles.select} value={selectedKernelRule.domain} onChange={(event) => updateDomain(event.target.value as GameRuleDomain)}>{GAME_RULE_DOMAINS.map((domain) => <option value={domain} key={domain}>{domainLabels[domain]}</option>)}</select></div> : null}
               <div className={styles.field}><label htmlFor="rule-title">Rule title</label><input id="rule-title" className={styles.input} value={selectedRule.title} onChange={(event) => updateRule('title', event.target.value)} /></div>
               <div className={styles.field}><label htmlFor="rule-severity">Severity</label><select id="rule-severity" className={styles.select} value={selectedRule.severity} onChange={(event) => updateRule('severity', event.target.value as GameDesignRule['severity'])}><option value="required">Required</option><option value="recommended">Recommended</option><option value="warning">Warning</option></select></div>
               <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="rule-statement">Rule statement</label><textarea id="rule-statement" className={styles.textarea} value={selectedRule.statement} onChange={(event) => updateRule('statement', event.target.value)} /></div>
@@ -225,7 +262,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
               <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="rule-evidence">Evidence</label><textarea id="rule-evidence" className={styles.textarea} value={selectedRule.evidence ?? ''} onChange={(event) => updateRule('evidence', event.target.value || undefined)} /></div>
             </div>
           </>
-        ) : <div className={styles.inlineEmpty}>No rules match the current filters.</div>}
+        ) : <div className={styles.inlineEmpty}>{isGameRulesKernel(value) ? 'No gameplay rules match the current filters.' : 'No rules match the current filters.'}</div>}
       </div>
     </section>
   );
