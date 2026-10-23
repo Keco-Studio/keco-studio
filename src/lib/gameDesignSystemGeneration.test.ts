@@ -12,18 +12,20 @@ import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 
 const validRules = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   genres: ['Strategy'],
   philosophies: ['Readable Systems'],
   suitableFor: 'Tactical games',
-  rules: [{
-    id: 'readable-state',
-    kind: 'principle',
-    title: 'Readable state',
-    statement: 'Show decision inputs.',
-    appliesWhen: 'Presenting choices.',
-    severity: 'required',
-  }],
+  rules: [
+    { id: 'player-role', domain: 'player', kind: 'constraint', title: 'Player role', statement: 'The player commands a squad.', appliesWhen: 'Starting an encounter.', severity: 'required' },
+    { id: 'objective-definition', domain: 'objective', kind: 'constraint', title: 'Objective definition', statement: 'Each encounter states a concrete objective.', appliesWhen: 'Presenting an encounter.', severity: 'required' },
+    { id: 'action-availability', domain: 'action', kind: 'constraint', title: 'Action availability', statement: 'Show available actions before commitment.', appliesWhen: 'Presenting choices.', severity: 'required' },
+    { id: 'object-state', domain: 'object_state', kind: 'constraint', title: 'Object state', statement: 'Expose relevant object states.', appliesWhen: 'Resolving actions.', severity: 'required' },
+    { id: 'resolution-sequence', domain: 'sequence', kind: 'constraint', title: 'Resolution sequence', statement: 'Resolve actions in a visible order.', appliesWhen: 'Resolving actions.', severity: 'required' },
+    { id: 'resource-cost', domain: 'resource_cost', kind: 'constraint', title: 'Resource cost', statement: 'Show resource costs before commitment.', appliesWhen: 'Presenting choices.', severity: 'required' },
+    { id: 'resolution-feedback', domain: 'resolution_feedback', kind: 'constraint', title: 'Resolution feedback', statement: 'Explain state changes after resolution.', appliesWhen: 'Completing an action.', severity: 'required' },
+    { id: 'fallback-outcome', domain: 'fallback', kind: 'constraint', title: 'Fallback outcome', statement: 'Define behavior when no valid action remains.', appliesWhen: 'No valid action is available.', severity: 'required' },
+  ],
   tableGuidance: [],
 };
 
@@ -115,6 +117,16 @@ describe('structured Game Design System generation', () => {
     expect(JSON.stringify(messages)).not.toContain('/game-art-styles/');
   });
 
+  it('requires runtime gameplay rules across the Game Rules Kernel domains', () => {
+    const [system] = buildStructuredGenerationMessages(input);
+
+    expect(system.content).toContain('runtime behavior');
+    expect(system.content).toContain('not production, design-review, or workflow rules');
+    expect(system.content).toContain('resource_cost');
+    expect(system.content).toContain('resolution_feedback');
+    expect(system.content).toContain('fallback');
+  });
+
   it('bounds large source context before sending a generation request', () => {
     const messages = buildStructuredGenerationMessages({
       ...input,
@@ -149,7 +161,11 @@ describe('structured Game Design System generation', () => {
         genres: [roguelike],
         philosophies: [readableState],
         suitableFor: chinese(0x5355, 0x4eba, 0x73a9, 0x5bb6),
-        rules: [{ ...validRules.rules[0], title: readableState, statement: chinese(0x5c55, 0x793a, 0x51b3, 0x7b56, 0x4fe1, 0x606f, 0x3002) }],
+        rules: validRules.rules.map((rule) => ({
+          ...rule,
+          title: readableState,
+          statement: chinese(0x5c55, 0x793a, 0x51b3, 0x7b56, 0x4fe1, 0x606f, 0x3002),
+        })),
       },
     };
     const complete = jest.fn(async () => complete.mock.calls.length === 1
@@ -188,8 +204,50 @@ describe('structured Game Design System generation', () => {
       : JSON.stringify(validOutput));
     const result = await generateGameDesignSystemOutput(input, complete);
     expect(result.document.coreLoop).toContain('Scout');
-    expect(result.rules.rules[0].id).toBe('readable-state');
+    expect(result.rules.rules[0].id).toBe('player-role');
     expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('repairs a v2 output that omits the required fallback domain', async () => {
+    const invalidOutput = {
+      ...validOutput,
+      rules: {
+        ...validRules,
+        rules: validRules.rules.filter((rule) => rule.domain !== 'fallback'),
+      },
+    };
+    const complete = jest.fn(async (_messages: ChatMessage[], _options?: StreamLlmOptions) => complete.mock.calls.length === 1
+      ? JSON.stringify(invalidOutput)
+      : JSON.stringify(validOutput));
+
+    const result = await generateGameDesignSystemOutput(input, complete);
+
+    expect(result).toEqual(validOutput);
+    expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content)
+      .toContain('fallback');
+    expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content)
+      .toContain('runtime behavior');
+  });
+
+  it('repairs a legacy v1 response into a v2 Game Rules Kernel', async () => {
+    const legacyOutput = {
+      ...validOutput,
+      rules: {
+        ...validRules,
+        schemaVersion: 1,
+        rules: validRules.rules.map(({ domain: _domain, ...rule }) => rule),
+      },
+    };
+    const complete = jest.fn(async (_messages: ChatMessage[], _options?: StreamLlmOptions) => complete.mock.calls.length === 1
+      ? JSON.stringify(legacyOutput)
+      : JSON.stringify(validOutput));
+
+    const result = await generateGameDesignSystemOutput(input, complete);
+
+    expect(result.rules.schemaVersion).toBe(2);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content)
+      .toContain('rules.schemaVersion must be 2');
   });
 
   it('bounds the repair request after a large first response', async () => {
@@ -206,7 +264,7 @@ describe('structured Game Design System generation', () => {
   it('retains a rules-only compatibility wrapper', async () => {
     const complete = jest.fn(async () => JSON.stringify(validOutput));
     const result = await generateGameDesignRuleSet(input, complete);
-    expect(result.rules[0].id).toBe('readable-state');
+    expect(result.rules[0].id).toBe('player-role');
   });
 
   it('tells the repair pass that table guidance entries must be objects', async () => {
