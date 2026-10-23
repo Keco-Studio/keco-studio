@@ -36,6 +36,15 @@ export function diffRuleSets(parent: GameDesignRuleSet, next: GameDesignRuleSet)
     if (previous.kind !== current.kind) {
       conflicts.push({ ruleId: id, reason: `Rule kind changed from ${previous.kind} to ${current.kind}.` });
     }
+    const previousHasDomain = 'domain' in previous;
+    const currentHasDomain = 'domain' in current;
+    if (previousHasDomain && currentHasDomain && previous.domain !== current.domain) {
+      conflicts.push({ ruleId: id, reason: `Rule domain changed from ${previous.domain} to ${current.domain}.` });
+    } else if (previousHasDomain !== currentHasDomain) {
+      const previousDomain = previousHasDomain ? previous.domain : 'legacy v1';
+      const currentDomain = currentHasDomain ? current.domain : 'legacy v1';
+      conflicts.push({ ruleId: id, reason: `Rule domain changed from ${previousDomain} to ${currentDomain}.` });
+    }
   });
 
   return { added, removed, changed, conflicts };

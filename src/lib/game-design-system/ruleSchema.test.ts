@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   buildCompatibilityGameDesignDocument,
   buildLegacyRuleSet,
+  isGameRulesKernel,
   parseGameDesignDocument,
   parseGeneratedGameDesignSystem,
   parseRuleSet,
@@ -44,6 +45,31 @@ const validDocument = {
   contentModel: 'Skills, encounters, enemies, and rewards use reusable data definitions.',
   difficultyBalance: 'Difficulty increases through richer situations rather than opaque stat inflation.',
   experiencePresentation: 'The interface previews consequences and explains state changes.',
+};
+
+const requiredDomains = [
+  'player',
+  'objective',
+  'action',
+  'object_state',
+  'sequence',
+  'resource_cost',
+  'resolution_feedback',
+  'fallback',
+] as const;
+
+const validV2 = {
+  ...valid,
+  schemaVersion: 2 as const,
+  rules: requiredDomains.map((domain) => ({
+    id: `${domain.replaceAll('_', '-')}-rule`,
+    domain,
+    kind: 'constraint' as const,
+    title: `${domain} rule`,
+    statement: 'Defines a concrete runtime rule.',
+    appliesWhen: 'Resolving gameplay.',
+    severity: 'required' as const,
+  })),
 };
 
 describe('Game Design Rule Set contract', () => {
@@ -94,6 +120,41 @@ describe('Game Design Rule Set contract', () => {
 
   it('strictly parses a valid rule set', () => {
     expect(parseRuleSet(valid)).toEqual(valid);
+  });
+
+  it('parses a complete v2 gameplay rules kernel while preserving v1 compatibility', () => {
+    expect(parseRuleSet(valid)).toEqual(valid);
+    expect(parseRuleSet(validV2)).toEqual(validV2);
+    expect(isGameRulesKernel(parseRuleSet(valid))).toBe(false);
+    expect(isGameRulesKernel(parseRuleSet(validV2))).toBe(true);
+  });
+
+  it.each([
+    ['an unknown domain', {
+      ...validV2,
+      rules: [{ ...validV2.rules[0], domain: 'unknown' }, ...validV2.rules.slice(1)],
+    }],
+    ['a rule without a domain', {
+      ...validV2,
+      rules: [
+        (({ domain: _domain, ...rule }) => rule)(validV2.rules[0]),
+        ...validV2.rules.slice(1),
+      ],
+    }],
+    ['a duplicate rule ID', {
+      ...validV2,
+      rules: [
+        validV2.rules[0],
+        { ...validV2.rules[1], id: validV2.rules[0].id },
+        ...validV2.rules.slice(2),
+      ],
+    }],
+  ])('rejects v2 rules with %s', (_label, input) => {
+    expect(() => parseRuleSet(input)).toThrow();
+  });
+
+  it('rejects v2 kernels that omit a required gameplay domain', () => {
+    expect(() => parseRuleSet({ ...validV2, rules: validV2.rules.slice(1) })).toThrow(/player/);
   });
 
   it.each([
@@ -186,6 +247,46 @@ describe('Game Design Rule Set contract', () => {
       rules: [{ ...valid.rules[0], kind: 'constraint' }],
     }));
     expect(conflict.conflicts).toEqual([{ ruleId: 'readable-state', reason: 'Rule kind changed from principle to constraint.' }]);
+  });
+
+  it('reports domain conflicts for changed v2 rules and v1/v2 rule identities', () => {
+    const v2WithSharedRuleId = parseRuleSet({
+      ...validV2,
+      rules: [
+        { ...validV2.rules[0], id: valid.rules[0].id, kind: valid.rules[0].kind },
+        ...validV2.rules.slice(1),
+      ],
+    });
+    const v2WithOptionalDomain = parseRuleSet({
+      ...validV2,
+      rules: [
+        ...validV2.rules.slice(1),
+        ...validV2.rules.slice(0, 1),
+        {
+          id: 'randomness-rule',
+          domain: 'randomness',
+          kind: 'constraint',
+          title: 'randomness rule',
+          statement: 'Defines randomness behavior.',
+          appliesWhen: 'Resolving gameplay.',
+          severity: 'required',
+        },
+      ],
+    });
+    const changedDomain = parseRuleSet({
+      ...v2WithOptionalDomain,
+      rules: [
+        ...v2WithOptionalDomain.rules.slice(0, -1),
+        { ...v2WithOptionalDomain.rules.at(-1)!, domain: 'spatiotemporal' },
+      ],
+    });
+
+    expect(diffRuleSets(parseRuleSet(valid), v2WithSharedRuleId).conflicts).toEqual([
+      { ruleId: 'readable-state', reason: 'Rule domain changed from legacy v1 to player.' },
+    ]);
+    expect(diffRuleSets(v2WithOptionalDomain, changedDomain).conflicts).toEqual([
+      { ruleId: 'randomness-rule', reason: 'Rule domain changed from randomness to spatiotemporal.' },
+    ]);
   });
 
   it('rejects rule identities reintroduced after deletion in the same lineage', () => {
