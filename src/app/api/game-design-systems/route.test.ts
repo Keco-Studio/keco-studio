@@ -40,6 +40,22 @@ const rules = {
   tableGuidance: [],
 };
 
+const oversizedRules = {
+  ...rules,
+  rules: Array.from({ length: 80 }, (_, index) => ({
+    id: `rule-${index + 1}`,
+    domain: (
+      ['player', 'objective', 'action', 'object_state', 'sequence', 'resource_cost', 'resolution_feedback', 'fallback'][index]
+      ?? 'player'
+    ),
+    kind: 'constraint',
+    title: `Rule ${index + 1}`,
+    statement: 'x'.repeat(800),
+    appliesWhen: 'Resolving gameplay.',
+    severity: 'required',
+  })),
+};
+
 describe('game design systems create route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -73,6 +89,21 @@ describe('game design systems create route', () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe('Invalid structured game rule set.');
     expect(payload.issues.fieldErrors.rules).toContain('Missing required gameplay rule domain: fallback.');
+    expect(createGameDesignSystem).not.toHaveBeenCalled();
+  });
+
+  it('returns a field error when a structurally valid v2 draft exceeds 64 KiB', async () => {
+    const response = await POST(new NextRequest('http://localhost/api/game-design-systems', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Large Tactical Rules', rules: oversizedRules }),
+    }) as never, undefined as never);
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.issues.fieldErrors.rules).toEqual([
+      expect.stringContaining('Game Design Rule Set exceeds the 64 KiB limit'),
+    ]);
     expect(createGameDesignSystem).not.toHaveBeenCalled();
   });
 

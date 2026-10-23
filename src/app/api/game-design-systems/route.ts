@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
-import { gameDesignRuleSetSchema, gameDesignSystemTitleSchema } from '@/lib/game-design-system/ruleSchema';
+import { gameDesignRuleSetSchema, gameDesignSystemTitleSchema, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { createGameDesignSystem, listGameDesignSystemsPage } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
@@ -15,6 +15,15 @@ const createSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['rules', 'schemaVersion'],
       message: 'New Game Design System drafts require schemaVersion: 2.',
+    });
+  }
+  try {
+    parseRuleSet(value.rules);
+  } catch (error) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['rules'],
+      message: error instanceof Error ? error.message : 'Invalid Game Design Rule Set.',
     });
   }
 });
