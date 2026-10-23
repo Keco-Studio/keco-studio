@@ -308,8 +308,12 @@ The GDS tool group supports account-owned systems and explicit project bindings:
   `get_game_design_system_generation` discover owned or visible systems and poll
   generation jobs.
 - `create_game_design_system`, `generate_game_design_system`, and
-  `create_game_design_system_version` create systems or immutable versions.
-  Generation and version creation use their documented idempotency keys.
+  `create_game_design_system_version` create v2 Game Rules Kernels or immutable
+  versions. Generated and newly written rules use the v2 gameplay-rule contract:
+  they describe runtime behavior across the player, objective, action,
+  object-state, sequence, resource-cost, resolution-feedback, spatiotemporal,
+  randomness, and fallback domains. Generation and version creation use their
+  documented idempotency keys.
 - `read_project_game_design_system`, `set_project_game_design_system`, and
   `clear_project_game_design_system` read or change one project's pinned system
   version. Binding changes require current owner/admin access.
@@ -331,6 +335,15 @@ project binding and forwards an `idempotencyKey` separately from its request bod
 GDS tools never delete a system or version. Idempotency conflicts and stale
 version parents must be resolved by reading current state; do not retry them
 with changed input under the same key.
+
+Older `schemaVersion: 1` systems remain readable legacy versions. They can be
+read, diffed, and hydrated in their stored shape, but new creation and version
+writes are v2-only; MCP never silently converts a v1 system or assigns gameplay
+domains to it. V2 rules are runtime behavior, not production, design-review,
+tool, team, or workflow instructions. The eight required domains are `player`,
+`objective`, `action`, `object_state`, `sequence`, `resource_cost`,
+`resolution_feedback`, and `fallback`; include `spatiotemporal` only for
+spatial or temporal mechanics and `randomness` only for random mechanics.
 
 ## Create Map V3
 

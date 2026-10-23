@@ -7,10 +7,12 @@
 
 ## Product Definition
 
-A Keco Game Design System is a reusable, versioned rule set that constrains how
-design work is produced and reviewed. It is not a generic GDD and does not store
-a project's core loop, economy, progression, or difficulty design as if those
-project-specific decisions were reusable defaults.
+A Keco Game Design System is a reusable, versioned **Game Rules Kernel** that
+states concrete runtime game behavior. A new kernel uses `schemaVersion: 2` and
+may define the project's player role, objectives, actions, state, resolution,
+costs, feedback, fallback behavior, spatial or temporal behavior, and
+randomness. It is not a generic GDD or a process manual: rules must not
+prescribe production, design-review, tool, team, or workflow processes.
 
 The canonical asset is structured JSON. A readable `GAME_DESIGN_SYSTEM.md` is a
 deterministic projection of that JSON, never the source of truth.
@@ -20,8 +22,9 @@ deterministic projection of that JSON, never the source of truth.
 ### US-1 Browse and inspect systems
 
 An authenticated user can open the global manager, browse official and personal
-systems, inspect the current version, view rules grouped by kind, see provenance,
-and compare the current version with its parent.
+systems, inspect the current version, view v2 rules grouped by gameplay domain,
+see provenance, and compare the current version with its parent. Legacy v1
+versions remain readable with their original kind-based presentation.
 
 ### US-2 Generate from real project sources
 
@@ -40,7 +43,9 @@ that accepted the job.
 ### US-4 Version and apply rules safely
 
 Editing rules creates an immutable new version. A version may inherit from one
-parent version. The UI shows added, changed, removed rules and unresolved
+parent version. New creation and version writes require a v2 Game Rules Kernel;
+legacy v1 versions remain readable, diffable, and hydratable but are never
+silently converted. The UI shows added, changed, removed rules and unresolved
 conflicts. A project owner or admin explicitly binds one concrete version; later
 versions do not silently change the project constraint. For a personal system,
 project members who are not the system owner can read only versions pinned by a
@@ -72,13 +77,29 @@ type GameDesignRule = {
   evidence?: string;          // 0..500 characters
 };
 
+type GameRuleDomain =
+  | 'player'
+  | 'objective'
+  | 'action'
+  | 'object_state'
+  | 'sequence'
+  | 'resource_cost'
+  | 'resolution_feedback'
+  | 'spatiotemporal'
+  | 'randomness'
+  | 'fallback';
+
+type GameRulesKernelRule = GameDesignRule & {
+  domain: GameRuleDomain;
+};
+
 type TableGuidance = {
   table: string;
   purpose: string;
   fields: string[];
 };
 
-type GameDesignRuleSet = {
+type LegacyGameDesignRuleSet = {
   schemaVersion: 1;
   genres: string[];
   philosophies: string[];
@@ -86,10 +107,29 @@ type GameDesignRuleSet = {
   rules: GameDesignRule[];
   tableGuidance: TableGuidance[];
 };
+
+type GameRulesKernel = {
+  schemaVersion: 2;
+  genres: string[];
+  philosophies: string[];
+  suitableFor: string;
+  rules: GameRulesKernelRule[];
+  tableGuidance: TableGuidance[];
+};
+
+type GameDesignRuleSet = LegacyGameDesignRuleSet | GameRulesKernel;
 ```
 
 Limits: at most 80 rules, 20 table-guidance entries, 20 fields per entry, and
 64 KiB serialized JSON. Unknown properties are rejected.
+
+For every v2 Game Rules Kernel, at least one `required` rule is mandatory in
+each of these eight domains: `player`, `objective`, `action`, `object_state`,
+`sequence`, `resource_cost`, `resolution_feedback`, and `fallback`.
+`spatiotemporal` is included only when declared mechanics require spatial or
+temporal behavior; `randomness` is included only when declared mechanics
+require random behavior. A v2 rule's `domain` is part of its identity for
+conflict detection.
 
 ## Version and Inheritance Semantics
 
@@ -122,6 +162,11 @@ At job creation the server:
 5. stores label, resource ID, project ID, `updated_at`, SHA-256 content hash,
    excerpt, byte count, and truncation state in the job input;
 6. passes the actual excerpt to generation.
+
+Generation treats source material as untrusted reference data and extracts game
+facts only. It produces a v2 Game Rules Kernel describing runtime behavior; it
+does not carry production, design-review, tool, team, or workflow instructions
+from sources into rules.
 
 Document excerpts are capped at 20,000 characters each. Table snapshots contain
 field names and at most 50 non-empty rows and are capped at 30,000 characters.
@@ -164,6 +209,8 @@ manual dispatch for operational recovery; overlapping runs are not cancelled.
 - All strings are normalized, control characters removed, and bounded again at
   injection time.
 - The prompt explicitly treats the block as untrusted declarative data.
+- V2 rules are runtime game facts, not instructions about production,
+  design-review, tools, teams, or workflows.
 - Rules cannot change Agent identity, system priority, tool availability,
   confirmation policy, authorization, or secret-handling behavior.
 - Only project owners and accepted admins may bind or replace a version.
@@ -202,8 +249,9 @@ different payload returns `409`.
 - Manager retains `My Systems`, `Official Presets`, search, list/detail, copy and create.
 - Detail shows metadata, grouped rules, current version, parent, diff, conflicts,
   source snapshots, and deterministic Markdown.
-- Personal metadata is editable. Rule edits create a new version and are schema
-  validated before save.
+- Personal metadata is editable. New rule creation and version writes create a
+  schema-validated v2 Game Rules Kernel; legacy v1 versions remain inspectable
+  without silently assigning gameplay domains.
 - Create uses real project/document/table selectors; project IDs are never typed.
 - A generation base selector contains official systems and systems owned by the
   current user only. A personal system readable only through a project binding
@@ -229,10 +277,15 @@ different payload returns `409`.
 
 ## Migration and Compatibility
 
-- Existing official and personal Markdown rows are converted to version 1 by a
-  deterministic compatibility rule-set parser. Rows that cannot be converted are
-  marked `needs_migration` and cannot be bound.
-- Existing project bindings are pinned to the converted version 1.
+- Existing official and personal Markdown rows may be represented as version 1
+  by a deterministic compatibility rule-set parser. Rows that cannot be
+  represented are marked `needs_migration` and cannot be bound.
+- Legacy v1 versions remain readable, diffable, and hydratable in their stored
+  shape. The system does not silently convert v1 rules to v2 or infer gameplay
+  domains for them.
+- New system creation, generated output, and version writes require a v2 Game
+  Rules Kernel. A user adopts v2 by explicitly creating a v2 kernel.
+- Existing project bindings remain pinned to their historical version.
 - `031-game-design-system` is marked superseded and must not claim completion.
 
 ## Acceptance Criteria
@@ -243,7 +296,9 @@ different payload returns `409`.
    source snapshot and generation prompt.
 3. Duplicate/empty/fake Markdown headings cannot bypass validation because JSON
    schema is canonical.
-4. Arbitrary Markdown and provenance never enter the Agent system prompt.
+4. Arbitrary Markdown and provenance never enter the Agent system prompt, and
+   kernel rules cannot prescribe production, design-review, tool, team, or
+   workflow processes.
 5. An editor cannot bind a system; an owner/admin can bind a conflict-free version.
 6. A project remains pinned to its selected version after newer versions exist.
 7. A project member cannot read the personal system owner's later versions from
@@ -251,6 +306,11 @@ different payload returns `409`.
 8. Required rules are prioritized under the Agent budget, omitted IDs are
    visible, and the validated model declaration is persisted with the reply.
 9. Tests exercise the real database and rendered UI for the critical path.
+10. Every generated and newly written rule set is a `schemaVersion: 2` Game
+    Rules Kernel with all eight required runtime domains; `spatiotemporal` and
+    `randomness` appear only when mechanics require them.
+11. Legacy v1 systems remain readable, diffable, and hydratable without a
+    silent conversion or inferred gameplay domains.
 
 ## Out of Scope
 

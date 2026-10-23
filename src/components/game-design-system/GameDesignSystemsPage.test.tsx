@@ -97,7 +97,24 @@ const artStyleSnapshot = {
 const version = {
   id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
   document: designDocument,
-  rules: { schemaVersion: 1, genres: ['Strategy'], philosophies: ['Readable Systems'], suitableFor: 'Tactical games', rules: [{ id: 'readable-state', kind: 'principle', title: 'Readable state', statement: 'Show inputs.', appliesWhen: 'Choosing.', severity: 'required' }], tableGuidance: [] },
+  rules: {
+    schemaVersion: 2,
+    genres: ['Strategy'],
+    philosophies: ['Readable Systems'],
+    suitableFor: 'Tactical games',
+    rules: [{
+      id: 'readable-state', domain: 'player', kind: 'principle', title: 'Readable state',
+      statement: 'Show inputs.', appliesWhen: 'Choosing.', severity: 'required',
+    }, ...([
+      'objective', 'action', 'object_state', 'sequence',
+      'resource_cost', 'resolution_feedback', 'fallback',
+    ] as const).map((domain) => ({
+      id: `${domain.replaceAll('_', '-')}-rule`, domain, kind: 'constraint' as const,
+      title: `${domain} rule`, statement: `Define ${domain}.`,
+      appliesWhen: 'Resolving gameplay.', severity: 'required' as const,
+    }))],
+    tableGuidance: [],
+  },
   artStyle: artStyleSnapshot,
   rendered_markdown: '# Tactical Rules', source_snapshots: [], diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] }, conflicts: [], content_hash: 'a'.repeat(64), created_by: 'user-1', created_at: '',
 };

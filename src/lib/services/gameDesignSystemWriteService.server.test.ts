@@ -42,6 +42,24 @@ const rules = {
   tableGuidance: [],
 };
 
+const kernelRules = {
+  schemaVersion: 2 as const,
+  genres: ['Strategy'],
+  philosophies: ['Readable Systems'],
+  suitableFor: 'Tactical games',
+  rules: [
+    { id: 'readable-state', domain: 'player' as const, kind: 'principle' as const, title: 'Readable state', statement: 'Expose decision inputs.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'objective-rule', domain: 'objective' as const, kind: 'constraint' as const, title: 'Objective rule', statement: 'State the current objective.', appliesWhen: 'Starting an encounter.', severity: 'required' as const },
+    { id: 'action-rule', domain: 'action' as const, kind: 'constraint' as const, title: 'Action rule', statement: 'List available actions.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'object-state-rule', domain: 'object_state' as const, kind: 'constraint' as const, title: 'Object state rule', statement: 'Expose relevant object state.', appliesWhen: 'Resolving actions.', severity: 'required' as const },
+    { id: 'sequence-rule', domain: 'sequence' as const, kind: 'constraint' as const, title: 'Sequence rule', statement: 'Resolve actions in order.', appliesWhen: 'Resolving actions.', severity: 'required' as const },
+    { id: 'resource-cost-rule', domain: 'resource_cost' as const, kind: 'constraint' as const, title: 'Resource cost rule', statement: 'Show costs before commitment.', appliesWhen: 'Presenting choices.', severity: 'required' as const },
+    { id: 'resolution-feedback-rule', domain: 'resolution_feedback' as const, kind: 'constraint' as const, title: 'Resolution feedback rule', statement: 'Explain state changes.', appliesWhen: 'Completing an action.', severity: 'required' as const },
+    { id: 'fallback-rule', domain: 'fallback' as const, kind: 'constraint' as const, title: 'Fallback rule', statement: 'Define the fallback outcome.', appliesWhen: 'No valid action remains.', severity: 'required' as const },
+  ],
+  tableGuidance: [],
+};
+
 const supportedArtStyleInput = {
   presetId: 'pixel-art' as const,
   presetVersion: 2 as const,
@@ -146,7 +164,7 @@ describe('createPublicGameDesignSystemVersion', () => {
     ['structurally unknown', { schemaVersion: 99, presetId: 'future-neon', secret: 'raw-unknown-sentinel' }],
     ['schema-malformed', { schemaVersion: 1, presetId: 'pixel-art', presetVersion: 1, secret: 'raw-malformed-sentinel' }],
   ])('inherits %s Art Style JSON exactly for a Document-only version without exposing it', async (_label, rawArtStyle) => {
-    const { client, rpc } = mockServiceClient({ versions: [versionRow({ art_style: rawArtStyle })] });
+    const { client, rpc } = mockServiceClient({ versions: [versionRow({ rules: kernelRules, art_style: rawArtStyle })] });
 
     const result = await createPublicGameDesignSystemVersion(client, createInput({
       document: { ...document, gameBackground: 'A rain-soaked orbital port.' },
@@ -156,7 +174,7 @@ describe('createPublicGameDesignSystemVersion', () => {
       p_art_style: null,
       p_inherit_art_style: true,
       p_document: { ...document, gameBackground: 'A rain-soaked orbital port.' },
-      p_rules: rules,
+      p_rules: kernelRules,
       p_parent_version_id: parentId,
       p_expected_current_version_id: currentId,
       p_idempotency_key: idempotencyKey,
@@ -172,8 +190,8 @@ describe('createPublicGameDesignSystemVersion', () => {
 
   it('inherits malformed Art Style JSON exactly for a Rules-only version', async () => {
     const rawArtStyle = { schemaVersion: 1, presetId: 'pixel-art', secret: 'rules-only-raw-sentinel' };
-    const changedRules = { ...rules, genres: ['Strategy', 'RPG'] };
-    const { client, rpc } = mockServiceClient({ versions: [versionRow({ art_style: rawArtStyle })] });
+    const changedRules = { ...kernelRules, genres: ['Strategy', 'RPG'] };
+    const { client, rpc } = mockServiceClient({ versions: [versionRow({ rules: kernelRules, art_style: rawArtStyle })] });
 
     const result = await createPublicGameDesignSystemVersion(client, createInput({ rules: changedRules }));
 
@@ -190,8 +208,8 @@ describe('createPublicGameDesignSystemVersion', () => {
   it('resolves simultaneous replacements and compiles only offered Art Style input', async () => {
     const rawArtStyle = { schemaVersion: 99, presetId: 'future-neon', secret: 'replace-me' };
     const changedDocument = { ...document, gameBackground: 'A clear desert arena.' };
-    const changedRules = { ...rules, philosophies: ['Fast feedback'] };
-    const { client, rpc } = mockServiceClient({ versions: [versionRow({ art_style: rawArtStyle })] });
+    const changedRules = { ...kernelRules, philosophies: ['Fast feedback'] };
+    const { client, rpc } = mockServiceClient({ versions: [versionRow({ rules: kernelRules, art_style: rawArtStyle })] });
 
     const result = await createPublicGameDesignSystemVersion(client, createInput({
       document: changedDocument,
@@ -218,7 +236,7 @@ describe('createPublicGameDesignSystemVersion', () => {
 
   it('treats explicit null as an Art Style removal', async () => {
     const rawArtStyle = { schemaVersion: 99, presetId: 'future-neon', secret: 'clear-me' };
-    const { client, rpc } = mockServiceClient({ versions: [versionRow({ art_style: rawArtStyle })] });
+    const { client, rpc } = mockServiceClient({ versions: [versionRow({ rules: kernelRules, art_style: rawArtStyle })] });
 
     const result = await createPublicGameDesignSystemVersion(client, createInput({ artStyle: null }));
 
@@ -233,7 +251,8 @@ describe('createPublicGameDesignSystemVersion', () => {
 
   it('defers a canonical no-op to the RPC after idempotency handling', async () => {
     const reorderedRules = {
-      rules: rules.rules.map((rule) => ({
+      rules: kernelRules.rules.map((rule) => ({
+        domain: rule.domain,
         severity: rule.severity,
         appliesWhen: rule.appliesWhen,
         statement: rule.statement,
@@ -242,17 +261,17 @@ describe('createPublicGameDesignSystemVersion', () => {
         id: rule.id,
       })),
       tableGuidance: [],
-      suitableFor: rules.suitableFor,
-      philosophies: rules.philosophies,
-      genres: rules.genres,
-      schemaVersion: 1,
+      suitableFor: kernelRules.suitableFor,
+      philosophies: kernelRules.philosophies,
+      genres: kernelRules.genres,
+      schemaVersion: 2,
     };
     const { client, rpc } = mockServiceClient({
       versions: [versionRow({ rules: reorderedRules })],
       rpcError: { code: 'P0001', message: 'VERSION_NO_CHANGES' },
     });
 
-    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules }))).rejects.toMatchObject({
+    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: kernelRules }))).rejects.toMatchObject({
       code: 'VERSION_NO_CHANGES',
     });
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
@@ -268,7 +287,7 @@ describe('createPublicGameDesignSystemVersion', () => {
   ])('rejects %s before loading raw version data', async (_label, system, code) => {
     const { client, rpc } = mockServiceClient({ system });
 
-    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: { ...rules, genres: ['RPG'] } })))
+    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: { ...kernelRules, genres: ['RPG'] } })))
       .rejects.toMatchObject({ code });
     expect(rpc).not.toHaveBeenCalled();
   });
@@ -279,23 +298,23 @@ describe('createPublicGameDesignSystemVersion', () => {
     });
 
     await expect(createPublicGameDesignSystemVersion(client, createInput({
-      rules: { ...rules, genres: ['RPG'] },
+      rules: { ...kernelRules, genres: ['RPG'] },
     }))).rejects.toMatchObject({ code: 'VERSION_PARENT_INVALID' });
     expect(rpc).not.toHaveBeenCalled();
   });
 
   it('rejects rule IDs reintroduced from any ancestor in the selected lineage', async () => {
     const ancestorId = '8afde008-e362-4fea-b538-2a37e243f896';
-    const deletedRule = { ...rules.rules[0], id: 'deleted-rule', title: 'Deleted rule' };
-    const parent = versionRow({ parent_version_id: ancestorId });
+    const deletedRule = { ...kernelRules.rules[0], id: 'deleted-rule', title: 'Deleted rule' };
+    const parent = versionRow({ parent_version_id: ancestorId, rules: kernelRules });
     const ancestor = versionRow({
       id: ancestorId,
-      rules: { ...rules, rules: [...rules.rules, deletedRule] },
+      rules: { ...kernelRules, rules: [...kernelRules.rules, deletedRule] },
     });
     const { client, rpc } = mockServiceClient({ versions: [parent, ancestor] });
 
     await expect(createPublicGameDesignSystemVersion(client, createInput({
-      rules: { ...rules, rules: [...rules.rules, deletedRule] },
+      rules: { ...kernelRules, rules: [...kernelRules.rules, deletedRule] },
     }))).rejects.toMatchObject({
       code: 'VERSION_RULE_REINTRODUCED',
       ruleIds: ['deleted-rule'],
@@ -307,10 +326,13 @@ describe('createPublicGameDesignSystemVersion', () => {
     [{ code: 'P0001', message: 'VERSION_STALE' }, 'VERSION_STALE'],
     [{ code: '23505', message: 'duplicate key: IDEMPOTENCY_CONFLICT' }, 'IDEMPOTENCY_CONFLICT'],
   ])('maps persistence conflict without retaining database details', async (rpcError, code) => {
-    const { client } = mockServiceClient({ rpcError: { ...rpcError, details: 'private-database-detail' } });
+    const { client } = mockServiceClient({
+      versions: [versionRow({ rules: kernelRules })],
+      rpcError: { ...rpcError, details: 'private-database-detail' },
+    });
 
     const caught = await createPublicGameDesignSystemVersion(client, createInput({
-      rules: { ...rules, genres: ['RPG'] },
+      rules: { ...kernelRules, genres: ['RPG'] },
     })).catch((error) => error);
 
     expect(caught).toBeInstanceOf(PublicGameDesignSystemVersionError);
@@ -321,7 +343,7 @@ describe('createPublicGameDesignSystemVersion', () => {
   it('hydrates an idempotency replay through the same sanitized boundary', async () => {
     const rawArtStyle = { schemaVersion: 99, presetId: 'future-neon', secret: 'replay-raw-sentinel' };
     const { client } = mockServiceClient({
-      versions: [versionRow({ art_style: rawArtStyle })],
+      versions: [versionRow({ rules: kernelRules, art_style: rawArtStyle })],
       rpcResult: (args) => versionRow({
         id: '94c9ea38-eed4-4b7f-a35b-d6098d2a61c1',
         art_style: rawArtStyle,
@@ -335,7 +357,7 @@ describe('createPublicGameDesignSystemVersion', () => {
     });
 
     const result = await createPublicGameDesignSystemVersion(client, createInput({
-      rules: { ...rules, genres: ['RPG'] },
+      rules: { ...kernelRules, genres: ['RPG'] },
     }));
 
     expect(result.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
@@ -343,5 +365,45 @@ describe('createPublicGameDesignSystemVersion', () => {
     expect(result).not.toHaveProperty('idempotency_key');
     expect(result).not.toHaveProperty('generation_job_id');
     expect(result).not.toHaveProperty('future_private_column');
+  });
+
+  it('rejects a legacy parent before evaluating same-ID semantic conflicts', async () => {
+    const { client, rpc } = mockServiceClient();
+
+    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: kernelRules })))
+      .rejects.toMatchObject({
+        code: 'VERSION_LEGACY_READ_ONLY',
+        publicMessage: expect.stringContaining('read-only'),
+      });
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fresh-ID v2 replacement when the selected parent is legacy v1', async () => {
+    const freshKernelRules = {
+      ...kernelRules,
+      rules: kernelRules.rules.map((rule) => rule.id === 'readable-state'
+        ? { ...rule, id: 'player-rule' }
+        : rule),
+    };
+    const { client, rpc } = mockServiceClient();
+
+    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: freshKernelRules })))
+      .rejects.toMatchObject({
+        code: 'VERSION_LEGACY_READ_ONLY',
+        publicMessage: expect.stringContaining('read-only'),
+      });
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document-only write that would preserve a legacy v1 rule set', async () => {
+    const { client, rpc } = mockServiceClient();
+
+    await expect(createPublicGameDesignSystemVersion(client, createInput({
+      document: { ...document, gameBackground: 'A rain-soaked orbital port.' },
+    }))).rejects.toMatchObject({ code: 'VERSION_LEGACY_READ_ONLY' });
+
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

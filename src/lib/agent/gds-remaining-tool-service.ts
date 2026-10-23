@@ -17,8 +17,17 @@ import { wakeQueuedGameDesignSystemJob } from './gds-job-wake';
 
 const uuid = z.string().uuid();
 const retryKey = z.string().trim().regex(/^[A-Za-z0-9._:-]{8,128}$/);
+const writableRulesSchema = gameDesignRuleSetSchema.superRefine((rules, context) => {
+  if (rules.schemaVersion === 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['schemaVersion'],
+      message: 'New Game Design System drafts require schemaVersion: 2.',
+    });
+  }
+});
 const createSchema = z.object({ title: gameDesignSystemTitleSchema,
-  summary: z.string().trim().max(1000).optional(), rules: gameDesignRuleSetSchema,
+  summary: z.string().trim().max(1000).optional(), rules: writableRulesSchema,
   idempotencyKey: uuid }).strict();
 const versionSchema = z.object({ designSystemId: uuid, idempotencyKey: gameDesignSystemVersionIdempotencyKeySchema,
   request: createGameDesignSystemVersionRequestSchema }).strict();
@@ -40,7 +49,12 @@ function failure(error: unknown): ToolResult {
   const known = error instanceof PublicGameDesignSystemVersionError ? error.publicMessage
     : error instanceof IdempotencyConflictError ? error.message
       : error instanceof Error && (error.message === RETRY_INPUT_CHANGED || /^(Authentication required|The Game Design System from this request|Only project owners|Only failed jobs|Generation job not found|GDD generation job not found|GDD generation job changed|Project Game Design System changed|No Game Design System is bound|Generating a GDD requires)/.test(error.message)) ? error.message : null;
-  return { success: false, error: error instanceof z.ZodError ? 'Invalid Game Design System parameters.'
+  const validationMessage = error instanceof z.ZodError
+    ? error.issues.find((issue) => issue.path.join('.') === 'rules.schemaVersion')?.message
+      ?? error.issues[0]?.message
+    : null;
+  return { success: false, error: error instanceof z.ZodError
+    ? validationMessage ?? 'Invalid Game Design System parameters.'
     : known ?? 'Game Design System operation failed.' };
 }
 

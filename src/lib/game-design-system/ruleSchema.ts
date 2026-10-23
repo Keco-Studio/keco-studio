@@ -11,6 +11,32 @@ export const RULE_SET_MAX_BYTES = 64 * 1024;
 
 const boundedString = (max: number) => z.string().trim().min(1).max(max);
 
+export const GAME_RULE_DOMAINS = [
+  'player',
+  'objective',
+  'action',
+  'object_state',
+  'sequence',
+  'resource_cost',
+  'resolution_feedback',
+  'spatiotemporal',
+  'randomness',
+  'fallback',
+] as const;
+
+export const REQUIRED_GAME_RULE_DOMAINS = [
+  'player',
+  'objective',
+  'action',
+  'object_state',
+  'sequence',
+  'resource_cost',
+  'resolution_feedback',
+  'fallback',
+] as const;
+
+export type GameRuleDomain = typeof GAME_RULE_DOMAINS[number];
+
 export const gameDesignRuleSchema = z.object({
   id: z.string().trim().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(80),
   kind: z.enum(['principle', 'constraint', 'pattern', 'anti_pattern', 'check']),
@@ -22,22 +48,40 @@ export const gameDesignRuleSchema = z.object({
   evidence: z.string().trim().max(500).optional(),
 }).strict();
 
+export const gameRulesKernelRuleSchema = gameDesignRuleSchema.extend({
+  domain: z.enum(GAME_RULE_DOMAINS),
+}).strict();
+
 export const tableGuidanceSchema = z.object({
   table: boundedString(120),
   purpose: boundedString(500),
   fields: z.array(boundedString(120)).max(20),
 }).strict();
 
-export const gameDesignRuleSetSchema = z.object({
+export const legacyGameDesignRuleSetSchema = z.object({
   schemaVersion: z.literal(1),
   genres: z.array(boundedString(80)).max(20),
   philosophies: z.array(boundedString(120)).max(20),
   suitableFor: boundedString(500),
   rules: z.array(gameDesignRuleSchema).min(1).max(80),
   tableGuidance: z.array(tableGuidanceSchema).max(20),
-}).strict().superRefine((value, ctx) => {
+}).strict();
+
+export const gameRulesKernelSchema = z.object({
+  schemaVersion: z.literal(2),
+  genres: z.array(boundedString(80)).max(20),
+  philosophies: z.array(boundedString(120)).max(20),
+  suitableFor: boundedString(500),
+  rules: z.array(gameRulesKernelRuleSchema).min(1).max(80),
+  tableGuidance: z.array(tableGuidanceSchema).max(20),
+}).strict();
+
+export type LegacyGameDesignRuleSet = z.infer<typeof legacyGameDesignRuleSetSchema>;
+export type GameRulesKernel = z.infer<typeof gameRulesKernelSchema>;
+
+function assertUniqueRuleIds(ruleSet: GameDesignRuleSet, ctx: z.RefinementCtx): void {
   const ids = new Set<string>();
-  value.rules.forEach((rule, index) => {
+  ruleSet.rules.forEach((rule, index) => {
     if (ids.has(rule.id)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -47,6 +91,31 @@ export const gameDesignRuleSetSchema = z.object({
     }
     ids.add(rule.id);
   });
+}
+
+function assertGameRulesKernelCoverage(ruleSet: GameRulesKernel, ctx: z.RefinementCtx): void {
+  const requiredDomains = new Set(
+    ruleSet.rules
+      .filter((rule) => rule.severity === 'required')
+      .map((rule) => rule.domain),
+  );
+  REQUIRED_GAME_RULE_DOMAINS.forEach((domain) => {
+    if (!requiredDomains.has(domain)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rules'],
+        message: `Missing required gameplay rule domain: ${domain}.`,
+      });
+    }
+  });
+}
+
+export const gameDesignRuleSetSchema = z.discriminatedUnion('schemaVersion', [
+  legacyGameDesignRuleSetSchema,
+  gameRulesKernelSchema,
+]).superRefine((ruleSet, ctx) => {
+  assertUniqueRuleIds(ruleSet, ctx);
+  if (ruleSet.schemaVersion === 2) assertGameRulesKernelCoverage(ruleSet, ctx);
 });
 
 export const gameDesignDocumentSchema = z.object({
@@ -77,6 +146,10 @@ export type GameDesignDocument = z.infer<typeof gameDesignDocumentSchema>;
 export type GeneratedGameDesignDocument = z.infer<typeof generatedGameDesignDocumentSchema>;
 export type GeneratedGameDesignSystem = z.infer<typeof generatedGameDesignSystemSchema>;
 export type TableGuidance = z.infer<typeof tableGuidanceSchema>;
+
+export function isGameRulesKernel(ruleSet: GameDesignRuleSet): ruleSet is GameRulesKernel {
+  return ruleSet.schemaVersion === 2;
+}
 
 function enforceSize<T>(value: T, label: string): T {
   const bytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;

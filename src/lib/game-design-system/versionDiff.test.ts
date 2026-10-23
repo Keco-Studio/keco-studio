@@ -32,6 +32,85 @@ const rules = parseRuleSet({
   tableGuidance: [],
 });
 
+const v2Rules = parseRuleSet({
+  ...rules,
+  schemaVersion: 2,
+  rules: [
+    {
+      id: 'readable-state',
+      domain: 'player',
+      kind: 'principle',
+      title: 'Readable state',
+      statement: 'Expose decision inputs.',
+      appliesWhen: 'Presenting choices.',
+      severity: 'required',
+    },
+    {
+      id: 'objective-rule',
+      domain: 'objective',
+      kind: 'constraint',
+      title: 'Objective rule',
+      statement: 'Define the player objective.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'action-rule',
+      domain: 'action',
+      kind: 'constraint',
+      title: 'Action rule',
+      statement: 'Define available actions.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'object-state-rule',
+      domain: 'object_state',
+      kind: 'constraint',
+      title: 'Object state rule',
+      statement: 'Define object states.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'sequence-rule',
+      domain: 'sequence',
+      kind: 'constraint',
+      title: 'Sequence rule',
+      statement: 'Define resolution sequence.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'resource-cost-rule',
+      domain: 'resource_cost',
+      kind: 'constraint',
+      title: 'Resource cost rule',
+      statement: 'Define resource costs.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'resolution-feedback-rule',
+      domain: 'resolution_feedback',
+      kind: 'constraint',
+      title: 'Resolution feedback rule',
+      statement: 'Define resolution feedback.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+    {
+      id: 'fallback-rule',
+      domain: 'fallback',
+      kind: 'constraint',
+      title: 'Fallback rule',
+      statement: 'Define fallback behavior.',
+      appliesWhen: 'Resolving gameplay.',
+      severity: 'required',
+    },
+  ],
+});
+
 const artStyle = compileGameArtStyle({
   presetId: 'pixel-art',
   presetVersion: 2,
@@ -111,6 +190,12 @@ describe('createVersionDiff', () => {
     expect(diff.added).toEqual(['visible-costs']);
     expect(diff.changed).toEqual(['readable-state']);
     expect(diff.conflicts).toEqual([]);
+  });
+
+  it('records a v1-to-v2 schema change in rule-set settings', () => {
+    const diff = createVersionDiff(snapshot(), snapshot({ rules: v2Rules }));
+
+    expect(diff.ruleSetSettingsChanged).toBe(true);
   });
 
   it('classifies Art Style changes by preset, revision, then customization priority', () => {

@@ -42,11 +42,13 @@ function versionRequestIssues(error: {
 
 const VERSION_ERROR_STATUS: Partial<Record<PublicGameDesignSystemVersionErrorCode, number>> = {
   VERSION_REQUEST_INVALID: 400,
+  VERSION_LEGACY_READ_ONLY: 409,
   VERSION_SYSTEM_NOT_FOUND: 404,
   VERSION_FORBIDDEN: 403,
   VERSION_PARENT_INVALID: 400,
   VERSION_LINEAGE_INVALID: 400,
   VERSION_RULE_REINTRODUCED: 409,
+  VERSION_RULE_CONFLICT: 409,
   VERSION_NO_CHANGES: 409,
   VERSION_STALE: 409,
   IDEMPOTENCY_CONFLICT: 409,
@@ -99,6 +101,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
         error: error.publicMessage,
         code: publicCode,
         ...(error.ruleIds ? { ruleIds: error.ruleIds } : {}),
+        ...(error.conflicts ? { conflicts: error.conflicts } : {}),
       }, { status: VERSION_ERROR_STATUS[error.code] ?? 500 });
     }
     console.error('[POST /api/game-design-systems/:id/versions] code=VERSION_CREATE_FAILED');

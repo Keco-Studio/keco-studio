@@ -12,6 +12,13 @@ export class CopyOutputDeletedError extends Error {
   }
 }
 
+export class LegacyGameDesignSystemCopyError extends Error {
+  constructor() {
+    super('Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be copied. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.');
+    this.name = 'LegacyGameDesignSystemCopyError';
+  }
+}
+
 export async function copyAgentGameDesignSystem(
   service: SupabaseClient,
   source: GameDesignSystem,
@@ -29,6 +36,7 @@ export async function copyAgentGameDesignSystem(
   if (!version || version.system_id !== source.id || !source.current_version_id) {
     throw new Error('Source system has no readable version.');
   }
+  if (version.rules.schemaVersion !== 2) throw new LegacyGameDesignSystemCopyError();
 
   const title = `${source.title} (Copy)`;
   const rendered = renderRuleSetMarkdown(version.rules, {

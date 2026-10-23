@@ -229,11 +229,14 @@ describe('AI usage feature attribution', () => {
         contentModel: 'Data.', difficultyBalance: 'Situations.', experiencePresentation: 'Explain.',
       },
       rules: {
-        schemaVersion: 1, genres: ['Strategy'], philosophies: ['Readable'], suitableFor: 'Solo',
-        rules: [{
-          id: 'readable-state', kind: 'principle', title: 'Readable state',
-          statement: 'Show costs before commitment.', appliesWhen: 'Presenting choices.', severity: 'required',
-        }],
+        schemaVersion: 2, genres: ['Strategy'], philosophies: ['Readable'], suitableFor: 'Solo',
+        rules: [
+          'player', 'objective', 'action', 'object_state', 'sequence',
+          'resource_cost', 'resolution_feedback', 'fallback',
+        ].map((domain) => ({
+          id: `${domain.replaceAll('_', '-')}-rule`, domain, kind: 'constraint', title: `${domain} rule`,
+          statement: `Define ${domain} runtime behavior.`, appliesWhen: 'Resolving gameplay.', severity: 'required',
+        })),
         tableGuidance: [],
       },
     };
