@@ -29,10 +29,10 @@ const domainHeadings: Record<typeof GAME_RULE_DOMAINS[number], string> = {
 
 export const GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER = '__KECO_ATOMIC_VERSION_LINE__';
 
-function appendRule(lines: string[], rule: GameDesignRule): void {
+function appendRule(lines: string[], rule: GameDesignRule, headingLevel: 3 | 4 = 3): void {
   lines.push(
     '',
-    `### ${rule.id} - ${rule.title}`,
+    `${'#'.repeat(headingLevel)} ${rule.id} - ${rule.title}`,
     '',
     rule.statement,
     '',
@@ -125,7 +125,7 @@ export function renderRuleSetMarkdown(
         const kindRules = domainRules.filter((rule) => rule.kind === kind);
         if (kindRules.length === 0) return;
         lines.push('', `### ${headings[kind]}`);
-        kindRules.forEach((rule) => appendRule(lines, rule));
+        kindRules.forEach((rule) => appendRule(lines, rule, 4));
       });
     });
   } else {

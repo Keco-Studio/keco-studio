@@ -42,6 +42,32 @@ const projectContext = {
   supabase: {},
 } as unknown as ProjectMcpRequestContext;
 
+const v2Rules = {
+  schemaVersion: 2,
+  genres: ["Strategy"],
+  philosophies: ["Readable Systems"],
+  suitableFor: "Tactical games",
+  rules: [
+    "player",
+    "objective",
+    "action",
+    "object_state",
+    "sequence",
+    "resource_cost",
+    "resolution_feedback",
+    "fallback",
+  ].map((domain) => ({
+    id: `${domain.replaceAll("_", "-")}-rule`,
+    domain,
+    kind: "constraint",
+    title: `${domain} rule`,
+    statement: `Define ${domain} runtime behavior.`,
+    appliesWhen: "Resolving gameplay.",
+    severity: "required",
+  })),
+  tableGuidance: [],
+};
+
 function recordingServer(): {
   server: McpServer;
   tools: RegisteredTool[];
@@ -130,6 +156,50 @@ Deno.test("GDS tools register the approved account and project schemas", () => {
       false,
     );
   }
+});
+
+Deno.test("GDS mutation schemas require complete v2 Game Rules Kernels", () => {
+  const { server, tools } = recordingServer();
+  registerGdsTools(server, accountContext, { callApp: async () => ({}) });
+  const create = tools.find((tool) => tool.name === "create_game_design_system")!;
+  const version = tools.find((tool) => tool.name === "create_game_design_system_version")!;
+  const legacyRules = {
+    schemaVersion: 1,
+    genres: ["Strategy"],
+    philosophies: [],
+    suitableFor: "Tactical games",
+    rules: [{
+      id: "readable-state",
+      kind: "principle",
+      title: "Readable state",
+      statement: "Keep state readable.",
+      appliesWhen: "During play",
+      severity: "required",
+    }],
+    tableGuidance: [],
+  };
+  const incompleteRules = {
+    ...v2Rules,
+    rules: v2Rules.rules.filter((rule) => rule.domain !== "fallback"),
+  };
+
+  assertEquals(create.config.inputSchema.safeParse({ title: "Tactics", rules: v2Rules }).success, true);
+  assertEquals(create.config.inputSchema.safeParse({ title: "Legacy", rules: legacyRules }).success, false);
+  assertEquals(create.config.inputSchema.safeParse({ title: "Incomplete", rules: incompleteRules }).success, false);
+  assertEquals(version.config.inputSchema.safeParse({
+    systemId: "22222222-2222-4222-8222-222222222222",
+    parentVersionId: "33333333-3333-4333-8333-333333333333",
+    expectedCurrentVersionId: "33333333-3333-4333-8333-333333333333",
+    rules: v2Rules,
+    idempotencyKey: "44444444-4444-4444-8444-444444444444",
+  }).success, true);
+  assertEquals(version.config.inputSchema.safeParse({
+    systemId: "22222222-2222-4222-8222-222222222222",
+    parentVersionId: "33333333-3333-4333-8333-333333333333",
+    expectedCurrentVersionId: "33333333-3333-4333-8333-333333333333",
+    rules: legacyRules,
+    idempotencyKey: "44444444-4444-4444-8444-444444444444",
+  }).success, false);
 });
 
 Deno.test("GDS read and project handlers map to encoded app routes", async () => {
@@ -308,21 +378,7 @@ Deno.test("GDS mutations forward bodies and idempotency keys", async () => {
     systemId: "22222222-2222-4222-8222-222222222222",
     parentVersionId: "33333333-3333-4333-8333-333333333333",
     expectedCurrentVersionId: "33333333-3333-4333-8333-333333333333",
-    rules: {
-      schemaVersion: 1,
-      genres: ["Strategy"],
-      philosophies: [],
-      suitableFor: "Tactical games",
-      rules: [{
-        id: "readable-state",
-        kind: "principle",
-        title: "Readable state",
-        statement: "Keep state readable.",
-        appliesWhen: "During play",
-        severity: "required",
-      }],
-      tableGuidance: [],
-    },
+    rules: v2Rules,
     idempotencyKey: "44444444-4444-4444-8444-444444444444",
   });
 

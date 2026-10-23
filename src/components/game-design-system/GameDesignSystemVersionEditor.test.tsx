@@ -29,6 +29,44 @@ const designDocument = {
 };
 
 const rules = {
+  schemaVersion: 2 as const,
+  genres: ['Strategy'],
+  philosophies: ['Readable Systems'],
+  suitableFor: 'Turn-based tactical games',
+  rules: [{
+    id: 'readable-state',
+    domain: 'player' as const,
+    kind: 'principle' as const,
+    title: 'Readable state',
+    statement: 'Show action inputs.',
+    rationale: 'Players need confidence.',
+    appliesWhen: 'Choosing an action.',
+    severity: 'required' as const,
+    evidence: 'Observed in playtests.',
+  }, {
+    id: 'bounded-randomness',
+    domain: 'randomness' as const,
+    kind: 'constraint' as const,
+    title: 'Bounded randomness',
+    statement: 'Keep outcome ranges visible.',
+    appliesWhen: 'Resolving uncertain actions.',
+    severity: 'recommended' as const,
+  }, ...([
+    'player', 'objective', 'action', 'object_state', 'sequence',
+    'resource_cost', 'resolution_feedback', 'fallback',
+  ] as const).map((domain) => ({
+    id: `${domain.replaceAll('_', '-')}-rule`,
+    domain,
+    kind: 'constraint' as const,
+    title: `${domain} rule`,
+    statement: `Define ${domain}.`,
+    appliesWhen: 'Resolving gameplay.',
+    severity: 'required' as const,
+  }))],
+  tableGuidance: [{ table: 'Units', purpose: 'Track combatants.', fields: ['Name', 'Role'] }],
+};
+
+const legacyRules = {
   schemaVersion: 1 as const,
   genres: ['Strategy'],
   philosophies: ['Readable Systems'],
@@ -42,15 +80,8 @@ const rules = {
     appliesWhen: 'Choosing an action.',
     severity: 'required' as const,
     evidence: 'Observed in playtests.',
-  }, {
-    id: 'bounded-randomness',
-    kind: 'constraint' as const,
-    title: 'Bounded randomness',
-    statement: 'Keep outcome ranges visible.',
-    appliesWhen: 'Resolving uncertain actions.',
-    severity: 'recommended' as const,
   }],
-  tableGuidance: [{ table: 'Units', purpose: 'Track combatants.', fields: ['Name', 'Role'] }],
+  tableGuidance: [],
 };
 
 const artStyle: GameArtStyleSnapshot = {
@@ -212,12 +243,13 @@ describe('GameDesignSystemVersionEditor', () => {
       expectedCurrentVersionId: '11111111-1111-4111-8111-111111111111',
       document: { ...designDocument, gameBackground: 'A sunlit floating city linked by glider routes.' },
       rules: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         genres: ['Strategy', 'Roguelike'],
         philosophies: ['Readable Systems', 'Player Agency'],
         suitableFor: 'Tactical expeditions',
         rules: [{
           id: 'visible-intent',
+          domain: 'player',
           kind: 'pattern',
           title: 'Visible intent',
           statement: 'Preview action costs and outcomes.',
@@ -225,7 +257,7 @@ describe('GameDesignSystemVersionEditor', () => {
           appliesWhen: 'Committing a crew action.',
           severity: 'warning',
           evidence: 'Validated in expedition tests.',
-        }, rules.rules[1]],
+        }, ...rules.rules.slice(1)],
         tableGuidance: [{ table: 'Expeditions', purpose: 'Track routes and crews.', fields: ['Route', 'Crew', 'Risk'] }],
       },
       artStyle: {
@@ -346,15 +378,15 @@ describe('GameDesignSystemVersionEditor', () => {
     expect(screen.getByRole('status').textContent).toContain('current version');
   });
 
-  it('identifies v1 rules as legacy without assigning gameplay domains', async () => {
-    const user = userEvent.setup();
-    setup();
+  it('keeps legacy v1 versions read-only and directs users to author a separate v2 kernel', () => {
+    setup({ baseVersion: version({ rules: legacyRules }) });
 
-    await openSection(user, 'Rules');
-
-    expect(screen.getByRole('status').textContent).toContain('legacy');
-    expect(screen.getByRole('status').textContent).toContain('does not assign gameplay domains');
+    expect(screen.getByRole('status').textContent).toContain('read-only');
+    expect(screen.getByRole('status').textContent).toContain('separate schemaVersion: 2 Game Rules Kernel');
     expect(screen.queryByLabelText('Domain')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create version' })).toBeNull();
+    expect(screen.queryByLabelText('Design intent')).toBeNull();
   });
 
   it('routes missing v2 gameplay domain coverage back to Rules', async () => {
@@ -363,8 +395,7 @@ describe('GameDesignSystemVersionEditor', () => {
       baseVersion: version({
         rules: {
           ...rules,
-          schemaVersion: 2,
-          rules: [{ ...rules.rules[0], domain: 'player' }],
+          rules: [rules.rules[0]],
         },
       }),
     });
@@ -431,7 +462,7 @@ describe('GameDesignSystemVersionEditor', () => {
     const user = userEvent.setup();
     setup();
     await openSection(user, 'Rules');
-    await user.type(screen.getByLabelText('Search rules'), 'bounded');
+    await user.type(screen.getByLabelText('Search gameplay rules'), 'bounded');
     await waitFor(() => expect((screen.getByLabelText('Selected rule') as HTMLSelectElement).selectedOptions[0]?.text).toBe('Bounded randomness'));
     await user.click(screen.getByRole('button', { name: 'System settings' }));
     await user.selectOptions(screen.getByLabelText('Selected rule'), 'Bounded randomness');

@@ -7,11 +7,12 @@ import type {
 } from '@/lib/gameDesignSystem';
 import {
   buildCompatibilityGameDesignDocument,
-  buildLegacyRuleSet,
+  isGameRulesKernel,
   parseGameDesignDocument,
   parseRuleSet,
   type GameDesignDocument,
   type GameDesignRuleSet,
+  type GameRulesKernel,
 } from '@/lib/game-design-system/ruleSchema';
 import { GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER, renderRuleSetMarkdown } from '@/lib/game-design-system/ruleMarkdown';
 import type { GameDesignRuleDiff } from '@/lib/game-design-system/ruleDiff';
@@ -29,6 +30,28 @@ export type GameDesignSystemSource = 'official' | 'user' | 'team';
 export type GameDesignSystemStatus = 'draft' | 'published';
 export type GameDesignSystemJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type GameDesignSystemJobPhase = 'collecting' | 'generating' | 'validating' | 'saving' | 'completed' | 'failed';
+
+export class LegacyGameDesignSystemMutationError extends Error {
+  readonly code = 'LEGACY_RULE_SET_READ_ONLY';
+  readonly publicMessage: string;
+
+  constructor(action: 'create' | 'version' | 'copy') {
+    const message = action === 'copy'
+      ? 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be copied. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.'
+      : action === 'version'
+        ? 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be versioned. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.'
+        : 'New Game Design Systems require schemaVersion: 2. Author a complete Game Rules Kernel with fresh rule IDs.';
+    super(message);
+    this.name = 'LegacyGameDesignSystemMutationError';
+    this.publicMessage = message;
+  }
+}
+
+function parseWritableGameRulesKernel(value: unknown, action: 'create' | 'version'): GameRulesKernel {
+  const rules = parseRuleSet(value);
+  if (!isGameRulesKernel(rules)) throw new LegacyGameDesignSystemMutationError(action);
+  return rules;
+}
 
 export type GameDesignSystemProvenance = {
   description?: string;
@@ -534,7 +557,11 @@ export async function createGameDesignSystemVersion(
     idempotencyKey?: string | null;
   },
 ): Promise<GameDesignSystemVersion> {
-  const rules = parseRuleSet(input.rules);
+  const rules = parseWritableGameRulesKernel(input.rules, 'version');
+  const parentRules = input.parentVersion ? parseRuleSet(input.parentVersion.rules) : null;
+  if (parentRules && !isGameRulesKernel(parentRules)) {
+    throw new LegacyGameDesignSystemMutationError('version');
+  }
   const document = input.document
     ? parseGameDesignDocument(input.document)
     : input.parentVersion?.document
@@ -544,7 +571,6 @@ export async function createGameDesignSystemVersion(
     ? input.artStyle
     : input.parentVersion?.artStyle ?? null;
   const artStyle = artStyleValue == null ? null : parseRetainedGameArtStyleSnapshot(artStyleValue);
-  const parentRules = input.parentVersion ? parseRuleSet(input.parentVersion.rules) : null;
   const parentDocument = parentRules
     ? input.parentVersion?.document
       ? parseGameDesignDocument(input.parentVersion.document)
@@ -604,9 +630,8 @@ export async function createGameDesignSystem(
     status?: GameDesignSystemStatus;
   },
 ): Promise<GameDesignSystem> {
-  const rules = input.rules
-    ? parseRuleSet(input.rules)
-    : buildLegacyRuleSet({ genres: input.genres, philosophies: input.philosophies, suitableFor: input.suitableFor, body: input.body ?? '' });
+  if (!input.rules) throw new LegacyGameDesignSystemMutationError('create');
+  const rules = parseWritableGameRulesKernel(input.rules, 'create');
   if (input.generationJobId) {
     const existing = await supabase.from('game_design_systems').select(SYSTEM_COLUMNS)
       .eq('generation_job_id', input.generationJobId).maybeSingle();
@@ -682,7 +707,7 @@ export async function createAgentStructuredGameDesignSystem(
   ownerId: string,
   input: { idempotencyKey: string; title: string; summary?: string; rules: unknown },
 ): Promise<GameDesignSystem> {
-  const rules = parseRuleSet(input.rules);
+  const rules = parseWritableGameRulesKernel(input.rules, 'create');
   const document = buildCompatibilityGameDesignDocument(rules, { title: input.title });
   const diff = createVersionDiff(null, { document, rules, artStyle: null });
   const rendered = renderRuleSetMarkdown(rules, {
@@ -734,6 +759,9 @@ export async function updateGameDesignSystem(
 export async function copyGameDesignSystem(supabase: SupabaseClient, source: GameDesignSystem, ownerId: string): Promise<GameDesignSystem> {
   const detail = await getGameDesignSystemDetail(supabase, source.id, { snapshotClient: supabase });
   if (!detail?.current_version) throw new Error('Source system has no readable version.');
+  if (!isGameRulesKernel(detail.current_version.rules)) {
+    throw new LegacyGameDesignSystemMutationError('copy');
+  }
   return createGameDesignSystem(supabase, ownerId, {
     title: `${source.title} (Copy)`,
     summary: source.summary ?? undefined,

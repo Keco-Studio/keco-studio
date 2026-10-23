@@ -30,7 +30,9 @@ jest.mock('@/lib/services/gameDesignSystemWriteService.server', () => {
     ) {
       const publicMessage = code === 'VERSION_RULE_CONFLICT'
         ? 'Version contains incompatible rule changes.'
-        : 'Invalid version request.';
+        : code === 'VERSION_LEGACY_READ_ONLY'
+          ? 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be versioned. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.'
+          : 'Invalid version request.';
       super(publicMessage);
       this.name = 'PublicGameDesignSystemVersionError';
       this.code = code;
@@ -140,6 +142,24 @@ describe('game design system version create route', () => {
       error: 'Version contains incompatible rule changes.',
       code: 'VERSION_RULE_CONFLICT',
       conflicts: [{ ruleId: 'player-role', reason: 'Rule domain changed from legacy v1 to player.' }],
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it('maps legacy-parent version attempts to an actionable 409 response', async () => {
+    mockCreatePublicGameDesignSystemVersion.mockRejectedValueOnce(
+      new PublicGameDesignSystemVersionError('VERSION_LEGACY_READ_ONLY'),
+    );
+
+    const response = await POST(request({
+      parentVersionId,
+      expectedCurrentVersionId: parentVersionId,
+      rules,
+    }) as never, { params: Promise.resolve({ id: systemId }) } as never);
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be versioned. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.',
+      code: 'VERSION_LEGACY_READ_ONLY',
     });
     expect(response.status).toBe(409);
   });

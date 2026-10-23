@@ -18,9 +18,32 @@ const idempotencyKey = z.string().trim().min(8).max(128)
   .regex(/^[A-Za-z0-9._:-]+$/);
 const versionIdempotencyKey = z.string().uuid();
 const boundedString = (max: number) => z.string().trim().min(1).max(max);
+const GAME_RULE_DOMAINS = [
+  "player",
+  "objective",
+  "action",
+  "object_state",
+  "sequence",
+  "resource_cost",
+  "resolution_feedback",
+  "spatiotemporal",
+  "randomness",
+  "fallback",
+] as const;
+const REQUIRED_GAME_RULE_DOMAINS = [
+  "player",
+  "objective",
+  "action",
+  "object_state",
+  "sequence",
+  "resource_cost",
+  "resolution_feedback",
+  "fallback",
+] as const;
 
 const ruleSchema = z.object({
   id: z.string().trim().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(80),
+  domain: z.enum(GAME_RULE_DOMAINS),
   kind: z.enum(["principle", "constraint", "pattern", "anti_pattern", "check"]),
   title: boundedString(120),
   statement: boundedString(800),
@@ -31,7 +54,7 @@ const ruleSchema = z.object({
 }).strict();
 
 const ruleSetSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   genres: z.array(boundedString(80)).max(20),
   philosophies: z.array(boundedString(120)).max(20),
   suitableFor: boundedString(500),
@@ -43,7 +66,33 @@ const ruleSetSchema = z.object({
       fields: z.array(boundedString(120)).max(20),
     }).strict(),
   ).max(20),
-}).strict();
+}).strict().superRefine((ruleSet, context) => {
+  const ids = new Set<string>();
+  ruleSet.rules.forEach((rule, index) => {
+    if (ids.has(rule.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rules", index, "id"],
+        message: `Duplicate rule ID: ${rule.id}`,
+      });
+    }
+    ids.add(rule.id);
+  });
+  const requiredDomains = new Set(
+    ruleSet.rules
+      .filter((rule) => rule.severity === "required")
+      .map((rule) => rule.domain),
+  );
+  for (const domain of REQUIRED_GAME_RULE_DOMAINS) {
+    if (!requiredDomains.has(domain)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rules"],
+        message: `Missing required gameplay rule domain: ${domain}.`,
+      });
+    }
+  }
+});
 
 const documentSchema = z.object({
   gameBackground: boundedString(4000).optional(),
@@ -443,7 +492,7 @@ export function registerGdsTools(
   }).strict();
   server.registerTool("create_game_design_system", {
     description:
-      "Create an owned Game Design System from a complete structured rule set.",
+      "Create an owned Game Design System from a complete schemaVersion 2 Game Rules Kernel. Legacy schemaVersion 1 systems are read-only.",
     inputSchema: createSchema,
     annotations: writeAnnotations,
   }, async (input: z.infer<typeof createSchema>) => {
@@ -533,7 +582,7 @@ export function registerGdsTools(
   );
   server.registerTool("create_game_design_system_version", {
     description:
-      "Create an idempotent version under an owned Game Design System.",
+      "Create an idempotent version under an owned schemaVersion 2 Game Design System. Legacy schemaVersion 1 systems are read-only; author a separate v2 kernel with fresh rule IDs.",
     inputSchema: versionSchema,
     annotations: { ...writeAnnotations, idempotentHint: true },
   }, async (input: z.infer<typeof versionSchema>) => {

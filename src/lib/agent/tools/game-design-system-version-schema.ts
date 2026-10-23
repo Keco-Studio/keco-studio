@@ -26,22 +26,6 @@ const documentSchema: JSONSchema = {
   ],
 };
 
-const legacyRuleSchema: JSONSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    id: { type: 'string', pattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$', maxLength: 80 },
-    kind: { type: 'string', enum: ['principle', 'constraint', 'pattern', 'anti_pattern', 'check'] },
-    title: text(120),
-    statement: text(800),
-    rationale: { type: 'string', maxLength: 1200 },
-    appliesWhen: text(500),
-    severity: { type: 'string', enum: ['required', 'recommended', 'warning'] },
-    evidence: { type: 'string', maxLength: 500 },
-  },
-  required: ['id', 'kind', 'title', 'statement', 'appliesWhen', 'severity'],
-};
-
 const gameRulesKernelRuleSchema: JSONSchema = {
   type: 'object',
   additionalProperties: false,
@@ -75,22 +59,7 @@ const tableGuidanceSchema: JSONSchema = {
   },
 };
 
-const legacyRulesSchema: JSONSchema = {
-  type: 'object',
-  additionalProperties: false,
-  description: 'Legacy v1 complete replacement rule set for historical compatibility only. kind must be anti_pattern (snake_case), never antiPattern.',
-  properties: {
-    schemaVersion: { const: 1 },
-    genres: { type: 'array', maxItems: 20, items: text(80) },
-    philosophies: { type: 'array', maxItems: 20, items: text(120) },
-    suitableFor: text(500),
-    rules: { type: 'array', minItems: 1, maxItems: 80, items: legacyRuleSchema },
-    tableGuidance: tableGuidanceSchema,
-  },
-  required: ['schemaVersion', 'genres', 'philosophies', 'suitableFor', 'rules', 'tableGuidance'],
-};
-
-const gameRulesKernelSchema: JSONSchema = {
+export const gameRulesKernelToolSchema: JSONSchema = {
   type: 'object',
   additionalProperties: false,
   description: `Complete v2 Game Rules Kernel. Every rule requires domain. Required-severity rules must cover: ${REQUIRED_GAME_RULE_DOMAINS.join(', ')}. Allowed domains: ${GAME_RULE_DOMAINS.join(', ')}.`,
@@ -141,7 +110,7 @@ export const gameDesignSystemVersionRequestToolSchema: JSONSchema = {
     parentVersionId: { type: 'string', format: 'uuid' },
     expectedCurrentVersionId: { type: 'string', format: 'uuid' },
     document: documentSchema,
-    rules: { anyOf: [legacyRulesSchema, gameRulesKernelSchema] },
+    rules: gameRulesKernelToolSchema,
     artStyle: { anyOf: [artStyleSchema, { type: 'null' }] },
   },
   required: ['parentVersionId', 'expectedCurrentVersionId'],

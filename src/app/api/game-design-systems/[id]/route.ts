@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
-import { copyGameDesignSystem, getGameDesignSystem, getGameDesignSystemDetail, updateGameDesignSystem } from '@/lib/services/gameDesignSystemService';
+import { copyGameDesignSystem, getGameDesignSystem, getGameDesignSystemDetail, LegacyGameDesignSystemMutationError, updateGameDesignSystem } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { redactGameDesignSystemDetailForViewer } from '@/lib/game-design-system/sourceVisibility.server';
 import { gameDesignSystemTitleSchema } from '@/lib/game-design-system/ruleSchema';
@@ -136,6 +136,9 @@ export const POST = withAuth(async function POST(_request, { params }: Params, {
     }
     return NextResponse.json({ system: await copyGameDesignSystem(getSupabaseServiceRoleClient(), source, user.id) }, { status: 201 });
   } catch (error) {
+    if (error instanceof LegacyGameDesignSystemMutationError) {
+      return NextResponse.json({ error: error.publicMessage, code: error.code }, { status: 409 });
+    }
     console.error('[POST /api/game-design-systems/:id]', error);
     return NextResponse.json({ error: 'Failed to copy Game Design System.' }, { status: 400 });
   }

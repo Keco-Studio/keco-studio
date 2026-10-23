@@ -1,13 +1,28 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
-import { buildCompatibilityGameDesignDocument, buildLegacyRuleSet } from '@/lib/game-design-system/ruleSchema';
+import { buildCompatibilityGameDesignDocument, buildLegacyRuleSet, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { IdempotencyConflictError, type GameDesignSystem } from '@/lib/services/gameDesignSystemService';
 
 const sourceId = '10000000-0000-4000-8000-000000000001';
 const versionId = '10000000-0000-4000-8000-000000000002';
 const actorId = '10000000-0000-4000-8000-000000000003';
 const key = '10000000-0000-4000-8000-000000000004';
-const rules = buildLegacyRuleSet({ genres: ['Strategy'], philosophies: [], body: 'Clear choices.' });
+const legacyRules = buildLegacyRuleSet({ genres: ['Strategy'], philosophies: [], body: 'Clear choices.' });
+const rules = parseRuleSet({
+  schemaVersion: 2,
+  genres: ['Strategy'],
+  philosophies: [],
+  suitableFor: 'Tactical games',
+  rules: [
+    'player', 'objective', 'action', 'object_state', 'sequence',
+    'resource_cost', 'resolution_feedback', 'fallback',
+  ].map((domain) => ({
+    id: `${domain.replaceAll('_', '-')}-rule`, domain, kind: 'constraint',
+    title: `${domain} rule`, statement: `Define ${domain}.`,
+    appliesWhen: 'Resolving gameplay.', severity: 'required',
+  })),
+  tableGuidance: [],
+});
 const document = buildCompatibilityGameDesignDocument(rules, { title: 'Original' });
 const source = { id: sourceId, title: 'Original', summary: 'Summary', owner_id: actorId,
   source: 'user', current_version_id: versionId, updated_at: '2026-09-28T00:00:00Z',
@@ -53,4 +68,19 @@ it('maps conflicting request keys and refuses sources without a current version'
   await expect(copyAgentGameDesignSystem(service, source, actorId, key))
     .rejects.toThrow('Source system has no readable version.');
   expect(service.rpc).toHaveBeenCalledTimes(1);
+});
+
+it('rejects a readable legacy source before the copy RPC', async () => {
+  const rpc = jest.fn();
+  const service = { rpc, from } as unknown as SupabaseClient;
+  maybeSingle.mockResolvedValueOnce({ data: {
+    ...version,
+    rules: legacyRules,
+    document: buildCompatibilityGameDesignDocument(legacyRules, { title: 'Original' }),
+  }, error: null });
+
+  await expect(copyAgentGameDesignSystem(service, source, actorId, key))
+    .rejects.toThrow('Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be copied');
+
+  expect(rpc).not.toHaveBeenCalled();
 });

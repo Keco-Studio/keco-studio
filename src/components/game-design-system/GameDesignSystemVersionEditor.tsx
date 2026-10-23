@@ -337,6 +337,24 @@ export function GameDesignSystemVersionEditor({
   const panelId = `gds-version-panel-${activeSection}`;
   const tabId = `gds-version-tab-${activeSection}`;
 
+  if (!isGameRulesKernel(workingBase.rules)) {
+    return (
+      <section className={styles.versionEditor} aria-label="Legacy Game Design System version">
+        <header className={styles.versionEditorHeader}>
+          <div>
+            <span className={styles.eyebrow}>Legacy version</span>
+            <h1>Legacy version is read-only</h1>
+            <p>Version {workingBase.version_number} uses the historical schemaVersion: 1 design-policy format.</p>
+          </div>
+          <button className={styles.secondaryButton} type="button" aria-label="Close legacy version" onClick={onCancel}>Close</button>
+        </header>
+        <div className={styles.notice} role="status">
+          This legacy v1 version is read-only. It remains readable, diffable, and available to bound projects, but it cannot be edited, reviewed, copied, or saved as a new version. Author a separate schemaVersion: 2 Game Rules Kernel with fresh rule IDs to continue; this editor will not auto-convert legacy policy text into gameplay facts.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className={styles.versionEditor} aria-label="Create Game Design System version">
       <header className={styles.versionEditorHeader}>
@@ -372,10 +390,7 @@ export function GameDesignSystemVersionEditor({
 
       <div id={panelId} className={styles.versionEditorPanel} role="tabpanel" aria-labelledby={tabId} aria-label={sectionLabels[activeSection]}>
         {activeSection === 'document' ? <GameDesignSystemDocumentEditor value={draft.document} onChange={(documentValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, document: documentValue })); }} /> : null}
-        {activeSection === 'rules' ? <>
-          {!isGameRulesKernel(draft.rules) ? <div className={styles.notice} role="status">This legacy v1 rule set does not define gameplay domains. Editing preserves the v1 rule shape and does not assign gameplay domains; create a separate v2 gameplay kernel to adopt them.</div> : null}
-          <GameDesignSystemRuleEditor value={draft.rules} focusPath={validationTarget?.domain === 'rules' ? validationTarget.path : null} onChange={(rulesValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, rules: rulesValue })); }} />
-        </> : null}
+        {activeSection === 'rules' ? <GameDesignSystemRuleEditor value={draft.rules} focusPath={validationTarget?.domain === 'rules' ? validationTarget.path : null} onChange={(rulesValue) => { setReviewed(null); setRecovery(null); setSaveError(''); setRefreshRequired(false); setValidationTarget(null); setDraft((current) => ({ ...current, rules: rulesValue })); }} /> : null}
         {activeSection === 'art-style' ? <GameDesignSystemArtStyleFields originalSnapshot={workingBase.artStyle} artStyleReadError={workingBase.artStyleReadError} value={draft.artStyle} changed={domains.artStyle} focusPath={validationTarget?.domain === 'art-style' ? validationTarget.path : null} onChange={updateArtStyle} /> : null}
         {activeSection === 'review' ? (
           <section className={styles.versionReview} aria-labelledby="gds-version-review-heading">

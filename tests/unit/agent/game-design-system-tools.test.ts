@@ -42,7 +42,7 @@ import {
   getGameDesignSystem, getGameDesignSystemDetail, getGameDesignSystemVersion,
   type GameDesignSystem, type GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
-import { CopyOutputDeletedError, copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
+import { CopyOutputDeletedError, LegacyGameDesignSystemCopyError, copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
 import { createGddGenerationJob } from '@/lib/services/gddGenerationService';
 import { wakeQueuedGddJob } from '@/lib/agent/gdd-job-wake';
 import { GDD_GENERATION_WARNING } from '@/lib/agent/game-design-system-tool-service';
@@ -223,6 +223,16 @@ describe('GDS account tools', () => {
     jest.mocked(copyAgentGameDesignSystem).mockRejectedValueOnce(new Error('private database detail'));
     expect(await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx))
       .toMatchObject({ success: false, error: 'Game design operation failed. Check access and request parameters.' });
+  });
+
+  it('explains that legacy systems require a separately authored v2 kernel before copying', async () => {
+    jest.mocked(copyAgentGameDesignSystem).mockRejectedValueOnce(new LegacyGameDesignSystemCopyError());
+
+    expect(await copyGameDesignSystemTool.execute({ designSystemId, idempotencyKey: id(10) }, ctx))
+      .toMatchObject({
+        success: false,
+        error: expect.stringContaining('Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be copied'),
+      });
   });
 
   it('normalizes input, preserves hash/key idempotency, and only enqueues a GDS job', async () => {

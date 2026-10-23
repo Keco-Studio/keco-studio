@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { copyAgentGameDesignSystem } from '@/lib/agent/agent-gds-copy-service';
-import { buildLegacyRuleSet, buildCompatibilityGameDesignDocument } from '@/lib/game-design-system/ruleSchema';
+import { buildCompatibilityGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { createGameDesignSystem, getGameDesignSystem, IdempotencyConflictError } from '@/lib/services/gameDesignSystemService';
 import { RLS_DB_TESTS_ENABLED, buildProjectFixture, teardownProjectFixture,
   type ProjectFixture } from './helpers/rlsTestClient';
@@ -14,8 +14,18 @@ describeDb('agent Game Design System copy (live database)', () => {
   afterAll(async () => { if (fx) await teardownProjectFixture(fx); }, 60_000);
 
   it('copies complete current content atomically and replays one result per key', async () => {
-    const rules = buildLegacyRuleSet({ genres: ['Strategy'], philosophies: ['Clarity'],
-      body: 'Show the cost of each move.' });
+    const rules = parseRuleSet({
+      schemaVersion: 2,
+      genres: ['Strategy'],
+      philosophies: ['Clarity'],
+      suitableFor: 'Tactical games',
+      rules: [
+        'player', 'objective', 'action', 'object_state', 'sequence',
+        'resource_cost', 'resolution_feedback', 'fallback',
+      ].map((domain) => ({ id: `${domain.replaceAll('_', '-')}-rule`, domain, kind: 'constraint',
+        title: `${domain} rule`, statement: `Define ${domain}.`, appliesWhen: 'Always', severity: 'required' })),
+      tableGuidance: [],
+    });
     const document = buildCompatibilityGameDesignDocument(rules, { title: 'Source rules' });
     const snapshots = [{ kind: 'document' as const, projectId: fx.projectId,
       resourceId: randomUUID(), label: 'Private reference', contentHash: 'a'.repeat(64),

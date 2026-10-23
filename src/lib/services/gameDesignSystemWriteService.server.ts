@@ -9,6 +9,7 @@ import {
 } from '@/lib/game-design-system/versionRequest';
 import {
   buildCompatibilityGameDesignDocument,
+  isGameRulesKernel,
   parseGameDesignDocument,
   parseRuleSet,
 } from '@/lib/game-design-system/ruleSchema';
@@ -31,6 +32,7 @@ const VERSION_WRITE_COLUMNS = 'id,system_id,version_number,parent_version_id,doc
 
 export type PublicGameDesignSystemVersionErrorCode =
   | 'VERSION_REQUEST_INVALID'
+  | 'VERSION_LEGACY_READ_ONLY'
   | 'VERSION_SYSTEM_NOT_FOUND'
   | 'VERSION_FORBIDDEN'
   | 'VERSION_PARENT_INVALID'
@@ -44,6 +46,7 @@ export type PublicGameDesignSystemVersionErrorCode =
 
 const PUBLIC_ERROR_MESSAGES: Record<PublicGameDesignSystemVersionErrorCode, string> = {
   VERSION_REQUEST_INVALID: 'Invalid version request.',
+  VERSION_LEGACY_READ_ONLY: 'Legacy schemaVersion: 1 Game Design Systems are read-only and cannot be versioned. Author a new schemaVersion: 2 Game Rules Kernel with fresh rule IDs.',
   VERSION_SYSTEM_NOT_FOUND: 'Game Design System not found.',
   VERSION_FORBIDDEN: 'Only the owner can create a version.',
   VERSION_PARENT_INVALID: 'Parent version does not belong to this system.',
@@ -220,10 +223,14 @@ export async function createPublicGameDesignSystemVersion(
   let parentDocument;
   try {
     parentRules = parseRuleSet(parent.rules);
+    if (!isGameRulesKernel(parentRules)) {
+      throw new PublicGameDesignSystemVersionError('VERSION_LEGACY_READ_ONLY');
+    }
     parentDocument = parent.document == null
       ? buildCompatibilityGameDesignDocument(parentRules, system)
       : parseGameDesignDocument(parent.document);
-  } catch {
+  } catch (error) {
+    if (error instanceof PublicGameDesignSystemVersionError) throw error;
     throw new PublicGameDesignSystemVersionError('VERSION_PARENT_INVALID');
   }
 

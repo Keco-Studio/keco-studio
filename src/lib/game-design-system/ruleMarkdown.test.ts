@@ -58,10 +58,14 @@ describe('Game Design System Markdown boundary', () => {
     expect(markdown).toContain('## Actions');
     expect(markdown).toContain('## Resource Costs');
     expect(markdown).toContain('### Constraints');
+    expect(markdown).toContain('#### action-rule - action rule');
+    expect(markdown).not.toMatch(/^### action-rule - action rule$/m);
     expect(markdown.indexOf('## Actions')).toBeLessThan(markdown.indexOf('## Resource Costs'));
     expect(markdown.indexOf('## Keco Table Guidance')).toBeGreaterThan(markdown.indexOf('## Fallbacks'));
     expect(legacyMarkdown).toContain('## Principles');
     expect(legacyMarkdown).toContain('## Constraints');
+    expect(legacyMarkdown).toContain('### legacy-principle - Legacy principle');
+    expect(legacyMarkdown).not.toMatch(/^#### legacy-principle - Legacy principle$/m);
     expect(legacyMarkdown.indexOf('## Principles')).toBeLessThan(legacyMarkdown.indexOf('## Constraints'));
     expect(legacyMarkdown).not.toContain('## Players');
   });

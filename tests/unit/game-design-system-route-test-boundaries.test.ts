@@ -40,11 +40,14 @@ jest.mock('@/lib/services/gameDesignSystemService', () => ({
 jest.mock('@/lib/services/gameDesignSystemWriteService.server', () => {
   class PublicGameDesignSystemVersionError extends Error {
     code: string;
+    publicMessage: string;
     ruleIds?: string[];
 
     constructor(code: string, options?: { ruleIds?: string[] }) {
-      super(code);
+      const publicMessage = code;
+      super(publicMessage);
       this.code = code;
+      this.publicMessage = publicMessage;
       this.ruleIds = options?.ruleIds;
     }
   }
@@ -211,18 +214,22 @@ const VERSION_PARENT_ID = '78200594-64e5-4e7e-a79a-409ebc741061';
 const VERSION_CURRENT_ID = '16662223-2c61-4af8-8a81-ea9f3da97d93';
 const VERSION_KEY = 'de18138d-5a6c-4bd8-b399-46ab3da19911';
 const VERSION_RULES = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   genres: ['Strategy'],
   philosophies: ['Readable Systems'],
   suitableFor: 'Tactical games',
-  rules: [{
-    id: 'readable-state',
-    kind: 'principle',
-    title: 'Readable state',
-    statement: 'Expose decision inputs.',
-    appliesWhen: 'Presenting choices.',
+  rules: [
+    'player', 'objective', 'action', 'object_state', 'sequence',
+    'resource_cost', 'resolution_feedback', 'fallback',
+  ].map((domain) => ({
+    id: `${domain.replaceAll('_', '-')}-rule`,
+    domain,
+    kind: 'constraint',
+    title: `${domain} rule`,
+    statement: `Define ${domain} runtime behavior.`,
+    appliesWhen: 'Resolving gameplay.',
     severity: 'required',
-  }],
+  })),
   tableGuidance: [],
 };
 

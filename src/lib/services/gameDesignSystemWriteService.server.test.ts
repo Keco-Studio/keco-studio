@@ -367,13 +367,31 @@ describe('createPublicGameDesignSystemVersion', () => {
     expect(result).not.toHaveProperty('future_private_column');
   });
 
-  it('rejects a v1-to-v2 same-ID replacement with its semantic conflicts', async () => {
+  it('rejects a legacy parent before evaluating same-ID semantic conflicts', async () => {
     const { client, rpc } = mockServiceClient();
 
     await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: kernelRules })))
       .rejects.toMatchObject({
-        code: 'VERSION_RULE_CONFLICT',
-        conflicts: [{ ruleId: 'readable-state', reason: 'Rule domain changed from legacy v1 to player.' }],
+        code: 'VERSION_LEGACY_READ_ONLY',
+        publicMessage: expect.stringContaining('read-only'),
+      });
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fresh-ID v2 replacement when the selected parent is legacy v1', async () => {
+    const freshKernelRules = {
+      ...kernelRules,
+      rules: kernelRules.rules.map((rule) => rule.id === 'readable-state'
+        ? { ...rule, id: 'player-rule' }
+        : rule),
+    };
+    const { client, rpc } = mockServiceClient();
+
+    await expect(createPublicGameDesignSystemVersion(client, createInput({ rules: freshKernelRules })))
+      .rejects.toMatchObject({
+        code: 'VERSION_LEGACY_READ_ONLY',
+        publicMessage: expect.stringContaining('read-only'),
       });
 
     expect(rpc).not.toHaveBeenCalled();
@@ -384,7 +402,7 @@ describe('createPublicGameDesignSystemVersion', () => {
 
     await expect(createPublicGameDesignSystemVersion(client, createInput({
       document: { ...document, gameBackground: 'A rain-soaked orbital port.' },
-    }))).rejects.toMatchObject({ code: 'VERSION_REQUEST_INVALID' });
+    }))).rejects.toMatchObject({ code: 'VERSION_LEGACY_READ_ONLY' });
 
     expect(rpc).not.toHaveBeenCalled();
   });
