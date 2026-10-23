@@ -21,6 +21,20 @@ export function getAutoTableWidth(
   return Math.max(containerWidth, columnsWidth);
 }
 
+/**
+ * Before ResizeObserver reports a real container width, keep each data column
+ * in the portion of the table that remains after fixed columns. This prevents
+ * the browser's fixed-table algorithm from assigning the spare width to the
+ * row-number column for one frame.
+ */
+export function getUnmeasuredAutoColumnWidth(
+  fixedColumnWidth: number,
+  propertyCount: number,
+): string | undefined {
+  if (propertyCount <= 0) return undefined;
+  return `calc((100% - ${fixedColumnWidth}px) / ${propertyCount})`;
+}
+
 function getDisplayLength(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === 'string') return Array.from(value).length;

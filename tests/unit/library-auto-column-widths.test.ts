@@ -1,5 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
-import { getAutoColumnWidths, getAutoTableWidth } from '@/components/libraries/utils/autoColumnWidths';
+import {
+  getAutoColumnWidths,
+  getAutoTableWidth,
+  getUnmeasuredAutoColumnWidth,
+} from '@/components/libraries/utils/autoColumnWidths';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 
 const property = (id: string, name: string): PropertyConfig => ({
@@ -78,5 +82,10 @@ describe('getAutoColumnWidths', () => {
 
   it('expands only when the calculated columns cannot fit', () => {
     expect(getAutoTableWidth({ type: 160, properties: 260 }, 100, 400)).toBe(520);
+  });
+
+  it('keeps data columns inside the remaining table width before the container is measured', () => {
+    expect(getUnmeasuredAutoColumnWidth(100, 1)).toBe('calc((100% - 100px) / 1)');
+    expect(getUnmeasuredAutoColumnWidth(100, 3)).toBe('calc((100% - 100px) / 3)');
   });
 });
