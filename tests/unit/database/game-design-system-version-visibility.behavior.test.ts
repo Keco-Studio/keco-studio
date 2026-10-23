@@ -15,6 +15,7 @@ jest.mock('server-only', () => ({}));
 
 import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 import { createPublicGameDesignSystemVersion } from '@/lib/services/gameDesignSystemWriteService.server';
+import { buildGameRulesKernelFixture } from '../shared/gameRulesKernelFixture';
 
 if (process.env.REQUIRE_RLS_DB_TESTS === '1' && !RLS_DB_TESTS_ENABLED) {
   throw new Error('REQUIRE_RLS_DB_TESTS=1 requires the local RLS database suite to be enabled.');
@@ -23,21 +24,7 @@ if (process.env.REQUIRE_RLS_DB_TESTS === '1' && !RLS_DB_TESTS_ENABLED) {
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 const postgresUrl = localPostgresUrl();
 
-const rules = {
-  schemaVersion: 1,
-  genres: ['Strategy'],
-  philosophies: ['Readable Systems'],
-  suitableFor: 'Tactical games',
-  rules: [{
-    id: 'readable-state',
-    kind: 'principle',
-    title: 'Readable state',
-    statement: 'Expose decision inputs.',
-    appliesWhen: 'Presenting choices.',
-    severity: 'required',
-  }],
-  tableGuidance: [],
-};
+const rules = buildGameRulesKernelFixture();
 
 const designDocument = {
   designIntent: 'Make every tactical choice legible before commitment.',

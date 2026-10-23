@@ -3,6 +3,7 @@ import { RLS_DB_TESTS_ENABLED, buildProjectFixture, teardownProjectFixture,
   type ProjectFixture } from './helpers/rlsTestClient';
 import { createAgentStructuredGameDesignSystem, IdempotencyConflictError } from
   '@/lib/services/gameDesignSystemService';
+import { buildGameRulesKernelFixture } from '../shared/gameRulesKernelFixture';
 
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 
@@ -14,12 +15,11 @@ describeDb('agent create request idempotency (live database)', () => {
 
   it('creates one structured system per actor and request key', async () => {
     const idempotencyKey = randomUUID();
-    const input = { idempotencyKey, title: 'Agent rules', rules: {
-      schemaVersion: 1, genres: ['Strategy'], philosophies: [], suitableFor: 'Teams',
-      rules: [{ id: 'clear-decisions', kind: 'principle', title: 'Clear decisions',
-        statement: 'Show the cost before commitment.', appliesWhen: 'Every choice', severity: 'required' }],
-      tableGuidance: [],
-    } };
+    const input = {
+      idempotencyKey,
+      title: 'Agent rules',
+      rules: buildGameRulesKernelFixture({ philosophies: [], suitableFor: 'Teams' }),
+    };
     const [first, replay] = await Promise.all([
       createAgentStructuredGameDesignSystem(fx.svc, fx.owner.id, input),
       createAgentStructuredGameDesignSystem(fx.svc, fx.owner.id, input),

@@ -840,6 +840,7 @@ export function DirectMapWorkbench() {
             onBack={() => {
               setViewMode("browse");
               setPlanDetailsOpen(false);
+              replaceCreateMapLocation({});
             }}
             onCreate={enterCreateDetail}
             onAsk={(prompt) => void createPlan(prompt)}
