@@ -230,6 +230,22 @@ function parseResponse(raw: string): GeneratedGameDesignSystem {
   }
 }
 
+function assertFreshV2IdsForLegacyBase(
+  input: ResolvedGameDesignGenerationInput,
+  output: GeneratedGameDesignSystem,
+): void {
+  if (!input.baseRules || isGameRulesKernel(input.baseRules)) return;
+  const legacyIds = new Set(input.baseRules.rules.map((rule) => rule.id));
+  const inheritedIds = output.rules.rules
+    .map((rule) => rule.id)
+    .filter((id) => legacyIds.has(id));
+  if (inheritedIds.length > 0) {
+    throw new RuleSetGenerationValidationError(
+      `Generated v2 Game Rules Kernel must use fresh IDs instead of legacy v1 IDs: ${inheritedIds.join(', ')}.`,
+    );
+  }
+}
+
 export async function generateGameDesignSystemOutput(
   input: ResolvedGameDesignGenerationInput,
   complete: Completion = completeLlm,
@@ -243,6 +259,7 @@ export async function generateGameDesignSystemOutput(
   });
   try {
     const parsed = parseResponse(first);
+    assertFreshV2IdsForLegacyBase(input, parsed);
     if (!isLanguageMismatch(input, parsed)) return parsed;
     throw new RuleSetGenerationValidationError('Generated Game Design System language does not match the request.');
   } catch (firstError) {
@@ -272,6 +289,7 @@ export async function generateGameDesignSystemOutput(
     });
     try {
       const parsed = parseResponse(repaired);
+      assertFreshV2IdsForLegacyBase(input, parsed);
       if (isLanguageMismatch(input, parsed)) {
         throw new RuleSetGenerationValidationError('Repaired Game Design System language does not match the request.');
       }

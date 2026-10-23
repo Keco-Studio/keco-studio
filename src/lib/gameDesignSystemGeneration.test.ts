@@ -43,6 +43,21 @@ const validDocument = {
 };
 
 const validOutput = { document: validDocument, rules: validRules };
+const legacyBaseRules = {
+  schemaVersion: 1 as const,
+  genres: ['Strategy'],
+  philosophies: ['Readable Systems'],
+  suitableFor: 'Tactical games',
+  rules: [{
+    id: 'player-role',
+    kind: 'principle' as const,
+    title: 'Legacy player role',
+    statement: 'Describe the player role.',
+    appliesWhen: 'Documenting the game.',
+    severity: 'required' as const,
+  }],
+  tableGuidance: [],
+};
 const chinese = (...codePoints: number[]) => String.fromCodePoint(...codePoints);
 const bravePath = chinese(0x52c7, 0x95ef, 0x4e4b, 0x8def);
 const roguelike = chinese(0x8089, 0x9e3d, 0x6a21, 0x62df);
@@ -248,6 +263,28 @@ describe('structured Game Design System generation', () => {
     expect(complete).toHaveBeenCalledTimes(2);
     expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content)
       .toContain('rules.schemaVersion must be 2');
+  });
+
+  it('repairs a v2 response that inherits a legacy v1 rule ID', async () => {
+    const freshV2Output = {
+      ...validOutput,
+      rules: {
+        ...validRules,
+        rules: validRules.rules.map((rule) => rule.id === 'player-role'
+          ? { ...rule, id: 'squad-commander-role' }
+          : rule),
+      },
+    };
+    const complete = jest.fn(async (_messages: ChatMessage[], _options?: StreamLlmOptions) => complete.mock.calls.length === 1
+      ? JSON.stringify(validOutput)
+      : JSON.stringify(freshV2Output));
+
+    const result = await generateGameDesignSystemOutput({ ...input, baseRules: legacyBaseRules }, complete);
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.rules.rules.map((rule) => rule.id)).not.toContain('player-role');
+    expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content)
+      .toContain('Generate fresh v2 rule IDs');
   });
 
   it('bounds the repair request after a large first response', async () => {
