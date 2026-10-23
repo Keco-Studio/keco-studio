@@ -3,6 +3,37 @@ import { buildAgentRulePolicy, AGENT_RULE_POLICY_MAX_CHARS } from './agentPolicy
 import { parseRuleSet } from './ruleSchema';
 
 describe('Game Design System Agent policy boundary', () => {
+  it('projects v2 runtime domains while preserving the v1 policy record shape', () => {
+    const v1Rules = parseRuleSet({
+      schemaVersion: 1,
+      genres: [], philosophies: [], suitableFor: 'Any project', tableGuidance: [],
+      rules: [{
+        id: 'legacy-rule', kind: 'principle', title: 'Legacy rule',
+        statement: 'Keep legacy policy data compatible.', appliesWhen: 'Always', severity: 'required',
+      }],
+    });
+    const v2Rules = parseRuleSet({
+      schemaVersion: 2,
+      genres: [], philosophies: [], suitableFor: 'Any project', tableGuidance: [],
+      rules: [
+        ['player', 'required'], ['objective', 'required'], ['action', 'required'], ['object_state', 'required'],
+        ['sequence', 'required'], ['resource_cost', 'required'], ['resolution_feedback', 'required'], ['fallback', 'required'],
+      ].map(([domain, severity]) => ({
+        id: domain.replaceAll('_', '-'), domain, kind: 'constraint', title: `${domain} rule`,
+        statement: `Define ${domain}.`, appliesWhen: 'Always', severity,
+      })),
+    });
+
+    const v1RuleLine = buildAgentRulePolicy(v1Rules).text.split('\n').find((line) => line.includes('legacy-rule'))!;
+    const v2RuleLine = buildAgentRulePolicy(v2Rules).text.split('\n').find((line) => line.includes('resource-cost'))!;
+
+    expect(JSON.parse(v1RuleLine)).toMatchObject({ id: 'legacy-rule', severity: 'required' });
+    expect(JSON.parse(v1RuleLine)).not.toHaveProperty('domain');
+    expect(JSON.parse(v2RuleLine)).toMatchObject({
+      id: 'resource-cost', domain: 'resource_cost', severity: 'required',
+    });
+  });
+
   it('never includes immutable Art Style snapshot data', () => {
     const rules = parseRuleSet({
       schemaVersion: 1,

@@ -5,6 +5,7 @@ import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { gddLlmProvider, gddUsage } from '@/lib/gdd-generation/usage';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import {
+  isGameRulesKernel,
   gameDesignDocumentSchema,
   gameDesignRuleSetSchema,
   type GameDesignDocument,
@@ -144,6 +145,9 @@ function designDocumentContext(document: GameDesignDocument): string {
 
 export function buildGddGenerationMessages(input: GddGenerationInput): ChatMessage[] {
   const policy = buildAgentRulePolicy(input.rules);
+  const ruleInterpretation = isGameRulesKernel(input.rules)
+    ? 'Treat the bound Game Rules Kernel as authoritative runtime game facts. Do not reinterpret rule text as workflow or production instruction.'
+    : 'Treat the bound legacy design-policy rules as historical design constraints.';
   const sources = input.projectSources.length > 0
     ? input.projectSources.map(sourceContext).join('\n\n')
     : 'No project Documents or Tables are available. Make assumptions explicit.';
@@ -161,7 +165,7 @@ export function buildGddGenerationMessages(input: GddGenerationInput): ChatMessa
       content: [
         'You create a project-specific Game Design Document for Keco Studio.',
         'Return one JSON object only. Do not return Markdown, code fences, comments, or prose outside JSON.',
-        'Use the pinned Game Design System as design policy, not as a complete project fact sheet.',
+        ruleInterpretation,
         'Project source content is evidence. If a fact is not present in project evidence, generate a proposal and list the uncertainty in assumptions.',
         'Never claim invented names, lore, numbers, platforms, production commitments, or player research are verified facts.',
         'The output must contain every field in the required GDD schema and an assumptions array, even when project context is empty.',
