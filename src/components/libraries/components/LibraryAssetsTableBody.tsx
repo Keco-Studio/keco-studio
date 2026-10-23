@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Checkbox } from 'antd';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -21,6 +21,7 @@ import { FormulaCell } from './FormulaCell';
 import { AddNewRowForm } from './AddNewRowForm';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
+import assetFileUploadIcon from '@/assets/images/assetFileUploadIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import styles from '../LibraryAssetsTable.module.css';
 import type { TableIndexes } from '../utils/tableIndexes';
@@ -31,6 +32,7 @@ import { type DropEdge } from '../utils/tableReorder';
 const REFERENCED_ROW_HIGHLIGHT_MS = 2_000;
 const REFERENCED_ROW_TIMEOUT_MS = 5_000;
 const REFERENCED_ROW_UNAVAILABLE = 'Referenced content is unavailable';
+const DEFAULT_TABLE_ROW_HEIGHT = 32;
 
 type EditingUser = {
   userId: string;
@@ -146,6 +148,7 @@ type LibraryAssetsTableBodyProps = {
   handleMediaFileChange: (key: string, value: MediaFileMetadata | null) => void;
   handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
+  handleStartAddingRow: () => void;
   handleAddRowDirect: () => void;
   canReorder?: boolean;
   onReorderRows?: (activeId: string, overId: string, edge: DropEdge) => void;
@@ -269,17 +272,24 @@ export function LibraryAssetsTableBody({
   handleMediaFileChange,
   handleSaveEditedCell,
   handleCancelEditing,
+  handleStartAddingRow,
   handleAddRowDirect,
   canReorder = false,
   onReorderRows,
 }: LibraryAssetsTableBodyProps) {
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const [bodyElement, setBodyElementNode] = useState<HTMLTableSectionElement | null>(null);
+  const [viewportFillerRowCount, setViewportFillerRowCount] = useState(0);
   const bodyElementRef = useRef<HTMLTableSectionElement | null>(null);
 
   const setBodyElement = useCallback((element: HTMLTableSectionElement | null) => {
     bodyElementRef.current = element;
-    if (!element) return;
+    setBodyElementNode((current) => current === element ? current : element);
+    if (!element) {
+      setScrollElement(null);
+      return;
+    }
     const nextScrollElement = findVerticalScrollElement(element);
     if (!nextScrollElement) return;
     const nextMargin =
@@ -289,6 +299,52 @@ export function LibraryAssetsTableBody({
     setScrollElement(nextScrollElement);
     setScrollMargin(nextMargin);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!bodyElement) return;
+    const table = bodyElement.closest('table');
+    if (!table) return;
+
+    const updateFillerRows = () => {
+      const tableRect = table.getBoundingClientRect();
+      const fillerRows = Array.from(
+        bodyElement.querySelectorAll<HTMLElement>('[data-viewport-filler-row]'),
+      );
+      const fillerHeight = fillerRows.reduce((height, row) => (
+        height + (row.getBoundingClientRect().height || DEFAULT_TABLE_ROW_HEIGHT)
+      ), 0);
+      const measuredRow = bodyElement.querySelector<HTMLElement>('[data-viewport-filler-row]')
+        ?? bodyElement.querySelector<HTMLElement>('[data-table-add-row]');
+      const rowHeight = measuredRow?.getBoundingClientRect().height || DEFAULT_TABLE_ROW_HEIGHT;
+      const viewport = scrollElement ?? findVerticalScrollElement(bodyElement);
+      let availableHeight: number;
+
+      if (viewport) {
+        const viewportRect = viewport.getBoundingClientRect();
+        const tableOffsetTop = tableRect.top - viewportRect.top + viewport.scrollTop;
+        availableHeight = viewport.clientHeight - tableOffsetTop;
+      } else {
+        availableHeight = window.innerHeight - tableRect.top;
+      }
+
+      const occupiedHeight = Math.max(0, tableRect.height - fillerHeight);
+      const nextCount = Math.max(0, Math.ceil((availableHeight - occupiedHeight) / rowHeight));
+      setViewportFillerRowCount((current) => current === nextCount ? current : nextCount);
+    };
+
+    updateFillerRows();
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateFillerRows);
+    observer?.observe(table);
+    if (scrollElement) observer?.observe(scrollElement);
+    window.addEventListener('resize', updateFillerRows);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateFillerRows);
+    };
+  }, [activeProperties.length, bodyElement, displayRows.length, isAddingRow, scrollElement]);
 
   const rowVirtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
     count: displayRows.length,
@@ -935,7 +991,7 @@ export function LibraryAssetsTableBody({
         </tr>
       )}
       {isAddingRow ? (
-        <tr className={styles.editRow} ref={addRowFormRef}>
+        <tr className={styles.editRow} ref={addRowFormRef} data-table-add-row>
           <td className={styles.numberCell}>{rows.length + 1}</td>
           <AddNewRowForm
             orderedProperties={activeProperties}
@@ -956,9 +1012,49 @@ export function LibraryAssetsTableBody({
             <td className={styles.addColumnCell} />
           )}
         </tr>
-      ) : (userRole === 'admin' || userRole === 'editor') ? (
+      ) : null}
+      {Array.from({ length: viewportFillerRowCount }, (_, index) => (
+        <tr
+          key={`viewport-filler-${index}`}
+          className={`${styles.row} ${styles.viewportFillerRow}`}
+          data-testid="viewport-filler-row"
+          data-viewport-filler-row
+          onClick={() => {
+            if (!isAddingRow && (userRole === 'admin' || userRole === 'editor')) {
+              handleStartAddingRow();
+            }
+          }}
+        >
+          <td className={styles.numberCell}>
+            {displayRows.length + (isAddingRow ? 1 : 0) + index + 1}
+          </td>
+          {activeProperties.map((property) => (
+            <td key={property.id} className={styles.cell}>
+              {property.dataType === 'image'
+                || property.dataType === 'file'
+                || property.dataType === 'multimedia'
+                || property.dataType === 'audio' ? (
+                  <span className={styles.viewportFillerMedia}>
+                    <Image
+                      src={assetFileUploadIcon}
+                      alt=""
+                      width={20}
+                      height={20}
+                      className={styles.viewportFillerMediaIcon}
+                    />
+                  </span>
+                ) : null}
+            </td>
+          ))}
+          {(userRole === 'admin' || userRole === 'editor') && (
+            <td className={styles.addColumnCell} />
+          )}
+        </tr>
+      ))}
+      {!isAddingRow && (userRole === 'admin' || userRole === 'editor') ? (
         <tr
           className={styles.addRow}
+          data-table-add-row
           onClick={(event) => {
             const target = event.target as HTMLElement;
             const isClickOnNumberCell = target.closest(`.${styles.numberCell}`);

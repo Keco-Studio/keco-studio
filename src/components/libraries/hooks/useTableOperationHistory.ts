@@ -1,8 +1,21 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  LIBRARY_TABLE_HISTORY_COMMAND_EVENT,
+  LIBRARY_TABLE_HISTORY_STATE_EVENT,
+  type LibraryTableHistoryCommandDetail,
+  type LibraryTableHistoryStateDetail,
+} from '../tableHistoryEvents';
+
+type TableOperationHistoryChannel = {
+  projectId: string;
+  libraryId: string;
+  enabled: boolean;
+};
 
 type TableOperationHistoryOptions = {
   undoOperation: (operationId: string) => Promise<unknown>;
   redoOperation: (operationId: string) => Promise<unknown>;
+  channel?: TableOperationHistoryChannel;
 };
 
 function isConflict(error: unknown): boolean {
@@ -12,7 +25,7 @@ function isConflict(error: unknown): boolean {
     && (error as { code?: string }).code === '40001';
 }
 
-export function useTableOperationHistory({ undoOperation, redoOperation }: TableOperationHistoryOptions) {
+export function useTableOperationHistory({ undoOperation, redoOperation, channel }: TableOperationHistoryOptions) {
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const undoStackRef = useRef<string[]>([]);
@@ -75,12 +88,46 @@ export function useTableOperationHistory({ undoOperation, redoOperation }: Table
     setRedoStack([]);
   }, []);
 
+  const canUndo = undoStack.length > 0;
+  const canRedo = redoStack.length > 0;
+  const channelProjectId = channel?.projectId;
+  const channelLibraryId = channel?.libraryId;
+  const channelEnabled = channel?.enabled ?? false;
+
+  useEffect(() => {
+    if (!channelProjectId || !channelLibraryId) return;
+    const detail: LibraryTableHistoryStateDetail = {
+      projectId: channelProjectId,
+      libraryId: channelLibraryId,
+      canUndo: channelEnabled && canUndo,
+      canRedo: channelEnabled && canRedo,
+    };
+    window.dispatchEvent(new CustomEvent(LIBRARY_TABLE_HISTORY_STATE_EVENT, { detail }));
+  }, [canRedo, canUndo, channelEnabled, channelLibraryId, channelProjectId]);
+
+  useEffect(() => {
+    if (!channelEnabled || !channelProjectId || !channelLibraryId) return;
+
+    const handleCommand = (event: Event) => {
+      const detail = (event as CustomEvent<LibraryTableHistoryCommandDetail>).detail;
+      if (detail?.projectId !== channelProjectId || detail?.libraryId !== channelLibraryId) return;
+      if (detail.action === 'undo') {
+        void undo();
+      } else if (detail.action === 'redo') {
+        void redo();
+      }
+    };
+
+    window.addEventListener(LIBRARY_TABLE_HISTORY_COMMAND_EVENT, handleCommand);
+    return () => window.removeEventListener(LIBRARY_TABLE_HISTORY_COMMAND_EVENT, handleCommand);
+  }, [channelEnabled, channelLibraryId, channelProjectId, redo, undo]);
+
   return {
     record,
     undo,
     redo,
     clear,
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
+    canUndo,
+    canRedo,
   };
 }

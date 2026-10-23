@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import { describe, expect, it, jest } from '@jest/globals';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useTableOperationHistory } from '@/components/libraries/hooks/useTableOperationHistory';
 
 describe('useTableOperationHistory', () => {
@@ -45,5 +45,93 @@ describe('useTableOperationHistory', () => {
     });
 
     expect(result.current.canUndo).toBe(false);
+  });
+
+  it('publishes scoped availability changes for the global library header', async () => {
+    const states: Array<Record<string, unknown>> = [];
+    const onState = (event: Event) => {
+      states.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
+    window.addEventListener('library-table-history-state', onState);
+    const { result } = renderHook(() => useTableOperationHistory({
+      undoOperation: async () => undefined,
+      redoOperation: async () => undefined,
+      channel: { projectId: 'project-1', libraryId: 'library-1', enabled: true },
+    }));
+
+    act(() => result.current.record('operation-1'));
+    await act(async () => { await result.current.undo(); });
+
+    expect(states).toContainEqual({
+      projectId: 'project-1',
+      libraryId: 'library-1',
+      canUndo: true,
+      canRedo: false,
+    });
+    expect(states.at(-1)).toEqual({
+      projectId: 'project-1',
+      libraryId: 'library-1',
+      canUndo: false,
+      canRedo: true,
+    });
+    window.removeEventListener('library-table-history-state', onState);
+  });
+
+  it('runs only commands addressed to its project and library', async () => {
+    const undoOperation = jest.fn(async () => undefined);
+    const { result } = renderHook(() => useTableOperationHistory({
+      undoOperation,
+      redoOperation: async () => undefined,
+      channel: { projectId: 'project-1', libraryId: 'library-1', enabled: true },
+    }));
+    act(() => result.current.record('operation-1'));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('library-table-history-command', {
+        detail: { projectId: 'project-1', libraryId: 'library-2', action: 'undo' },
+      }));
+    });
+    expect(undoOperation).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('library-table-history-command', {
+        detail: { projectId: 'project-1', libraryId: 'library-1', action: 'undo' },
+      }));
+    });
+    await waitFor(() => expect(undoOperation).toHaveBeenCalledWith('operation-1'));
+  });
+
+  it('publishes disabled controls and ignores commands during version preview', () => {
+    const undoOperation = jest.fn(async () => undefined);
+    const states: Array<Record<string, unknown>> = [];
+    const onState = (event: Event) => {
+      states.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
+    window.addEventListener('library-table-history-state', onState);
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useTableOperationHistory({
+        undoOperation,
+        redoOperation: async () => undefined,
+        channel: { projectId: 'project-1', libraryId: 'library-1', enabled },
+      }),
+      { initialProps: { enabled: true } },
+    );
+    act(() => result.current.record('operation-1'));
+
+    rerender({ enabled: false });
+    act(() => {
+      window.dispatchEvent(new CustomEvent('library-table-history-command', {
+        detail: { projectId: 'project-1', libraryId: 'library-1', action: 'undo' },
+      }));
+    });
+
+    expect(states.at(-1)).toEqual({
+      projectId: 'project-1',
+      libraryId: 'library-1',
+      canUndo: false,
+      canRedo: false,
+    });
+    expect(undoOperation).not.toHaveBeenCalled();
+    window.removeEventListener('library-table-history-state', onState);
   });
 });

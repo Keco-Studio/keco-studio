@@ -10,7 +10,7 @@
 
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Dropdown, Tooltip } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import Image from 'next/image';
@@ -22,6 +22,13 @@ import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { useLibraryDataOptional } from '@/lib/contexts/LibraryDataContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { ShareButton } from '@/components/shared/ShareButton';
+import { DocumentHistoryIcon } from './components/DocumentHistoryIcon';
+import {
+  LIBRARY_TABLE_HISTORY_COMMAND_EVENT,
+  LIBRARY_TABLE_HISTORY_STATE_EVENT,
+  type LibraryTableHistoryCommandDetail,
+  type LibraryTableHistoryStateDetail,
+} from './tableHistoryEvents';
 import styles from './LibraryHeader.module.css';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadVersionClick from '@/assets/images/libraryHeadVersionClick.svg';
@@ -58,6 +65,23 @@ export function LibraryHeader({
   const supabase = useSupabase();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [tableHistoryState, setTableHistoryState] = useState({ canUndo: false, canRedo: false });
+
+  useEffect(() => {
+    setTableHistoryState({ canUndo: false, canRedo: false });
+    const handleHistoryState = (event: Event) => {
+      const detail = (event as CustomEvent<LibraryTableHistoryStateDetail>).detail;
+      if (detail?.projectId !== projectId || detail?.libraryId !== libraryId) return;
+      setTableHistoryState({ canUndo: detail.canUndo, canRedo: detail.canRedo });
+    };
+    window.addEventListener(LIBRARY_TABLE_HISTORY_STATE_EVENT, handleHistoryState);
+    return () => window.removeEventListener(LIBRARY_TABLE_HISTORY_STATE_EVENT, handleHistoryState);
+  }, [libraryId, projectId]);
+
+  const dispatchTableHistoryCommand = useCallback((action: LibraryTableHistoryCommandDetail['action']) => {
+    const detail: LibraryTableHistoryCommandDetail = { projectId, libraryId, action };
+    window.dispatchEvent(new CustomEvent(LIBRARY_TABLE_HISTORY_COMMAND_EVENT, { detail }));
+  }, [libraryId, projectId]);
 
   const libraryExportItems = useMemo(
     () => [
@@ -135,6 +159,29 @@ export function LibraryHeader({
         <div className={styles.shareSection}>
           <ShareButton onClick={() => setShowInviteModal(true)} />
         </div>
+
+        <Tooltip title="Undo (Ctrl+Z)">
+          <button
+            type="button"
+            className={styles.historyButton}
+            aria-label="Undo"
+            disabled={!tableHistoryState.canUndo}
+            onClick={() => dispatchTableHistoryCommand('undo')}
+          >
+            <DocumentHistoryIcon action="undo" />
+          </button>
+        </Tooltip>
+        <Tooltip title="Redo (Ctrl+Y)">
+          <button
+            type="button"
+            className={styles.historyButton}
+            aria-label="Redo"
+            disabled={!tableHistoryState.canRedo}
+            onClick={() => dispatchTableHistoryCommand('redo')}
+          >
+            <DocumentHistoryIcon action="redo" />
+          </button>
+        </Tooltip>
 
         <Dropdown
           menu={{

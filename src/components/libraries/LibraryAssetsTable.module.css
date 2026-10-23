@@ -1216,6 +1216,23 @@ td.cellCopy.copyBorderRight:hover {
   background-color: var(--keco-row-hover-bg) !important;
 }
 
+.viewportFillerRow {
+  height: 32px;
+}
+
+.viewportFillerMedia {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewportFillerMediaIcon {
+  display: block;
+  filter: brightness(0) saturate(100%) invert(62%) sepia(6%) saturate(220%) hue-rotate(169deg) brightness(92%) contrast(88%);
+}
+
 /* Number column: narrower than data columns (3.75rem = 60px) */
 .headerCell.numberColumnHeader {
   min-width: 3.75rem;

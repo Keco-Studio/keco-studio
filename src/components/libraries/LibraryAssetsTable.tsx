@@ -408,6 +408,9 @@ export function LibraryAssetsTable({
     currentUser,
     broadcastAssetCreate: enableRealtime && currentUser ? broadcastAssetCreate : undefined,
   });
+  const handleStartAddingRow = useCallback(() => {
+    setIsAddingRow(true);
+  }, [setIsAddingRow]);
 
   const cellEditing = useCellEditing({
     properties,
@@ -480,6 +483,7 @@ export function LibraryAssetsTable({
     tableContainerRef,
     addRowFormRef,
     isAddingRow,
+    discardBlankAddRow: true,
     newRowData,
     setIsAddingRow,
     setNewRowData,
@@ -1185,6 +1189,7 @@ export function LibraryAssetsTable({
               handleMediaFileChange={handleMediaFileChange}
               handleSaveEditedCell={handleSaveEditedCell}
               handleCancelEditing={handleCancelEditing}
+              handleStartAddingRow={handleStartAddingRow}
               handleAddRowDirect={handleAddRowDirect}
               canReorder={canReorder}
               onReorderRows={handleRowReorder}
