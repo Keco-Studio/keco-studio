@@ -392,21 +392,29 @@ export function useDirectMapGenerationMonitoring({
     const expectedAsset = currentAsset.current;
     if (!expectedTarget || !expectedAsset || expectedAsset.status !== 'generating') return;
     const requestKey = `${targetKey}:${expectedAsset.id}`;
-    const startedAt = Date.now();
+    let windowStartedAt = Date.now();
     let nextDelay = DIRECT_MAP_INITIAL_POLL_DELAY_MS;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const stopAtDeadline = () => {
+    const continueAfterDeadline = async () => {
       if (stopped || cycleRef.current !== cycle) return;
-      stopped = true;
-      setPhase('blocked');
-      setError('Direct map monitoring timed out. Reload this page to resume.');
+      try {
+        await refresh(expectedTarget);
+      } catch (cause) {
+        if (cycleRef.current === cycle) {
+          setError(cause instanceof Error ? cause.message : 'Could not refresh direct map generation.');
+        }
+      }
+      if (stopped || cycleRef.current !== cycle) return;
+      windowStartedAt = Date.now();
+      nextDelay = DIRECT_MAP_INITIAL_POLL_DELAY_MS;
+      schedule();
     };
     const schedule = () => {
       if (stopped || cycleRef.current !== cycle) return;
-      const remaining = DIRECT_MAP_POLL_DEADLINE_MS - (Date.now() - startedAt);
+      const remaining = DIRECT_MAP_POLL_DEADLINE_MS - (Date.now() - windowStartedAt);
       if (remaining <= 0) {
-        stopAtDeadline();
+        void continueAfterDeadline();
         return;
       }
       const delay = Math.min(nextDelay, remaining);
@@ -415,8 +423,8 @@ export function useDirectMapGenerationMonitoring({
     };
     const poll = async () => {
       if (stopped || cycleRef.current !== cycle || pollActive.current === requestKey) return;
-      if (Date.now() - startedAt >= DIRECT_MAP_POLL_DEADLINE_MS) {
-        stopAtDeadline();
+      if (Date.now() - windowStartedAt >= DIRECT_MAP_POLL_DEADLINE_MS) {
+        void continueAfterDeadline();
         return;
       }
       pollActive.current = requestKey;

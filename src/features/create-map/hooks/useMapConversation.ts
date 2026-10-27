@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { createMapConversationService } from "../services/mapConversationService";
 
@@ -10,6 +10,7 @@ export function useMapConversation(
   conversationId: string | null,
 ) {
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const service = useMemo(
     () => createMapConversationService(supabase),
     [supabase],
@@ -20,7 +21,18 @@ export function useMapConversation(
     enabled: Boolean(conversationId),
     staleTime: 5_000,
   });
-  return { ...query, snapshot: query.data ?? null, service };
+  const refresh = useCallback(
+    (targetConversationId: string | null = conversationId) => {
+      if (!targetConversationId) return Promise.resolve(null);
+      return queryClient.fetchQuery({
+        queryKey: ["create-map", "conversation", targetConversationId],
+        queryFn: () => service.readConversation(targetConversationId),
+        staleTime: 0,
+      });
+    },
+    [conversationId, queryClient, service],
+  );
+  return { ...query, snapshot: query.data ?? null, service, refresh };
 }
 
 export function useAgentMapConversation(

@@ -23,6 +23,7 @@ const mockService = {
 };
 const conversationId = '10000000-0000-4000-8000-000000000011';
 const planNodeId = '10000000-0000-4000-8000-000000000012';
+const followUpPlanNodeId = '10000000-0000-4000-8000-000000000016';
 const mockConversation = {
   snapshot: null as null | {
     id: string;
@@ -50,6 +51,7 @@ const mockConversation = {
     }>;
   },
   refetch: jest.fn(),
+  refresh: jest.fn(),
   service: {
     findConversationForMap: jest.fn(),
     resolveNode: jest.fn(),
@@ -89,6 +91,7 @@ beforeEach(() => {
   mockDraft.isDirty = false;
   mockDraft.identity = { mapId, revisionId: 'revision', revisionNumber: 1, saveVersion: 0 };
   mockConversation.snapshot = null;
+  mockConversation.refresh.mockImplementation(async () => mockConversation.snapshot);
   mockConversation.service.findConversationForMap.mockResolvedValue(null);
   const loaded = { projectId, plan: makeValidMapPlanV3(), scene: makeEmptyMapSceneV3(), sourceDocumentId: null, identity: mockDraft.identity };
   mockService.loadSavedMapV3.mockResolvedValue(loaded);
@@ -320,6 +323,15 @@ describe('workbench durable state refresh', () => {
 
     expect(await screen.findByText(prompt)).toBeTruthy();
     expect(screen.getByText('Create an island delivery map.')).toBeTruthy();
+    const currentPlanCard = screen.getByRole('button', {
+      name: 'View map plan',
+    }).parentElement;
+    const followUp = screen.getByText(prompt);
+    expect(currentPlanCard).not.toBeNull();
+    expect(
+      currentPlanCard!.compareDocumentPosition(followUp) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     await act(async () => {
       resolveCreatePlan({
@@ -336,6 +348,100 @@ describe('workbench durable state refresh', () => {
       });
       await Promise.resolve();
     });
+  });
+
+  it('keeps the existing conversation and appends a completed follow-up after its history', async () => {
+    const originalPrompt = 'Create an island delivery map.';
+    const followUpPrompt = 'Add a clinic beside the harbor.';
+    const assistantReply = 'Map Plan created';
+    const originalSnapshot = {
+      id: conversationId,
+      projectId,
+      title: 'Island delivery',
+      nodes: [],
+      planNodes: [{
+        id: planNodeId,
+        type: 'plan' as const,
+        displayVersion: 1,
+        parentPlanNodeId: null,
+        mapProjectId: mapId,
+        mapPlanVersionId: '10000000-0000-4000-8000-000000000013',
+        createdAt: '2026-10-23T00:00:00.000Z',
+        displayLabel: 'Plan V1',
+        maps: [],
+      }],
+      messages: [{
+        id: '10000000-0000-4000-8000-000000000014',
+        role: 'user' as const,
+        text: originalPrompt,
+        artifactNodeId: null,
+        basePlanNodeId: null,
+        createdAt: '2026-10-23T00:00:00.000Z',
+      }],
+    };
+    mockConversation.snapshot = originalSnapshot;
+    mockConversation.service.findConversationForMap.mockResolvedValue({
+      conversationId,
+      planNodeId,
+    });
+    mockConversation.service.createPlan.mockResolvedValue({
+      conversationId,
+      planNodeId: followUpPlanNodeId,
+      planVersionId: '10000000-0000-4000-8000-000000000017',
+      displayVersion: 2,
+      identity: {
+        mapId: '10000000-0000-4000-8000-000000000020',
+        revisionId: '10000000-0000-4000-8000-000000000021',
+        revisionNumber: 1,
+        saveVersion: 0,
+      },
+    });
+    mockConversation.refresh.mockImplementation(async (targetConversationId: string) => {
+      expect(targetConversationId).toBe(conversationId);
+      mockConversation.snapshot = {
+        ...originalSnapshot,
+        messages: [
+          ...originalSnapshot.messages,
+          {
+            id: '10000000-0000-4000-8000-000000000018',
+            role: 'user',
+            text: followUpPrompt,
+            artifactNodeId: null,
+            basePlanNodeId: planNodeId,
+            createdAt: '2026-10-23T00:00:01.000Z',
+          },
+          {
+            id: '10000000-0000-4000-8000-000000000019',
+            role: 'assistant',
+            text: assistantReply,
+            artifactNodeId: followUpPlanNodeId,
+            basePlanNodeId: null,
+            createdAt: '2026-10-23T00:00:02.000Z',
+          },
+        ],
+      };
+      return mockConversation.snapshot;
+    });
+
+    render(workbench());
+    refresh();
+    await waitFor(() => expect(mockGeneration.installRestore).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask AI to help' }), {
+      target: { value: followUpPrompt },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(mockConversation.refresh).toHaveBeenCalledWith(conversationId));
+    await waitFor(() => expect(screen.getByText(assistantReply)).toBeTruthy());
+    expect(mockConversation.service.createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId, basePlanNodeId: planNodeId }),
+    );
+    const original = screen.getByText(originalPrompt);
+    const followUp = screen.getByText(followUpPrompt);
+    const reply = screen.getByText(assistantReply);
+    expect(original.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(followUp.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('keeps follow-up navigation scoped to the conversation instead of the new Plan map ID', async () => {

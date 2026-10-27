@@ -177,7 +177,7 @@ describe('direct map generation monitoring', () => {
     expect(state.service.invokePixelLab).toHaveBeenCalledTimes(3);
   });
 
-  it('stops polling at the local deadline while leaving the durable job resumable', async () => {
+  it('refreshes durable state and continues polling after each local monitoring window', async () => {
     const state = setup();
     state.service.invokePixelLab.mockResolvedValue({ status: 'processing' });
     state.render();
@@ -185,9 +185,16 @@ describe('direct map generation monitoring', () => {
 
     await jest.advanceTimersByTimeAsync(DIRECT_MAP_POLL_DEADLINE_MS + 15_000);
 
-    expect(state.setPhase).toHaveBeenCalledWith('blocked');
-    expect(state.setError).toHaveBeenCalledWith('Direct map monitoring timed out. Reload this page to resume.');
-    expect(jest.getTimerCount()).toBe(0);
+    expect(state.setPhase).not.toHaveBeenCalledWith('blocked');
+    expect(state.setError).not.toHaveBeenCalled();
+    const pollsAfterFirstWindow = state.service.invokePixelLab.mock.calls.length;
+    expect(pollsAfterFirstWindow).toBeGreaterThan(1);
+    expect(jest.getTimerCount()).toBe(1);
+
+    await jest.advanceTimersByTimeAsync(15_000);
+
+    expect(state.service.invokePixelLab.mock.calls.length).toBeGreaterThan(pollsAfterFirstWindow);
+    expect(state.service.invokePixelLab.mock.calls.every(([input]) => input.operation === 'poll')).toBe(true);
   });
 
   it('resumes polling after remount', async () => {

@@ -380,7 +380,7 @@ export function createMapService(supabase: SupabaseClient) {
     async listSavedMaps(options?: { projectId?: string; cursor?: string; limit?: number }): Promise<SavedMapSummary[]> {
       let query = supabase
         .from('map_projects')
-        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name), map_conversation_nodes!left(id, conversation_id, node_type, plan_display_version, conversation:map_conversations!map_conversation_nodes_conversation_id_fkey(id, title))')
+        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name), map_conversation_nodes!left(id, conversation_id, node_type, plan_display_version, conversation:map_conversations!map_conversation_nodes_conversation_id_fkey(id, title, gdd_generation_job_id))')
         .eq('current_revision.schema_version', 3)
         .order('updated_at', { ascending: false });
       if (options?.projectId) query = query.eq('project_id', options.projectId);
@@ -402,7 +402,7 @@ export function createMapService(supabase: SupabaseClient) {
       // A paginated server caller may request one lookahead row, never an unbounded load.
       const { data, error } = await query.limit(Math.min(51, Math.max(1, options?.limit ?? 50)));
       if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
-      const standalone: SavedMapSummary[] = [];
+      const individual: SavedMapSummary[] = [];
       const conversations = new Map<string, { summary: SavedMapSummary; displayVersion: number }>();
       for (const row of data ?? []) {
         const schemaVersion = relationSchemaVersion(row.current_revision);
@@ -417,7 +417,7 @@ export function createMapService(supabase: SupabaseClient) {
           node?.node_type === 'plan' && typeof node.conversation_id === 'string'
         );
         if (!planNode) {
-          standalone.push(summary);
+          individual.push(summary);
           continue;
         }
         const conversationId = String(planNode.conversation_id);
@@ -428,6 +428,10 @@ export function createMapService(supabase: SupabaseClient) {
         const conversationTitle = typeof conversation?.title === 'string' && conversation.title.trim()
           ? conversation.title.trim()
           : summary.name;
+        if (typeof conversation?.gdd_generation_job_id === 'string') {
+          individual.push({ ...summary, conversationId });
+          continue;
+        }
         const conversationSummary = {
           ...summary,
           conversationId,
@@ -438,7 +442,7 @@ export function createMapService(supabase: SupabaseClient) {
           conversations.set(conversationId, { summary: conversationSummary, displayVersion });
         }
       }
-      return [...standalone, ...[...conversations.values()].map(({ summary }) => summary)]
+      return [...individual, ...[...conversations.values()].map(({ summary }) => summary)]
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
     },
 

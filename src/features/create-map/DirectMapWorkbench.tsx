@@ -452,7 +452,7 @@ export function DirectMapWorkbench() {
       openedRequestedMapId.current = null;
       openedRequestedConversationId.current = persisted.conversationId;
       await savedMaps.refetch();
-      await conversation.refetch();
+      await conversation.refresh(persisted.conversationId);
       setViewMode("detail");
       setPlanDetailsOpen(true);
       setRightOpen(true);
@@ -754,7 +754,10 @@ export function DirectMapWorkbench() {
   );
   const conversationMessages: MapChatMessage[] = [
     ...(conversation.snapshot ? persistedConversationMessages : chatMessages),
-    ...pendingConversationMessages,
+    ...pendingConversationMessages.map((message) => ({
+      ...message,
+      pending: true,
+    })),
   ];
   const mapVersionLabel = draft.identity
     ? `Version${draft.identity.revisionNumber}`
