@@ -25,6 +25,27 @@ test.describe('Document authoring', () => {
     await loginPage.expectLoginSuccess();
   });
 
+  test('keeps the document toolbar background white', async ({ page }) => {
+    const project = generateProjectData();
+    const documentName = `Toolbar Colors ${Date.now()}`;
+
+    await projectPage.createProject(project);
+    await projectPage.expectProjectCreated();
+
+    const sidebar = page.locator('aside');
+    await sidebar
+      .locator('button[title="Add new folder, library, or document"]')
+      .click();
+    await page.getByRole('menuitem', { name: /create new document/i }).click();
+    await page.locator('input:visible').last().fill(documentName);
+    await page.getByRole('dialog').getByRole('button', { name: /^create$/i }).click();
+    await page.waitForURL(/\/doc\//, { timeout: 20000 });
+
+    const toolbar = page.locator('.mdxeditor-toolbar');
+    await expect(toolbar).toBeVisible({ timeout: 30000 });
+    await expect(toolbar).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  });
+
   test('create -> edit -> link -> image -> autosave -> reload -> viewer', async ({ page }) => {
     test.setTimeout(180000);
 

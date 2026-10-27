@@ -38,9 +38,14 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(editor).toMatch(
       /toolbarPlugin\(\{[\s\S]*toolbarClassName:\s*styles\.stickyToolbar/
     );
-    expect(editorCss).toMatch(/\.stickyToolbar\s*\{[^}]*position:\s*sticky/);
     expect(editorCss).toMatch(
-      /\.stickyToolbar\s*\{[^}]*top:\s*var\(--document-sticky-chrome-height/
+      /\.stickyToolbar:global\(\.mdxeditor-toolbar\)\s*\{[^}]*position:\s*sticky/
+    );
+    expect(editorCss).toMatch(
+      /\.stickyToolbar:global\(\.mdxeditor-toolbar\)\s*\{[^}]*top:\s*var\(--document-sticky-chrome-height/
+    );
+    expect(editorCss).toMatch(
+      /\.stickyToolbar:global\(\.mdxeditor-toolbar\)\s*\{[^}]*background-color:\s*var\(--ant-color-bg-container,\s*#ffffff\)/
     );
     expect(editorCss).toMatch(/\.editor\s*\{[^}]*overflow:\s*visible/);
     expect(editorCss).not.toMatch(/\.editor\s*\{[^}]*overflow:\s*hidden/);
