@@ -103,7 +103,7 @@ describe("Create Map V3 direct workbench", () => {
     expect(markup).toContain('data-schema-version="3"');
     expect(markup).toContain("Map Generator");
     expect(markup).toContain(
-      "Manage and config game assets for game designers.",
+      "Plan, generate, and iterate on game maps with reusable references.",
     );
     expect(markup).toContain("Select project");
     expect(markup).toContain("Saved maps");

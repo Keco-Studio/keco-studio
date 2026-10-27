@@ -377,7 +377,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
       <div className={styles.brand}>
         <strong className={styles.brandTitle}>Script Generator</strong>
         <p className={styles.brandSubtitle}>
-          Manage and config game assets for game designers.
+          Turn design documents into editable dialogue scripts and branching flows.
         </p>
       </div>
 

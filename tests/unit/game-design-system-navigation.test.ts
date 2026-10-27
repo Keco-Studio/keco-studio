@@ -18,7 +18,7 @@ describe('Game Design System navigation', () => {
 
     expect(dashboard).toMatch(/showLeftNav[\s\S]+hideSidebarForGameDesignSystems/);
     expect(library).toContain('Game Design System');
-    expect(library).toContain('Manage and config game assets for game designers.');
+    expect(library).toContain('Version and reuse design rules, art direction, and source context across projects.');
     expect(library).not.toContain('Design governance');
     expect(styles).toMatch(/\.library\s*\{[^}]*position:\s*fixed/s);
     expect(styles).toMatch(/\.library\s*\{[^}]*top:\s*0/s);

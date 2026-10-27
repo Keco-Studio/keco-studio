@@ -14,7 +14,7 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toContain('Script Generator');
     expect(source).not.toContain('Keco Script</strong>');
     expect(source).toContain(
-      'Manage and config game assets for game designers.'
+      'Turn design documents into editable dialogue scripts and branching flows.'
     );
     expect(source).toMatch(/Import/);
     expect(source).toContain('/script-system/');

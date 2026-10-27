@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftOutlined,
+  CloseOutlined,
   DeleteOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -34,9 +35,56 @@ import { GameArtStylePreview } from './GameArtStylePreview';
 import { GameArtStyleCatalog } from './GameArtStyleCatalog';
 import styles from './GameDesignSystemsPage.module.css';
 
-const GENRES = ['RPG', 'Strategy', 'Deckbuilder', 'Roguelike', 'Simulation', 'Narrative', 'Action', 'Puzzle', 'Management'];
-const PHILOSOPHIES = ['Meaningful Decisions', 'Readable Systems', 'System Driven', 'Narrative First', 'Player Agency', 'Emergent Play', 'Competitive Fairness', 'Expressive Customization'];
+const GENRES = [
+  'RPG',
+  'Strategy',
+  'Deckbuilder',
+  'Roguelike',
+  'Simulation',
+  'Narrative',
+  'Action',
+  'Puzzle',
+  'Management',
+  'Adventure',
+  'Platformer',
+  'Shooter',
+  'Survival',
+  'Horror',
+  'Sandbox',
+  'Sports',
+  'Visual Novel',
+  'Metroidvania',
+];
+const PHILOSOPHIES = [
+  'Meaningful Decisions',
+  'Readable Systems',
+  'System Driven',
+  'Narrative First',
+  'Player Agency',
+  'Emergent Play',
+  'Competitive Fairness',
+  'Expressive Customization',
+  'Accessibility First',
+  'Easy to Learn, Hard to Master',
+  'Risk and Reward',
+  'Fail Forward',
+  'Mastery Through Practice',
+  'Cooperative Play',
+];
+const TAG_LIMIT = 20;
+const SOURCE_REFERENCE_LIMIT = 10;
 const stages = ['foundation', 'art-style', 'sources', 'review'] as const;
+
+function sourceReferenceLimitError(projectResourceCount: number, referenceGameCount: number): string | null {
+  const projectResourcesOverLimit = projectResourceCount > SOURCE_REFERENCE_LIMIT;
+  const referenceGamesOverLimit = referenceGameCount > SOURCE_REFERENCE_LIMIT;
+  if (projectResourcesOverLimit && referenceGamesOverLimit) {
+    return 'Remove project resources and reference games until each has 10 or fewer.';
+  }
+  if (projectResourcesOverLimit) return 'Remove project resources until 10 or fewer remain.';
+  if (referenceGamesOverLimit) return 'Remove reference games until 10 or fewer remain.';
+  return null;
+}
 
 type ProjectOption = { id: string; name: string };
 type GameDraft = { name: string; reference: string; avoid: string };
@@ -61,6 +109,117 @@ const phaseLabels: Record<string, string> = {
   completed: 'Completed',
   failed: 'Generation failed',
 };
+
+type TagSelectorProps = {
+  id: string;
+  label: string;
+  singularLabel: string;
+  placeholder: string;
+  presets: readonly string[];
+  values: string[];
+  maxLength: number;
+  onChange: Dispatch<SetStateAction<string[]>>;
+};
+
+function tagsMatch(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function TagSelector({ id, label, singularLabel, placeholder, presets, values, maxLength, onChange }: TagSelectorProps) {
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const atLimit = values.length >= TAG_LIMIT;
+
+  function addDraft(restoreFocus = true) {
+    const normalized = draft.trim().replace(/\s+/g, ' ');
+    if (!normalized || atLimit) return;
+    const canonical = presets.find((preset) => tagsMatch(preset, normalized)) ?? normalized;
+    onChange((current) => current.some((value) => tagsMatch(value, canonical)) ? current : [...current, canonical]);
+    setDraft('');
+    if (restoreFocus) inputRef.current?.focus();
+  }
+
+  function remove(value: string) {
+    onChange((current) => current.filter((item) => !tagsMatch(item, value)));
+  }
+
+  function togglePreset(preset: string) {
+    onChange((current) => {
+      const selected = current.some((value) => tagsMatch(value, preset));
+      if (selected) return current.filter((value) => !tagsMatch(value, preset));
+      return current.length >= TAG_LIMIT ? current : [...current, preset];
+    });
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    addDraft();
+  }
+
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id}>{label}</label>
+      <div className={styles.tagInput}>
+        {values.map((value) => (
+          <span className={styles.selectedTag} key={value.toLowerCase()}>
+            <span>{value}</span>
+            <button
+              className={styles.tagRemoveButton}
+              type="button"
+              aria-label={`Remove ${singularLabel} ${value}`}
+              title={`Remove ${value}`}
+              onClick={() => remove(value)}
+            >
+              <CloseOutlined />
+            </button>
+          </span>
+        ))}
+        <input
+          id={id}
+          ref={inputRef}
+          className={styles.tagTextInput}
+          value={draft}
+          maxLength={maxLength}
+          readOnly={atLimit}
+          aria-disabled={atLimit}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => addDraft(false)}
+          placeholder={atLimit ? '' : placeholder}
+        />
+        <button
+          className={styles.tagAddButton}
+          type="button"
+          aria-label={`Add ${singularLabel}`}
+          title={`Add ${singularLabel}`}
+          disabled={atLimit || !draft.trim()}
+          onClick={() => addDraft()}
+        >
+          <PlusOutlined />
+        </button>
+      </div>
+      <div className={styles.tagMeta}><span>{values.length} / {TAG_LIMIT}</span></div>
+      <div className={styles.checks} aria-label={`${label} suggestions`}>
+        {presets.map((preset) => {
+          const selected = values.some((value) => tagsMatch(value, preset));
+          return (
+            <button
+              type="button"
+              key={preset}
+              className={selected ? styles.checkActive : styles.check}
+              aria-pressed={selected}
+              disabled={!selected && atLimit}
+              onClick={() => togglePreset(preset)}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 async function fetchProjects(): Promise<ProjectOption[]> {
   const response = await fetch('/api/projects', { cache: 'no-store' });
@@ -133,6 +292,19 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       .filter((game) => game.name || game.reference || game.avoid),
     [referenceGames],
   );
+  const selectedProjectResources = useMemo(
+    () => references.map((reference) => {
+      const option = referenceOptionsQuery.data?.find((candidate) => (
+        candidate.kind === reference.kind && candidate.resourceId === reference.resourceId
+      ));
+      return {
+        key: reference.kind + ':' + reference.resourceId,
+        label: option?.label ?? (referenceOptionsQuery.isLoading ? 'Loading selected sources...' : 'Source unavailable'),
+        type: reference.kind === 'document' ? 'Document' : 'Keco table',
+      };
+    }),
+    [referenceOptionsQuery.data, referenceOptionsQuery.isLoading, references],
+  );
   const selectedArtStylePreset = GAME_ART_STYLE_PRESETS_BY_KEY[selectedArtStyleKey] ?? GAME_ART_STYLE_PRESETS_BY_KEY[DEFAULT_GAME_ART_STYLE_KEY];
   const artStyleResult = useMemo(() => gameArtStyleInputSchema.safeParse({
     presetId: selectedArtStylePreset.presetId,
@@ -158,12 +330,28 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     const record = readGdsGenerationRecovery(ownerId);
     if (record) {
       const form = record.form;
-      setStage(form.stage); setTitle(form.title); setGenres(form.genres); setPhilosophies(form.philosophies); setDescription(form.description); setSuitableFor(form.suitableFor); setArtDirection(form.artDirection); setSelectedArtStyleKey(form.selectedArtStyleKey); setVisualReferences(form.visualReferences); setArtAvoid(form.artAvoid); setBaseSystemId(form.baseSystemId); setPastedMarkdown(form.pastedMarkdown); setSourceProjectId(form.sourceProjectId); setReferences(form.references); setReferenceGames(form.referenceGames);
+      const replayLimitError = record.phase === 'submitted' && record.request && !record.jobId && !record.retryKey
+        ? sourceReferenceLimitError(
+            Math.max(form.references.length, record.request.references.length),
+            Math.max(form.referenceGames.length, record.request.referenceGames.length),
+          )
+        : null;
+      setStage(replayLimitError ? 'sources' : form.stage); setTitle(form.title); setGenres(form.genres); setPhilosophies(form.philosophies); setDescription(form.description); setSuitableFor(form.suitableFor); setArtDirection(form.artDirection); setSelectedArtStyleKey(form.selectedArtStyleKey); setVisualReferences(form.visualReferences); setArtAvoid(form.artAvoid); setBaseSystemId(form.baseSystemId); setPastedMarkdown(form.pastedMarkdown); setSourceProjectId(form.sourceProjectId); setReferences(form.references); setReferenceGames(form.referenceGames);
       if (record.idempotencyKey) submitKey.current = record.idempotencyKey;
       if (record.retryKey) retryKey.current = record.retryKey;
-      recoveryRequestInProgressRef.current = record.phase === 'submitted';
-      submittedRecoveryRef.current = record.phase === 'submitted';
-      if (record.phase === 'submitted' && record.retryKey && record.retryParentJobId) {
+      recoveryRequestInProgressRef.current = record.phase === 'submitted' && !replayLimitError;
+      submittedRecoveryRef.current = record.phase === 'submitted' && !replayLimitError;
+      if (replayLimitError) {
+        submitKey.current = newIdempotencyKey();
+        setError(replayLimitError);
+        writeGdsGenerationRecovery({
+          version: 1,
+          ownerId,
+          phase: 'draft',
+          form: { ...form, stage: 'sources' },
+          updatedAt: Date.now(),
+        });
+      } else if (record.phase === 'submitted' && record.retryKey && record.retryParentJobId) {
         void retryGameDesignSystemGeneration(record.retryParentJobId, record.retryKey).then((fresh) => {
           setJob(fresh);
           recoveryRequestInProgressRef.current = false;
@@ -231,15 +419,13 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     else router.push('/game-design-systems');
   }
 
-  function toggle(values: string[], value: string, setter: (next: string[]) => void) {
-    setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
-  }
-
   function toggleReference(reference: GameDesignSourceReference) {
     const key = reference.kind + ':' + reference.resourceId;
-    setReferences((current) => current.some((item) => item.kind + ':' + item.resourceId === key)
-      ? current.filter((item) => item.kind + ':' + item.resourceId !== key)
-      : [...current, reference]);
+    setReferences((current) => {
+      const selected = current.some((item) => item.kind + ':' + item.resourceId === key);
+      if (selected) return current.filter((item) => item.kind + ':' + item.resourceId !== key);
+      return current.length >= SOURCE_REFERENCE_LIMIT ? current : [...current, reference];
+    });
   }
 
   function clearVisualReferenceError() {
@@ -280,6 +466,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     if (!title.trim()) {
       setStage('foundation');
       setError('Enter a system name.');
+      return;
+    }
+    const limitError = sourceReferenceLimitError(references.length, referenceGames.length);
+    if (limitError) {
+      setStage('sources');
+      setError(limitError);
       return;
     }
     if (genres.length === 0 && philosophies.length === 0 && !description.trim() && !pastedMarkdown.trim() && references.length === 0 && normalizedGames.length === 0 && !baseSystemId) {
@@ -372,7 +564,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <button className={styles.secondaryButton} type="button" onClick={leave}><ArrowLeftOutlined /> Back to systems</button>
           <span className={styles.eyebrow}>New system</span>
           <h1>Create Game Design System</h1>
-          <p>Define the design direction, choose real sources, then start a durable structured-rule generation job.</p>
+          <p>Combine design goals, art direction, and source material into a reusable, versioned system.</p>
         </div>
       </header>
 
@@ -391,8 +583,8 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.formGrid}>
             <div className={styles.field}><label htmlFor="gds-title">System name</label><input id="gds-title" className={styles.input} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tactical Deckbuilder" /></div>
             <div className={styles.field}><label htmlFor="gds-suitable">Suitable for</label><input id="gds-suitable" className={styles.input} value={suitableFor} onChange={(event) => setSuitableFor(event.target.value)} placeholder="Single-player, run-based games" /></div>
-            <div className={styles.field}><label>Game genres</label><div className={styles.checks}>{GENRES.map((genre) => <button type="button" key={genre} className={genres.includes(genre) ? styles.checkActive : styles.check} aria-pressed={genres.includes(genre)} onClick={() => toggle(genres, genre, setGenres)}>{genre}</button>)}</div></div>
-            <div className={styles.field}><label>Design philosophies</label><div className={styles.checks}>{PHILOSOPHIES.map((philosophy) => <button type="button" key={philosophy} className={philosophies.includes(philosophy) ? styles.checkActive : styles.check} aria-pressed={philosophies.includes(philosophy)} onClick={() => toggle(philosophies, philosophy, setPhilosophies)}>{philosophy}</button>)}</div></div>
+            <TagSelector id="gds-genres" label="Game genres" singularLabel="game genre" placeholder="Custom genre" presets={GENRES} values={genres} maxLength={80} onChange={setGenres} />
+            <TagSelector id="gds-philosophies" label="Design philosophies" singularLabel="design philosophy" placeholder="Custom philosophy" presets={PHILOSOPHIES} values={philosophies} maxLength={120} onChange={setPhilosophies} />
             <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="gds-description">Natural language description</label><textarea id="gds-description" className={styles.textarea} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the intended player experience, decisions, and tradeoffs." /></div>
           </div>
           <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={leave}>Cancel</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('art-style'); }}>Continue to art style</button></div>
@@ -460,14 +652,17 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
               {sourceProjectId && referenceOptionsQuery.data?.length === 0 ? <div className={styles.resourceState}>This project has no referenceable documents or tables.</div> : null}
               {(referenceOptionsQuery.data?.length ?? 0) > 0 ? <div className={styles.resourcePicker}>{referenceOptionsQuery.data!.map((option) => {
                 const key = option.kind + ':' + option.resourceId;
-                return <label className={styles.resourceOption} key={key}><input type="checkbox" checked={selectedReferenceIds.has(key)} onChange={() => toggleReference({ kind: option.kind, projectId: option.projectId, resourceId: option.resourceId })} /><span><strong>{option.label}</strong><small>{option.kind === 'document' ? 'Document' : 'Keco table'} / Updated {new Date(option.updatedAt).toLocaleDateString()}</small></span></label>;
+                const selected = selectedReferenceIds.has(key);
+                return <label className={styles.resourceOption} key={key}><input type="checkbox" checked={selected} disabled={!selected && references.length >= SOURCE_REFERENCE_LIMIT} onChange={() => toggleReference({ kind: option.kind, projectId: option.projectId, resourceId: option.resourceId })} /><span><strong>{option.label}</strong><small>{option.kind === 'document' ? 'Document' : 'Keco table'} / Updated {new Date(option.updatedAt).toLocaleDateString()}</small></span></label>;
               })}</div> : null}
+              <div className={styles.tagMeta}><span>Project resources: {references.length} / {SOURCE_REFERENCE_LIMIT}</span></div>
             </div>
             <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="gds-markdown">Existing GAME_DESIGN_SYSTEM.md</label><textarea id="gds-markdown" className={styles.editorCompact} value={pastedMarkdown} onChange={(event) => setPastedMarkdown(event.target.value)} placeholder="Paste legacy Markdown as a compatibility source." /></div>
             <div className={styles.fieldWide + ' ' + styles.field}>
               <label>Reference games</label>
               {referenceGames.map((game, index) => <div className={styles.referenceRow} key={index}><input className={styles.input} aria-label={'Reference game ' + (index + 1)} value={game.name} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="Game name" /><input className={styles.input} aria-label={'Reference value ' + (index + 1)} value={game.reference} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, reference: event.target.value } : item))} placeholder="What to reference" /><input className={styles.input} aria-label={'Reference avoid ' + (index + 1)} value={game.avoid} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, avoid: event.target.value } : item))} placeholder="What to avoid" /><button className={styles.iconButtonDanger} type="button" aria-label="Remove reference game" title="Remove reference game" onClick={() => setReferenceGames((current) => current.filter((_, itemIndex) => itemIndex !== index))}><DeleteOutlined /></button></div>)}
-              <button type="button" className={styles.secondaryButton} aria-label="Add reference game" onClick={() => setReferenceGames((current) => [...current, { name: '', reference: '', avoid: '' }])}><PlusOutlined /> Add reference game</button>
+              <button type="button" className={styles.secondaryButton} aria-label="Add reference game" disabled={referenceGames.length >= SOURCE_REFERENCE_LIMIT} onClick={() => setReferenceGames((current) => current.length >= SOURCE_REFERENCE_LIMIT ? current : [...current, { name: '', reference: '', avoid: '' }])}><PlusOutlined /> Add reference game</button>
+              <div className={styles.tagMeta}><span>Reference games: {referenceGames.length} / {SOURCE_REFERENCE_LIMIT}</span></div>
             </div>
           </div>
           <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('art-style')}><ArrowLeftOutlined /> Art Style</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('review'); }}>Review input</button></div>
@@ -479,9 +674,25 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 4</span><h2>Review</h2><p>Confirm the exact input before starting the durable job.</p></div></div>
           <div className={styles.reviewGrid}>
             <section><span className={styles.eyebrow}>Foundation</span><h3>{title.trim() || 'System name required'}</h3><dl className={styles.breakdown}><div><dt>Genres</dt><dd>{genres.join(', ') || 'None'}</dd></div><div><dt>Philosophies</dt><dd>{philosophies.join(', ') || 'None'}</dd></div><div><dt>Suitable for</dt><dd>{suitableFor.trim() || 'Not specified'}</dd></div></dl></section>
-            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{selectedArtStylePreset.title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {selectedArtStylePreset.presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
-            <section><span className={styles.eyebrow}>Evidence</span><h3>{references.length + normalizedGames.length} selected references</h3><dl className={styles.breakdown}><div><dt>Project resources</dt><dd>{references.length}</dd></div><div><dt>Reference games</dt><dd>{normalizedGames.length}</dd></div><div><dt>Base system</dt><dd>{baseSystemId ? baseSystems.find((system) => system.id === baseSystemId)?.title || 'Selected' : 'None'}</dd></div></dl></section>
-            <section><span className={styles.eyebrow}>Output contract</span><h3>Validated structured rules</h3><p>The job validates the canonical rule schema and saves one immutable version only after validation succeeds.</p></section>
+            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{selectedArtStylePreset.title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>{selectedArtStylePreset.title}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
+            <section aria-label="Sources summary">
+              <span className={styles.eyebrow}>Sources</span>
+              <h3>Selected source material</h3>
+              <dl className={styles.breakdown}>
+                <div>
+                  <dt>Project resources</dt>
+                  <dd>{selectedProjectResources.length > 0 ? <ul className={styles.reviewInlineList}>{selectedProjectResources.map((resource) => <li key={resource.key}>{resource.label} / {resource.type}</li>)}</ul> : 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Reference games</dt>
+                  <dd>{normalizedGames.length > 0 ? <ul className={styles.reviewInlineList}>{normalizedGames.map((game, index) => <li key={game.name.toLocaleLowerCase() + ':' + index}>{game.name || 'Unnamed reference game'}</li>)}</ul> : 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Base system</dt>
+                  <dd>{baseSystemId ? baseSystems.find((system) => system.id === baseSystemId)?.title || 'Selected system unavailable' : 'None'}</dd>
+                </div>
+              </dl>
+            </section>
           </div>
           <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('sources')}><ArrowLeftOutlined /> Sources</button><button className={styles.primaryButton} type="button" aria-label="Generate system" disabled={submitting} onClick={() => void submit()}><ThunderboltOutlined /> Generate system</button></div>
         </section>

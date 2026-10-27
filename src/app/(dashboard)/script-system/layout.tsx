@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Keco Script - Keco Studio',
-  description: 'Manage and config game assets for game designers.',
+  description: 'Turn design documents into editable dialogue scripts and branching flows.',
 };
 
 export default function ScriptSystemLayout({

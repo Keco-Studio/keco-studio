@@ -1485,7 +1485,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       <div className={styles.brand}>
         <strong className={styles.brandTitle}>Libraries</strong>
         <p className={styles.brandSubtitle}>
-          Manage and config game assets for game designers.
+          Organize game data, documents, and assets in one shared workspace.
         </p>
       </div>
 
