@@ -191,6 +191,16 @@ describeDb('GDD Map Plan binding (live database)', () => {
       plan_display_version: 1,
     });
 
+    const pendingConversation = await fx.owner.client.rpc('read_map_conversation_v1', {
+      p_conversation_id: planNode.data?.conversation_id,
+    });
+    expect(pendingConversation.error).toBeNull();
+    expect(pendingConversation.data).toMatchObject({
+      nodes: [expect.objectContaining({ id: planNode.data?.id, type: 'plan' })],
+    });
+    expect((pendingConversation.data as { nodes: Array<{ type: string }> }).nodes)
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'map' })]));
+
     const secondArtifact = await fx.svc.from('gdd_map_artifacts').insert({
       id: randomUUID(),
       gdd_generation_job_id: job.data.id,
@@ -240,9 +250,43 @@ describeDb('GDD Map Plan binding (live database)', () => {
       }),
     ]);
 
-    const makeAssetReady = await fx.svc.from('map_assets')
-      .update({ status: 'ready' })
-      .eq('id', result.asset_id);
+    for (const [expectedStatus, nextStatus] of [
+      ['planned', 'queued'],
+      ['queued', 'generating'],
+    ] as const) {
+      const transition = await fx.svc.rpc('transition_map_asset', {
+        p_asset_id: result.asset_id,
+        p_expected_status: expectedStatus,
+        p_next_status: nextStatus,
+        p_provider_operation: 'create_image_pro',
+        p_provider_transport: 'mcp',
+        p_provider_job_id: 'gdd-map-plan-binding-job',
+        p_last_error_code: null,
+        p_storage_path: null,
+        p_sha256: null,
+        p_width: null,
+        p_height: null,
+        p_has_transparency: null,
+        p_metadata: {},
+      });
+      if (transition.error) throw new Error(`transition map asset failed: ${transition.error.message}`);
+    }
+    const sha256 = '1'.repeat(64);
+    const makeAssetReady = await fx.svc.rpc('transition_map_asset', {
+      p_asset_id: result.asset_id,
+      p_expected_status: 'generating',
+      p_next_status: 'ready',
+      p_provider_operation: 'create_image_pro',
+      p_provider_transport: 'mcp',
+      p_provider_job_id: 'gdd-map-plan-binding-job',
+      p_last_error_code: null,
+      p_storage_path: `${fx.projectId}/${result.map_id}/${result.generation_revision_id}/map-image/${sha256}.png`,
+      p_sha256: sha256,
+      p_width: 512,
+      p_height: 512,
+      p_has_transparency: false,
+      p_metadata: {},
+    });
     if (makeAssetReady.error) throw new Error(`mark map asset ready failed: ${makeAssetReady.error.message}`);
     const resumeArtifact = await fx.svc.from('gdd_map_artifacts')
       .update({
@@ -270,6 +314,23 @@ describeDb('GDD Map Plan binding (live database)', () => {
       parent_plan_node_id: planNode.data?.id,
       map_revision_id: result.generation_revision_id,
       map_asset_id: result.asset_id,
+    });
+
+    const readyConversation = await fx.owner.client.rpc('read_map_conversation_v1', {
+      p_conversation_id: planNode.data?.conversation_id,
+    });
+    expect(readyConversation.error).toBeNull();
+    expect(readyConversation.data).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'map',
+          planNodeId: planNode.data?.id,
+          revisionId: result.generation_revision_id,
+          assetId: result.asset_id,
+          mapVersionNumber: 1,
+          status: 'ready',
+        }),
+      ]),
     });
 
     const followUp = await fx.owner.client.rpc('create_map_conversation_plan_v1', {

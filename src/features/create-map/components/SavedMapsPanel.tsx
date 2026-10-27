@@ -40,6 +40,14 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
       || map.projectName.toLowerCase().includes(needle)
     ));
   }, [props.maps, props.projectId, query]);
+  const conversationCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const map of props.maps) {
+      if (!map.conversationId || (props.projectId && map.projectId !== props.projectId)) continue;
+      counts.set(map.conversationId, (counts.get(map.conversationId) ?? 0) + 1);
+    }
+    return counts;
+  }, [props.maps, props.projectId]);
 
   return (
     <section className={styles.savedMapsSection} aria-labelledby="saved-maps-heading">
@@ -95,7 +103,7 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
             const active = map.id === props.activeMapId;
             const opening = map.id === props.openingMapId;
             return (
-              <li key={map.conversationId ?? map.id}>
+              <li key={map.conversationId && conversationCounts.get(map.conversationId) === 1 ? map.conversationId : map.id}>
                 <button
                   type="button"
                   className={active ? styles.savedMapButtonActive : styles.savedMapButton}

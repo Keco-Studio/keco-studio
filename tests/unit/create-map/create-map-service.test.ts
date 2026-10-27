@@ -268,6 +268,59 @@ describe('Create Map browser service', () => {
     expect(limit).toHaveBeenCalledWith(50);
   });
 
+  it('lists every GDD-generated map instead of collapsing its shared conversation', async () => {
+    const limit = jest.fn(async () => ({
+      data: [
+        {
+          id: 'gdd-map-2', project_id: 'project-1', name: 'Castle Courtyard',
+          current_revision_id: 'gdd-revision-2', updated_at: '2026-10-27T03:00:00.000Z',
+          current_revision: { schema_version: 3 },
+          projects: { name: 'Adventure' },
+          map_conversation_nodes: [{
+            id: 'gdd-plan-node-2', conversation_id: 'gdd-conversation-1',
+            node_type: 'plan', plan_display_version: 2,
+            conversation: {
+              id: 'gdd-conversation-1', title: 'Adventure GDD',
+              gdd_generation_job_id: 'gdd-job-1',
+            },
+          }],
+        },
+        {
+          id: 'gdd-map-1', project_id: 'project-1', name: 'Harbor District',
+          current_revision_id: 'gdd-revision-1', updated_at: '2026-10-27T02:00:00.000Z',
+          current_revision: { schema_version: 3 },
+          projects: { name: 'Adventure' },
+          map_conversation_nodes: [{
+            id: 'gdd-plan-node-1', conversation_id: 'gdd-conversation-1',
+            node_type: 'plan', plan_display_version: 1,
+            conversation: {
+              id: 'gdd-conversation-1', title: 'Adventure GDD',
+              gdd_generation_job_id: 'gdd-job-1',
+            },
+          }],
+        },
+      ],
+      error: null,
+    }));
+    const order = jest.fn(() => ({ limit }));
+    const eq = jest.fn(() => ({ order }));
+    const select = jest.fn(() => ({ eq }));
+    const from = jest.fn(() => ({ select }));
+
+    await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([
+      {
+        id: 'gdd-map-2', conversationId: 'gdd-conversation-1',
+        projectId: 'project-1', projectName: 'Adventure', name: 'Castle Courtyard',
+        currentRevisionId: 'gdd-revision-2', updatedAt: '2026-10-27T03:00:00.000Z', schemaVersion: 3,
+      },
+      {
+        id: 'gdd-map-1', conversationId: 'gdd-conversation-1',
+        projectId: 'project-1', projectName: 'Adventure', name: 'Harbor District',
+        currentRevisionId: 'gdd-revision-1', updatedAt: '2026-10-27T02:00:00.000Z', schemaVersion: 3,
+      },
+    ]);
+  });
+
   it('filters paginated maps by project before limiting with deterministic updated_at/id ordering', async () => {
     const cursorId = '10000000-0000-4000-8000-000000000001';
     const updatedAt = '2026-09-24T12:34:56.123456+00:00';

@@ -10,7 +10,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import paperIcon from "@/assets/images/paper.svg";
 import mapPlanIcon from "@/assets/images/simulator/map-plan.svg";
 import {
@@ -26,6 +26,7 @@ export type MapChatMessage = {
   text: string;
   artifactNodeId?: string | null;
   basePlanNodeId?: string | null;
+  pending?: boolean;
 };
 
 export type MapChatAttachedDocument = {
@@ -178,6 +179,9 @@ export function MapChatPanel({
       message.text.toLowerCase().includes(needle),
     );
   }, [messages, query]);
+  const firstPendingMessageId = visibleMessages.find(
+    (message) => message.pending,
+  )?.id;
 
   useEffect(() => {
     const node = listRef.current;
@@ -478,50 +482,58 @@ export function MapChatPanel({
                   message.text.toLowerCase().includes("map generated")))) &&
             !isPlanMessage;
           return (
-            <div key={message.id} className={styles.chatMessageGroup}>
-              <div
-                className={
-                  message.role === "user"
-                    ? styles.chatBubbleUser
-                    : styles.chatBubbleAssistant
-                }
-              >
-                {message.text}
+            <Fragment key={message.id}>
+              {message.id === firstPendingMessageId ? (
+                <>
+                  {!hasPlanMessage ? renderMapPlanCard() : null}
+                  {!hasMapMessage ? renderMapImageCard() : null}
+                </>
+              ) : null}
+              <div className={styles.chatMessageGroup}>
+                <div
+                  className={
+                    message.role === "user"
+                      ? styles.chatBubbleUser
+                      : styles.chatBubbleAssistant
+                  }
+                >
+                  {message.text}
+                </div>
+                {planArtifact
+                  ? renderMapPlanCard(
+                      {
+                        title: versionLibrary?.title ?? mapTitle,
+                        versionLabel: planArtifact.displayLabel,
+                      },
+                      onSelectConversationNode
+                        ? () => onSelectConversationNode(planArtifact.id)
+                        : undefined,
+                      `View ${planArtifact.displayLabel}`,
+                    )
+                  : isPlanMessage
+                    ? renderMapPlanCard()
+                    : null}
+                {mapArtifact
+                  ? renderMapImageCard(
+                      {
+                        title: versionLibrary?.title ?? mapTitle,
+                        versionLabel: mapArtifact.displayLabel,
+                        downloadUrl: mapImage?.downloadUrl ?? "",
+                      },
+                      onSelectConversationNode
+                        ? () => onSelectConversationNode(mapArtifact.id)
+                        : undefined,
+                      `View ${mapArtifact.displayLabel}`,
+                    )
+                  : isMapMessage
+                    ? renderMapImageCard()
+                    : null}
               </div>
-              {planArtifact
-                ? renderMapPlanCard(
-                    {
-                      title: versionLibrary?.title ?? mapTitle,
-                      versionLabel: planArtifact.displayLabel,
-                    },
-                    onSelectConversationNode
-                      ? () => onSelectConversationNode(planArtifact.id)
-                      : undefined,
-                    `View ${planArtifact.displayLabel}`,
-                  )
-                : isPlanMessage
-                  ? renderMapPlanCard()
-                  : null}
-              {mapArtifact
-                ? renderMapImageCard(
-                    {
-                      title: versionLibrary?.title ?? mapTitle,
-                      versionLabel: mapArtifact.displayLabel,
-                      downloadUrl: mapImage?.downloadUrl ?? "",
-                    },
-                    onSelectConversationNode
-                      ? () => onSelectConversationNode(mapArtifact.id)
-                      : undefined,
-                    `View ${mapArtifact.displayLabel}`,
-                  )
-                : isMapMessage
-                  ? renderMapImageCard()
-                  : null}
-            </div>
+            </Fragment>
           );
         })}
-        {!hasPlanMessage ? renderMapPlanCard() : null}
-        {!hasMapMessage ? renderMapImageCard() : null}
+        {!firstPendingMessageId && !hasPlanMessage ? renderMapPlanCard() : null}
+        {!firstPendingMessageId && !hasMapMessage ? renderMapImageCard() : null}
         {error ? (
           <p className={styles.inlineError} role="alert">
             {error}

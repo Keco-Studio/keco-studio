@@ -183,4 +183,46 @@ describe('SavedMapsPanel', () => {
     expect(screen.getByRole('button', { name: /River Town conversation/ })).toBe(originalRow);
     view.unmount();
   });
+
+  it('keeps separate GDD map rows keyed by map when they share a conversation', () => {
+    const first = {
+      ...summary,
+      id: 'gdd-map-1',
+      conversationId: 'gdd-conversation-1',
+      name: 'Harbor District',
+    };
+    const second = {
+      ...summary,
+      id: 'gdd-map-2',
+      conversationId: 'gdd-conversation-1',
+      name: 'Castle Courtyard',
+    };
+    const view = render(<SavedMapsPanel
+      maps={[first, second]}
+      isLoading={false}
+      error={null}
+      activeMapId={null}
+      openingMapId={null}
+      disabled={false}
+      onOpen={() => undefined}
+      onRetry={() => undefined}
+    />);
+    const originalFirstRow = screen.getByRole('button', { name: /Harbor District/ });
+    const originalSecondRow = screen.getByRole('button', { name: /Castle Courtyard/ });
+
+    view.rerender(<SavedMapsPanel
+      maps={[second, first]}
+      isLoading={false}
+      error={null}
+      activeMapId={null}
+      openingMapId={null}
+      disabled={false}
+      onOpen={() => undefined}
+      onRetry={() => undefined}
+    />);
+
+    expect(screen.getByRole('button', { name: /Harbor District/ })).toBe(originalFirstRow);
+    expect(screen.getByRole('button', { name: /Castle Courtyard/ })).toBe(originalSecondRow);
+    view.unmount();
+  });
 });
