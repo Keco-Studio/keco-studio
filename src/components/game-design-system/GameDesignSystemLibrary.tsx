@@ -68,7 +68,7 @@ export function GameDesignSystemLibrary(props: Props) {
       <div className={styles.libraryHeader}>
         <div className={styles.brandBlock}>
           <h1>Game Design System</h1>
-          <p className={styles.brandSubtitle}>Manage and config game assets for game designers.</p>
+          <p className={styles.brandSubtitle}>Version and reuse design rules, art direction, and source context across projects.</p>
         </div>
         <button
           className={styles.libraryCreateButton}

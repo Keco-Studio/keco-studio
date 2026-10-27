@@ -62,7 +62,7 @@ export function MapSourcePanel({
     <section className={styles.brandSection} aria-labelledby="map-source-heading">
       <div className={styles.brandBlock}>
         <h1 id="map-source-heading" className={styles.brandTitle}>Map Generator</h1>
-        <p className={styles.brandSubtitle}>Manage and config game assets for game designers.</p>
+        <p className={styles.brandSubtitle}>Plan, generate, and iterate on game maps with reusable references.</p>
       </div>
 
       <div className={styles.projectWrap} ref={menuRef}>

@@ -21,7 +21,7 @@ describe('MapSourcePanel', () => {
     }));
 
     expect(markup).toContain('Map Generator');
-    expect(markup).toContain('Manage and config game assets for game designers.');
+    expect(markup).toContain('Plan, generate, and iterate on game maps with reusable references.');
     expect(markup).toContain('Project one');
     expect(markup).toContain('aria-label="Project"');
   });
