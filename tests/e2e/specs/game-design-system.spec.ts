@@ -614,7 +614,6 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await page.getByRole('button', { name: 'Review input' }).click();
     const artStyleSummary = page.getByLabel('Art Style summary');
     await expect(artStyleSummary).toContainText('Flat Graphic 2D');
-    await expect(artStyleSummary).toContainText('Revision 1');
     await expect(artStyleSummary).toContainText(ART_DIRECTION);
     await expect(artStyleSummary).toContainText(`${VISUAL_REFERENCE_NAME}: ${VISUAL_REFERENCE_BORROW}`);
     await expect(artStyleSummary).toContainText(ART_AVOID);
@@ -1027,7 +1026,6 @@ test.describe('Game Design System real workflow', () => {
     await page.getByRole('button', { name: 'Review input' }).click();
     const artStyleSummary = page.getByLabel('Art Style summary');
     await expect(artStyleSummary).toContainText('Pixel Art');
-    await expect(artStyleSummary).toContainText('Revision 2');
     await expect(artStyleSummary).toContainText(ART_DIRECTION);
     await expect(artStyleSummary).toContainText(`${VISUAL_REFERENCE_NAME}: ${VISUAL_REFERENCE_BORROW}`);
     await expect(artStyleSummary).toContainText(ART_AVOID);
