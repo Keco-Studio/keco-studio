@@ -6,6 +6,8 @@ import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } f
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
 
+export const maxDuration = 300;
+
 type Params = { params: Promise<{ id: string }> };
 
 export const POST = withAuth(async function POST(request, { params }: Params, { supabase, user }) {

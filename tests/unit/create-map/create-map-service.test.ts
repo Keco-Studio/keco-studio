@@ -245,9 +245,11 @@ describe('Create Map browser service', () => {
       ],
       error: null,
     }));
-    const order = jest.fn(() => ({ limit }));
-    const eq = jest.fn(() => ({ order }));
-    const select = jest.fn(() => ({ eq }));
+    const query = { eq: jest.fn(), order: jest.fn(), limit };
+    query.eq.mockReturnValue(query);
+    query.order.mockReturnValue(query);
+    const { eq, order } = query;
+    const select = jest.fn(() => query);
     const from = jest.fn(() => ({ select }));
 
     await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([
@@ -268,7 +270,7 @@ describe('Create Map browser service', () => {
     expect(limit).toHaveBeenCalledWith(50);
   });
 
-  it('lists every GDD-generated map instead of collapsing its shared conversation', async () => {
+  it('collapses GDD-generated Plan revisions that belong to the same Map conversation', async () => {
     const limit = jest.fn(async () => ({
       data: [
         {
@@ -302,23 +304,75 @@ describe('Create Map browser service', () => {
       ],
       error: null,
     }));
-    const order = jest.fn(() => ({ limit }));
-    const eq = jest.fn(() => ({ order }));
-    const select = jest.fn(() => ({ eq }));
+    const query = { eq: jest.fn(), order: jest.fn(), limit };
+    query.eq.mockReturnValue(query);
+    query.order.mockReturnValue(query);
+    const select = jest.fn(() => query);
     const from = jest.fn(() => ({ select }));
 
     await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([
       {
         id: 'gdd-map-2', conversationId: 'gdd-conversation-1',
-        projectId: 'project-1', projectName: 'Adventure', name: 'Castle Courtyard',
+        projectId: 'project-1', projectName: 'Adventure', name: 'Adventure GDD',
         currentRevisionId: 'gdd-revision-2', updatedAt: '2026-10-27T03:00:00.000Z', schemaVersion: 3,
       },
-      {
-        id: 'gdd-map-1', conversationId: 'gdd-conversation-1',
-        projectId: 'project-1', projectName: 'Adventure', name: 'Harbor District',
-        currentRevisionId: 'gdd-revision-1', updatedAt: '2026-10-27T02:00:00.000Z', schemaVersion: 3,
-      },
     ]);
+  });
+
+  it('continues loading raw rows until the saved-map list includes distinct conversations', async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => {
+      const version = 50 - index;
+      return {
+        id: `10000000-0000-4000-8000-${String(version).padStart(12, '0')}`,
+        project_id: 'project-1',
+        name: `River Town Plan ${version}`,
+        current_revision_id: `revision-${version}`,
+        updated_at: `2026-10-27T03:${String(version).padStart(2, '0')}:00.000Z`,
+        current_revision: { schema_version: 3 },
+        projects: { name: 'Adventure' },
+        map_conversation_nodes: [{
+          id: `conversation-plan-node-${version}`,
+          conversation_id: 'conversation-1',
+          node_type: 'plan',
+          plan_display_version: version,
+          conversation: { id: 'conversation-1', title: 'River Town' },
+        }],
+      };
+    });
+    const secondPage = [{
+      id: '20000000-0000-4000-8000-000000000001',
+      project_id: 'project-1',
+      name: 'Harbor District',
+      current_revision_id: 'harbor-revision-1',
+      updated_at: '2026-10-27T02:00:00.000Z',
+      current_revision: { schema_version: 3 },
+      projects: { name: 'Adventure' },
+      map_conversation_nodes: [{
+        id: 'harbor-plan-node-1',
+        conversation_id: 'conversation-2',
+        node_type: 'plan',
+        plan_display_version: 1,
+        conversation: { id: 'conversation-2', title: 'Harbor District' },
+      }],
+    }];
+    const query = {
+      select: jest.fn(), eq: jest.fn(), order: jest.fn(), or: jest.fn(),
+      limit: jest.fn()
+        .mockResolvedValueOnce({ data: firstPage, error: null })
+        .mockResolvedValueOnce({ data: secondPage, error: null }),
+    };
+    for (const method of [query.select, query.eq, query.order, query.or]) {
+      method.mockReturnValue(query);
+    }
+
+    await expect(createMapService({ from: () => query } as never).listSavedMaps()).resolves.toEqual([
+      expect.objectContaining({ conversationId: 'conversation-1', id: firstPage[0].id }),
+      expect.objectContaining({ conversationId: 'conversation-2', id: secondPage[0].id }),
+    ]);
+    expect(query.limit).toHaveBeenCalledTimes(2);
+    expect(query.or).toHaveBeenCalledWith(
+      `updated_at.lt.${firstPage[49].updated_at},and(updated_at.eq.${firstPage[49].updated_at},id.lt.${firstPage[49].id})`,
+    );
   });
 
   it('filters paginated maps by project before limiting with deterministic updated_at/id ordering', async () => {

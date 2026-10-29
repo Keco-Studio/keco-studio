@@ -49,6 +49,10 @@ import {
   type MapSceneV3,
 } from "./model/directMapSchema";
 import {
+  getMapConversationLabels,
+  mapRevisionBelongsToPlan,
+} from "./model/mapConversation";
+import {
   createMapService,
   type MapReferenceRecord,
   type SavedMapSummary,
@@ -150,6 +154,8 @@ export function DirectMapWorkbench() {
   const openedRequestedMapId = useRef<string | null>(null);
   const openedRequestedConversationId = useRef<string | null>(null);
   const previousGenerationPhase = useRef<string>("idle");
+  const pendingMapAttachments = useRef(new Set<string>());
+  const completedMapAttachments = useRef(new Set<string>());
   const pendingRefresh = useRef<{ projectId: string; mapId?: string } | null>(
     null,
   );
@@ -168,6 +174,7 @@ export function DirectMapWorkbench() {
     draft.identity?.mapId ?? null,
   );
   const conversation = useMapConversation(projectId, conversationId);
+  const refetchConversation = conversation.refetch;
   const generation = useDirectMapGeneration({
     projectId,
     plan,
@@ -233,20 +240,8 @@ export function DirectMapWorkbench() {
       previousGenerationPhase.current !== generation.phase;
     if (becameVisibleOutput) {
       void mapGenerationHistory.refetch();
-      if (
-        conversationId &&
-        activePlanNodeId &&
-        generation.target &&
-        generation.asset
-      ) {
-        void conversation.service
-          .attachGeneratedMap(
-            activePlanNodeId,
-            generation.target.revisionId,
-            generation.asset.id,
-          )
-          .then(() => conversation.refetch())
-          .catch(() => undefined);
+      if (conversationId) {
+        void refetchConversation().catch(() => undefined);
       } else {
         setChatMessages((current) => {
           if (
@@ -268,13 +263,58 @@ export function DirectMapWorkbench() {
     }
     previousGenerationPhase.current = generation.phase;
   }, [
+    conversationId,
+    generation.phase,
+    mapGenerationHistory,
+    refetchConversation,
+  ]);
+
+  useEffect(() => {
+    if (
+      (generation.phase !== "generating" && generation.phase !== "ready") ||
+      readOnly ||
+      !conversationId ||
+      !activePlanNodeId ||
+      !generation.target ||
+      !generation.asset
+    )
+      return;
+    const activePlan = conversation.snapshot?.planNodes.find(
+      (node) => node.id === activePlanNodeId,
+    );
+    if (!activePlan || activePlan.mapProjectId !== generation.target.mapId)
+      return;
+    const revisionId = generation.target.revisionId;
+    const assetId = generation.asset.id;
+    if (
+      activePlan.maps.some(
+        (map) => map.revisionId === revisionId && map.assetId === assetId,
+      )
+    )
+      return;
+    const attachmentKey = `${activePlanNodeId}:${revisionId}:${assetId}`;
+    if (
+      pendingMapAttachments.current.has(attachmentKey) ||
+      completedMapAttachments.current.has(attachmentKey)
+    )
+      return;
+    pendingMapAttachments.current.add(attachmentKey);
+    void conversation.service
+      .attachGeneratedMap(activePlanNodeId, revisionId, assetId)
+      .then(() => {
+        completedMapAttachments.current.add(attachmentKey);
+        return conversation.refetch();
+      })
+      .catch(() => undefined)
+      .finally(() => pendingMapAttachments.current.delete(attachmentKey));
+  }, [
     activePlanNodeId,
     conversation,
     conversationId,
     generation.asset,
     generation.phase,
     generation.target,
-    mapGenerationHistory,
+    readOnly,
   ]);
 
   const closeDrawers = useCallback(() => {
@@ -675,7 +715,7 @@ export function DirectMapWorkbench() {
     }
   };
 
-  const image = useMemo((): DirectMapCanvasImage | null => {
+  const boundCanvasImage = useMemo((): DirectMapCanvasImage | null => {
     const binding = scene.mapImage;
     const boundImage = generation.boundImage;
     if (
@@ -692,6 +732,21 @@ export function DirectMapWorkbench() {
       height: boundImage.height,
     };
   }, [generation.boundImage, scene.mapImage]);
+  const image = useMemo(() => {
+    if (!boundCanvasImage || !conversationId) return boundCanvasImage;
+    return mapRevisionBelongsToPlan(
+      conversation.snapshot,
+      activePlanNodeId,
+      boundCanvasImage.sourceRevisionId,
+    )
+      ? boundCanvasImage
+      : null;
+  }, [
+    activePlanNodeId,
+    boundCanvasImage,
+    conversation.snapshot,
+    conversationId,
+  ]);
   const collision = useDirectMapCollisionGrid({
     projectId,
     identity: draft.identity,
@@ -759,9 +814,11 @@ export function DirectMapWorkbench() {
       pending: true,
     })),
   ];
-  const mapVersionLabel = draft.identity
-    ? `Version${draft.identity.revisionNumber}`
-    : null;
+  const conversationLabels = getMapConversationLabels(
+    conversation.snapshot,
+    activePlanNodeId,
+    image?.sourceRevisionId ?? null,
+  );
   const activePlan = useMemo(() => {
     if (!activePlanNodeId) return null;
     const planNode = conversation.snapshot?.planNodes.find(
@@ -865,14 +922,17 @@ export function DirectMapWorkbench() {
             generationHistory={generationHistory}
             mapPlan={
               draft.identity
-                ? { title: plan.name, versionLabel: mapVersionLabel ?? "" }
+                ? {
+                    title: plan.name,
+                    versionLabel: conversationLabels.planLabel ?? "",
+                  }
                 : null
             }
             mapImage={
               image
                 ? {
                     title: plan.name,
-                    versionLabel: mapVersionLabel ?? "",
+                    versionLabel: conversationLabels.canvasLabel ?? "",
                     downloadUrl: image.signedUrl,
                   }
                 : null
@@ -908,8 +968,10 @@ export function DirectMapWorkbench() {
       ) : null}
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
-        {mapVersionLabel ? (
-          <div className={styles.mapVersionIndicator}>{mapVersionLabel}</div>
+        {conversationLabels.canvasLabel ? (
+          <div className={styles.mapVersionIndicator}>
+            {conversationLabels.canvasLabel}
+          </div>
         ) : null}
         <DirectMapCanvas
           plan={plan}
@@ -945,9 +1007,7 @@ export function DirectMapWorkbench() {
               setRightOpen(false);
             }}
             versionLabel={
-              draft.identity
-                ? `Version${draft.identity.revisionNumber}`
-                : undefined
+              conversationLabels.planLabel ?? undefined
             }
           />
           <DirectMapGenerationPanel

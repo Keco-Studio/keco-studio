@@ -69,7 +69,7 @@ describeDb('GDD Map Plan binding (live database)', () => {
     if (fx) await teardownProjectFixture(fx);
   }, 120_000);
 
-  it('groups GDD-generated Plans and Maps in one durable conversation', async () => {
+  it('keeps each GDD-generated Map in its own durable Plan conversation', async () => {
     const version = await fx.svc.from('game_design_system_versions').insert({
       system_id: systemId,
       version_number: 1,
@@ -235,20 +235,26 @@ describeDb('GDD Map Plan binding (live database)', () => {
       .select('conversation_id,plan_display_version,map_project_id')
       .in('map_project_id', [result.map_id, secondResult.map_id])
       .eq('node_type', 'plan')
-      .order('plan_display_version');
+      .order('map_project_id');
     expect(groupedPlans.error).toBeNull();
-    expect(groupedPlans.data).toEqual([
-      expect.objectContaining({
-        conversation_id: planNode.data?.conversation_id,
-        plan_display_version: 1,
-        map_project_id: result.map_id,
-      }),
-      expect.objectContaining({
-        conversation_id: planNode.data?.conversation_id,
-        plan_display_version: 2,
-        map_project_id: secondResult.map_id,
-      }),
-    ]);
+    expect(groupedPlans.data).toHaveLength(2);
+    expect(new Set(groupedPlans.data?.map((row) => row.conversation_id)).size).toBe(2);
+    expect(groupedPlans.data?.every((row) => row.plan_display_version === 1)).toBe(true);
+    expect(groupedPlans.data?.map((row) => row.map_project_id).sort()).toEqual(
+      [result.map_id, secondResult.map_id].sort(),
+    );
+
+    const conversations = await fx.svc.from('map_conversations')
+      .select('id,root_map_project_id')
+      .in('id', groupedPlans.data?.map((row) => row.conversation_id) ?? []);
+    expect(conversations.error).toBeNull();
+    expect(conversations.data).toHaveLength(2);
+    const rootByConversation = new Map(
+      conversations.data?.map((conversation) => [conversation.id, conversation.root_map_project_id]),
+    );
+    for (const rootPlan of groupedPlans.data ?? []) {
+      expect(rootByConversation.get(rootPlan.conversation_id)).toBe(rootPlan.map_project_id);
+    }
 
     for (const [expectedStatus, nextStatus] of [
       ['planned', 'queued'],

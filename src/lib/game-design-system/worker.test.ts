@@ -85,6 +85,42 @@ describe('leased Game Design System worker', () => {
     }
   });
 
+  it('aborts and requeues a generation request that does not return', async () => {
+    jest.useFakeTimers();
+    try {
+      const retry = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const);
+      const generate = jest.fn((...args: unknown[]) => {
+        const signal = args[3] as AbortSignal | undefined;
+        if (!signal) return Promise.reject(new Error('Generation abort signal was not provided.'));
+        return new Promise<typeof generated>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      });
+      const processing = processClaimedGameDesignSystemJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
+        findGenerationOutput: jest.fn(async () => null),
+        heartbeat: jest.fn(async () => undefined),
+        generate,
+        createSystem: jest.fn(async () => ({ id: 'system-1', current_version_id: 'version-1' } as never)),
+        complete: jest.fn(async () => undefined),
+        retry,
+        fail: jest.fn(async () => undefined),
+      } as never);
+
+      await jest.advanceTimersByTimeAsync(240_000);
+
+      await expect(processing).resolves.toBe('queued');
+      expect(retry).toHaveBeenCalledWith(
+        expect.anything(),
+        'job-1',
+        'worker-1',
+        'Game Design System generation timed out after 240 seconds.',
+        5,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('heartbeats phases and completes only with the claimed lease', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const findGenerationOutput = jest.fn(async () => null);
@@ -105,15 +141,20 @@ describe('leased Game Design System worker', () => {
     expect(result).toBe('completed');
     expect(findGenerationOutput.mock.invocationCallOrder[0]).toBeLessThan(generate.mock.invocationCallOrder[0]);
     expect(heartbeat.mock.calls.map((call) => call[3])).toEqual(['generating', 'validating', 'saving']);
-    expect(generate).toHaveBeenCalledWith(expect.anything(), undefined, expect.objectContaining({
-      context: expect.objectContaining({
-        actorUserId: 'user-1',
-        feature: 'game_design_system',
-        operation: 'generate',
-        correlationId: 'job-1',
-        jobId: 'job-1',
+    expect(generate).toHaveBeenCalledWith(
+      expect.anything(),
+      undefined,
+      expect.objectContaining({
+        context: expect.objectContaining({
+          actorUserId: 'user-1',
+          feature: 'game_design_system',
+          operation: 'generate',
+          correlationId: 'job-1',
+          jobId: 'job-1',
+        }),
       }),
-    }));
+      expect.anything(),
+    );
     expect(createSystem).toHaveBeenCalledWith(expect.anything(), 'user-1', expect.objectContaining({ document, rules, artStyle }));
     expect(complete).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', { systemId: 'system-1', versionId: 'version-1' });
   });

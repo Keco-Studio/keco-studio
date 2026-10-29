@@ -28,6 +28,8 @@ type WorkerDependencies = {
 };
 
 const GENERATION_OUTPUT_LOOKUP_TIMEOUT_MS = 15_000;
+const GENERATION_TIMEOUT_MS = 240_000;
+const GENERATION_TIMEOUT_MESSAGE = 'Game Design System generation timed out after 240 seconds.';
 
 export function shouldWakeGameDesignSystemGenerationJob(
   job: Pick<GameDesignSystemGenerationJob, 'status' | 'available_at' | 'lease_expires_at'>,
@@ -104,17 +106,27 @@ async function generateWithLeaseHeartbeat(
 ) {
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
+  const abortController = new AbortController();
+  const generationTimeout = setTimeout(() => {
+    abortController.abort(new Error(GENERATION_TIMEOUT_MESSAGE));
+  }, GENERATION_TIMEOUT_MS);
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
       .then(() => dependencies.heartbeat(input.serviceClient, input.jobId, input.workerId, 'generating'))
       .catch((error) => { heartbeatFailure = error; });
   }, 30_000);
   try {
-    const rules = await dependencies.generate(input.generationInput, undefined, input.usageBinding);
+    const rules = await dependencies.generate(
+      input.generationInput,
+      undefined,
+      input.usageBinding,
+      abortController.signal,
+    );
     await pendingHeartbeat;
     if (heartbeatFailure) throw heartbeatFailure;
     return rules;
   } finally {
+    clearTimeout(generationTimeout);
     clearInterval(timer);
   }
 }

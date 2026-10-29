@@ -19,7 +19,7 @@ import { MAX_AGENT_MAP_REFERENCE_BYTES, validateMapReferenceAttachment } from '@
 import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
-export const maxDuration = 120;
+export const maxDuration = 300;
 export const runtime = 'nodejs';
 
 const isUuid = (v: string) =>

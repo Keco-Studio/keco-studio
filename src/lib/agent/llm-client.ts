@@ -56,7 +56,29 @@ export interface StreamLlmOptions {
   onFinish?: (reason: string, usage?: TokenUsage) => void;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function abortReason(signal: AbortSignal, fallback?: unknown): unknown {
+  return signal.reason ?? fallback ?? new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function isAborted(error: unknown, signal?: AbortSignal): boolean {
+  return Boolean(signal?.aborted) || (error instanceof DOMException && error.name === 'AbortError');
+}
+
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(abortReason(signal));
+    return;
+  }
+  const timer = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, ms);
+  function onAbort() {
+    clearTimeout(timer);
+    reject(abortReason(signal as AbortSignal));
+  }
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
 
 interface ResolvedLlmConfig {
   baseUrl: string;
@@ -222,9 +244,9 @@ export async function* streamLlm(
       }
       lastError = new LlmError(`LLM transient error (${response.status})`);
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (isAborted(err, options.signal)) {
         outcome = 'aborted';
-        throw err;
+        throw options.signal?.aborted ? abortReason(options.signal, err) : err;
       }
       if (err instanceof LlmError && !`${err.message}`.includes('transient')) {
         // Non-retriable application error — rethrow immediately.
@@ -240,7 +262,7 @@ export async function* streamLlm(
       if (!keepForStream) await recordUsageAttempt(options, config, provider, capture, outcome, null);
     }
     if (keepForStream) break;
-    await sleep(500 * (attempt + 1));
+    await sleep(500 * (attempt + 1), options.signal);
   }
 
   if (!response || !response.body) {
@@ -326,7 +348,7 @@ export async function* streamLlm(
     streamOutcome = 'succeeded';
   } catch (error) {
     if (streamOutcome !== 'aborted') {
-      streamOutcome = error instanceof DOMException && error.name === 'AbortError'
+      streamOutcome = isAborted(error, options.signal)
         ? 'aborted'
         : 'transport_error';
     }
@@ -400,9 +422,9 @@ export async function completeLlmNonStreaming(
           signal: options.signal,
         });
       } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
+        if (isAborted(error, options.signal)) {
           outcome = 'aborted';
-          throw error;
+          throw options.signal?.aborted ? abortReason(options.signal, error) : error;
         }
         lastError = error;
         if (attempt === 2) throw error;
@@ -474,7 +496,7 @@ export async function completeLlmNonStreaming(
       await recordUsageAttempt(options, config, provider, capture, outcome, usage);
     }
     if (retry) {
-      await sleep(200 * (2 ** attempt));
+      await sleep(200 * (2 ** attempt), options.signal);
     }
   }
 

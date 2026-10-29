@@ -14,7 +14,7 @@ const mockSaved = { maps: [mockMap], refetch: jest.fn(), isLoading: false, error
 const mockHistory = { revisions: [], refetch: jest.fn() };
 const mockDraft = { identity: { mapId, revisionId: 'revision', revisionNumber: 1, saveVersion: 0 }, status: 'saved', isDirty: false, isValid: true, error: null,
   create: jest.fn(), reset: jest.fn(), install: jest.fn(), reload: jest.fn() };
-const mockGeneration = { phase: 'idle', asset: null, error: null, boundImage: null, canRetry: false, canResolveUnknown: false,
+const mockGeneration = { phase: 'idle', target: null as null | { mapId: string; revisionId: string }, asset: null as null | { id: string }, error: null, boundImage: null as null | { sourceRevisionId: string; sha256: string; signedUrl: string; width: number; height: number }, canRetry: false, canResolveUnknown: false,
   generate: jest.fn(), retry: jest.fn(), resolveUnknownAndRestart: jest.fn(), reset: jest.fn(), prepareRestore: jest.fn(), installRestore: jest.fn() };
 const mockService = {
   listReferences: jest.fn().mockResolvedValue([]),
@@ -24,6 +24,8 @@ const mockService = {
 const conversationId = '10000000-0000-4000-8000-000000000011';
 const planNodeId = '10000000-0000-4000-8000-000000000012';
 const followUpPlanNodeId = '10000000-0000-4000-8000-000000000016';
+const mapNodeId = '10000000-0000-4000-8000-000000000017';
+const mapRevisionId = '10000000-0000-4000-8000-000000000018';
 const mockConversation = {
   snapshot: null as null | {
     id: string;
@@ -39,7 +41,17 @@ const mockConversation = {
       mapPlanVersionId: string;
       createdAt: string;
       displayLabel: string;
-      maps: [];
+    maps: Array<{
+      id: string;
+      type: 'map';
+      planNodeId: string;
+      revisionId: string;
+      assetId: string;
+      mapVersionNumber: number;
+      status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
+      createdAt: string;
+      displayLabel: string;
+    }>;
     }>;
     messages: Array<{
       id: string;
@@ -76,10 +88,18 @@ jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
 }));
 jest.mock('@/features/create-map/hooks/useDirectMapCollisionGrid', () => ({ useDirectMapCollisionGrid: () => ({}) }));
 jest.mock('@/features/create-map/hooks/useMapConversation', () => ({
-  useMapConversation: () => mockConversation,
+  useMapConversation: () => ({ ...mockConversation }),
 }));
-jest.mock('@/features/create-map/components/DirectMapCanvas', () => ({ DirectMapCanvas: () => <div data-testid="map-canvas" /> }));
-jest.mock('@/features/create-map/components/DirectMapPlanInspector', () => ({ DirectMapPlanInspector: () => <div /> }));
+jest.mock('@/features/create-map/components/DirectMapCanvas', () => ({
+  DirectMapCanvas: ({ image }: { image: { sourceRevisionId: string } | null }) => (
+    <div data-testid="map-canvas" data-image-revision={image?.sourceRevisionId ?? ''} />
+  ),
+}));
+jest.mock('@/features/create-map/components/DirectMapPlanInspector', () => ({
+  DirectMapPlanInspector: ({ versionLabel }: { versionLabel?: string }) => (
+    <div data-testid="plan-version-label">{versionLabel}</div>
+  ),
+}));
 jest.mock('@/features/create-map/components/DirectMapGenerationPanel', () => ({ DirectMapGenerationPanel: () => <div data-testid="generation-monitor" /> }));
 jest.mock('@/features/create-map/components/MapReferencePanel', () => ({ MapReferencePanel: () => <div /> }));
 
@@ -90,9 +110,15 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/create-map');
   mockDraft.isDirty = false;
   mockDraft.identity = { mapId, revisionId: 'revision', revisionNumber: 1, saveVersion: 0 };
+  mockGeneration.phase = 'idle';
+  mockGeneration.target = null;
+  mockGeneration.asset = null;
+  mockGeneration.boundImage = null;
   mockConversation.snapshot = null;
+  mockConversation.refetch.mockResolvedValue(undefined);
   mockConversation.refresh.mockImplementation(async () => mockConversation.snapshot);
   mockConversation.service.findConversationForMap.mockResolvedValue(null);
+  mockConversation.service.attachGeneratedMap.mockResolvedValue(undefined);
   const loaded = { projectId, plan: makeValidMapPlanV3(), scene: makeEmptyMapSceneV3(), sourceDocumentId: null, identity: mockDraft.identity };
   mockService.loadSavedMapV3.mockResolvedValue(loaded);
   mockService.createPlanV3.mockResolvedValue({ plan: loaded.plan, sourceToken: null });
@@ -118,6 +144,87 @@ function workbench() {
 
 function refresh(detail: { projectId: string; mapId?: string } = { projectId, mapId }) {
   act(() => { publishCreateMapAgentRefresh(queryClient, detail); });
+}
+
+function arrangeMissingRestoredReadyMap(options?: {
+  readOnly?: boolean;
+  targetMapId?: string;
+}) {
+  const nextPlanNodeId = '10000000-0000-4000-8000-000000000020';
+  const nextMapId = '10000000-0000-4000-8000-000000000021';
+  const nextMapRevisionId = '10000000-0000-4000-8000-000000000023';
+  const nextMapAssetId = '10000000-0000-4000-8000-000000000024';
+  mockSearchParams = new URLSearchParams(
+    `conversationId=${conversationId}${options?.readOnly ? '&viewer=1' : ''}`,
+  );
+  mockDraft.identity = null as never;
+  mockGeneration.phase = 'ready';
+  mockGeneration.target = {
+    mapId: options?.targetMapId ?? nextMapId,
+    revisionId: nextMapRevisionId,
+  };
+  mockGeneration.asset = { id: nextMapAssetId };
+  const restoredScene = makeEmptyMapSceneV3();
+  restoredScene.mapImage = {
+    assetKey: 'map-image',
+    sourceRevisionId: nextMapRevisionId,
+    width: 512,
+    height: 512,
+    locked: true,
+  };
+  mockGeneration.prepareRestore.mockResolvedValue({
+    plan: makeValidMapPlanV3(),
+    scene: restoredScene,
+    phase: 'ready',
+  });
+  mockConversation.snapshot = {
+    id: conversationId,
+    projectId,
+    title: 'Island delivery',
+    nodes: [],
+    planNodes: [
+      {
+        id: planNodeId,
+        type: 'plan',
+        displayVersion: 1,
+        parentPlanNodeId: null,
+        mapProjectId: mapId,
+        mapPlanVersionId: '10000000-0000-4000-8000-000000000013',
+        createdAt: '2026-10-23T00:00:00.000Z',
+        displayLabel: 'Plan V1',
+        maps: [],
+      },
+      {
+        id: nextPlanNodeId,
+        type: 'plan',
+        displayVersion: 2,
+        parentPlanNodeId: planNodeId,
+        mapProjectId: nextMapId,
+        mapPlanVersionId: '10000000-0000-4000-8000-000000000022',
+        createdAt: '2026-10-23T00:02:00.000Z',
+        displayLabel: 'Plan V2',
+        maps: [],
+      },
+    ],
+    messages: [],
+  };
+  mockConversation.service.findConversationForMap.mockResolvedValue({
+    conversationId,
+    planNodeId: nextPlanNodeId,
+  });
+  mockService.loadSavedMapV3.mockResolvedValue({
+    projectId,
+    plan: makeValidMapPlanV3(),
+    scene: restoredScene,
+    sourceDocumentId: null,
+    identity: {
+      mapId: nextMapId,
+      revisionId: '10000000-0000-4000-8000-000000000025',
+      revisionNumber: 2,
+      saveVersion: 1,
+    },
+  });
+  return { nextPlanNodeId, nextMapId, nextMapRevisionId, nextMapAssetId };
 }
 
 describe('workbench durable state refresh', () => {
@@ -246,6 +353,236 @@ describe('workbench durable state refresh', () => {
     await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(mapId));
     expect(screen.getByText('Create an island delivery map.')).toBeTruthy();
     expect(screen.getByText('Map Plan created')).toBeTruthy();
+  });
+
+  it('opens a historical Map with its owning Plan as the modification base', async () => {
+    mockSearchParams = new URLSearchParams(`conversationId=${conversationId}`);
+    mockDraft.identity = null as never;
+    const scene = makeEmptyMapSceneV3();
+    scene.mapImage = {
+      assetKey: 'map-image',
+      sourceRevisionId: mapRevisionId,
+      width: 512,
+      height: 512,
+      locked: true,
+    };
+    mockGeneration.boundImage = {
+      sourceRevisionId: mapRevisionId,
+      sha256: 'a'.repeat(64),
+      signedUrl: '/historical-map.png',
+      width: 512,
+      height: 512,
+    };
+    mockGeneration.prepareRestore.mockResolvedValue({
+      plan: makeValidMapPlanV3(),
+      scene,
+      phase: 'ready',
+    });
+    mockConversation.snapshot = {
+      id: conversationId,
+      projectId,
+      title: 'Island delivery',
+      nodes: [],
+      planNodes: [{
+        id: planNodeId,
+        type: 'plan',
+        displayVersion: 1,
+        parentPlanNodeId: null,
+        mapProjectId: mapId,
+        mapPlanVersionId: '10000000-0000-4000-8000-000000000013',
+        createdAt: '2026-10-23T00:00:00.000Z',
+        displayLabel: 'Plan V1',
+        maps: [{
+          id: mapNodeId,
+          type: 'map',
+          planNodeId,
+          revisionId: mapRevisionId,
+          assetId: '10000000-0000-4000-8000-000000000019',
+          mapVersionNumber: 1,
+          status: 'ready',
+          createdAt: '2026-10-23T00:01:00.000Z',
+          displayLabel: 'Map V1.1',
+        }],
+      }],
+      messages: [],
+    };
+    mockConversation.service.findConversationForMap.mockResolvedValue({
+      conversationId,
+      planNodeId,
+    });
+    mockConversation.service.resolveNode.mockResolvedValue({
+      mapProjectId: mapId,
+      planNodeId,
+    });
+
+    render(workbench());
+
+    await waitFor(() => expect(mockGeneration.installRestore).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Show map generation history' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Map V1.1 ready' }));
+
+    await waitFor(() => expect(mockConversation.service.resolveNode).toHaveBeenCalledWith(mapNodeId));
+    await waitFor(() => expect(
+      (screen.getByRole('combobox', { name: 'Base Plan' }) as HTMLSelectElement).value,
+    ).toBe(planNodeId));
+    expect(screen.getByTestId('plan-version-label').textContent).toBe('Plan V1');
+    expect(screen.getAllByText('Map V1.1').length).toBeGreaterThan(0);
+  });
+
+  it('does not display a previous Plan Map while the active Plan has no Map output', async () => {
+    const nextPlanNodeId = '10000000-0000-4000-8000-000000000020';
+    const nextMapId = '10000000-0000-4000-8000-000000000021';
+    mockSearchParams = new URLSearchParams(`conversationId=${conversationId}`);
+    mockDraft.identity = null as never;
+    const staleScene = makeEmptyMapSceneV3();
+    staleScene.mapImage = {
+      assetKey: 'map-image',
+      sourceRevisionId: mapRevisionId,
+      width: 512,
+      height: 512,
+      locked: true,
+    };
+    mockGeneration.boundImage = {
+      sourceRevisionId: mapRevisionId,
+      sha256: 'a'.repeat(64),
+      signedUrl: '/previous-plan-map.png',
+      width: 512,
+      height: 512,
+    };
+    mockGeneration.prepareRestore.mockResolvedValue({
+      plan: makeValidMapPlanV3(),
+      scene: staleScene,
+      phase: 'ready',
+    });
+    mockConversation.snapshot = {
+      id: conversationId,
+      projectId,
+      title: 'Island delivery',
+      nodes: [],
+      planNodes: [
+        {
+          id: planNodeId,
+          type: 'plan',
+          displayVersion: 1,
+          parentPlanNodeId: null,
+          mapProjectId: mapId,
+          mapPlanVersionId: '10000000-0000-4000-8000-000000000013',
+          createdAt: '2026-10-23T00:00:00.000Z',
+          displayLabel: 'Plan V1',
+          maps: [{
+            id: mapNodeId,
+            type: 'map',
+            planNodeId,
+            revisionId: mapRevisionId,
+            assetId: '10000000-0000-4000-8000-000000000019',
+            mapVersionNumber: 1,
+            status: 'ready',
+            createdAt: '2026-10-23T00:01:00.000Z',
+            displayLabel: 'Map V1.1',
+          }],
+        },
+        {
+          id: nextPlanNodeId,
+          type: 'plan',
+          displayVersion: 2,
+          parentPlanNodeId: planNodeId,
+          mapProjectId: nextMapId,
+          mapPlanVersionId: '10000000-0000-4000-8000-000000000022',
+          createdAt: '2026-10-23T00:02:00.000Z',
+          displayLabel: 'Plan V2',
+          maps: [],
+        },
+      ],
+      messages: [],
+    };
+    mockConversation.service.findConversationForMap.mockResolvedValue({
+      conversationId,
+      planNodeId: nextPlanNodeId,
+    });
+    mockService.loadSavedMapV3.mockResolvedValue({
+      projectId,
+      plan: makeValidMapPlanV3(),
+      scene: staleScene,
+      sourceDocumentId: null,
+      identity: {
+        mapId: nextMapId,
+        revisionId: '10000000-0000-4000-8000-000000000023',
+        revisionNumber: 1,
+        saveVersion: 0,
+      },
+    });
+
+    render(workbench());
+
+    await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(nextMapId));
+    await waitFor(() => expect(screen.getByTestId('plan-version-label').textContent).toBe('Plan V2'));
+    expect(screen.getByTestId('map-canvas').getAttribute('data-image-revision')).toBe('');
+  });
+
+  it('attaches a restored ready Map when the active Plan resolves after the ready phase', async () => {
+    const { nextPlanNodeId, nextMapId, nextMapRevisionId, nextMapAssetId } =
+      arrangeMissingRestoredReadyMap();
+
+    render(workbench());
+
+    await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(nextMapId));
+    await waitFor(() => expect(mockConversation.service.attachGeneratedMap).toHaveBeenCalledWith(
+      nextPlanNodeId,
+      nextMapRevisionId,
+      nextMapAssetId,
+    ));
+  });
+
+  it('does not repair a missing Map node from a read-only viewer', async () => {
+    const { nextMapId } = arrangeMissingRestoredReadyMap({ readOnly: true });
+
+    render(workbench());
+
+    await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(nextMapId));
+    await waitFor(() => expect(screen.getByTestId('plan-version-label').textContent).toBe('Plan V2'));
+    await act(async () => Promise.resolve());
+    expect(mockConversation.service.attachGeneratedMap).not.toHaveBeenCalled();
+  });
+
+  it('does not attach a generation target to a Plan owned by another map project', async () => {
+    const { nextMapId } = arrangeMissingRestoredReadyMap({ targetMapId: mapId });
+
+    render(workbench());
+
+    await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(nextMapId));
+    await waitFor(() => expect(screen.getByTestId('plan-version-label').textContent).toBe('Plan V2'));
+    await act(async () => Promise.resolve());
+    expect(mockConversation.service.attachGeneratedMap).not.toHaveBeenCalled();
+  });
+
+  it('does not repeat a successful Map attachment when the snapshot refetch fails', async () => {
+    const { nextMapId } = arrangeMissingRestoredReadyMap();
+    mockConversation.refetch.mockRejectedValue(new Error('temporary read failure'));
+    const view = render(workbench());
+    await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(nextMapId));
+    await waitFor(() => expect(mockConversation.refetch).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    view.rerender(workbench());
+    await act(async () => Promise.resolve());
+
+    expect(mockConversation.service.attachGeneratedMap).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the conversation when a generated Map becomes ready', async () => {
+    mockSearchParams = new URLSearchParams(`conversationId=${conversationId}`);
+    mockGeneration.phase = 'generating';
+    const view = render(workbench());
+    await act(async () => Promise.resolve());
+    mockConversation.refetch.mockClear();
+
+    mockGeneration.phase = 'ready';
+    view.rerender(workbench());
+
+    await waitFor(() => expect(mockConversation.refetch).toHaveBeenCalledTimes(1));
   });
 
   it('does not reopen a Plan it just created when the URL normalizes to its conversation', async () => {

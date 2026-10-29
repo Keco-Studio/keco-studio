@@ -65,6 +65,40 @@ export type MapConversationSnapshot = Omit<
   planNodes: MapConversationPlanNode[];
 };
 
+export function getMapConversationLabels(
+  snapshot: MapConversationSnapshot | null | undefined,
+  planNodeId: string | null | undefined,
+  mapRevisionId: string | null | undefined,
+): { planLabel: string | null; canvasLabel: string | null } {
+  if (!snapshot || !planNodeId) {
+    return { planLabel: null, canvasLabel: null };
+  }
+
+  const plan = snapshot.planNodes.find((node) => node.id === planNodeId);
+  if (!plan) return { planLabel: null, canvasLabel: null };
+
+  const map = mapRevisionId
+    ? plan.maps.find((node) => node.revisionId === mapRevisionId)
+    : null;
+  return {
+    planLabel: plan.displayLabel,
+    canvasLabel: map?.displayLabel ?? plan.displayLabel,
+  };
+}
+
+export function mapRevisionBelongsToPlan(
+  snapshot: MapConversationSnapshot | null | undefined,
+  planNodeId: string | null | undefined,
+  mapRevisionId: string | null | undefined,
+): boolean {
+  if (!snapshot || !planNodeId || !mapRevisionId) return false;
+  return Boolean(
+    snapshot.planNodes
+      .find((node) => node.id === planNodeId)
+      ?.maps.some((node) => node.revisionId === mapRevisionId),
+  );
+}
+
 export function parseMapConversationSnapshot(
   value: unknown,
 ): MapConversationSnapshot {

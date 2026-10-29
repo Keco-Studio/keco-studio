@@ -329,6 +329,43 @@ describe('structured Game Design System generation', () => {
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
+  it('cancels the active completion when the generation signal aborts', async () => {
+    const controller = new AbortController();
+    const complete = jest.fn((_messages: ChatMessage[], options?: StreamLlmOptions) => {
+      const signal = options?.signal;
+      if (!signal) return Promise.reject(new Error('Generation signal did not reach the completion request.'));
+      return new Promise<string>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+    const generation = generateGameDesignSystemOutput(input, complete, undefined, controller.signal);
+
+    controller.abort(new Error('Generation deadline exceeded.'));
+
+    await expect(generation).rejects.toThrow('Generation deadline exceeded.');
+  });
+
+  it('uses the same generation signal for the repair completion', async () => {
+    const controller = new AbortController();
+    let markRepairStarted: (() => void) | undefined;
+    const repairStarted = new Promise<void>((resolve) => { markRepairStarted = resolve; });
+    const complete = jest.fn((_messages: ChatMessage[], options?: StreamLlmOptions) => {
+      if (complete.mock.calls.length === 1) return Promise.resolve('{"invalid":true}');
+      const signal = options?.signal;
+      if (!signal) return Promise.reject(new Error('Generation signal did not reach the repair request.'));
+      markRepairStarted?.();
+      return new Promise<string>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+    const generation = generateGameDesignSystemOutput(input, complete, undefined, controller.signal);
+    await repairStarted;
+
+    controller.abort(new Error('Repair deadline exceeded.'));
+
+    await expect(generation).rejects.toThrow('Repair deadline exceeded.');
+  });
+
   it('propagates a repair transport failure as retryable', async () => {
     const transportError = new Error('DeepSeek repair timeout');
     const complete = jest.fn(async () => {

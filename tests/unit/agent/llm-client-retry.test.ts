@@ -78,7 +78,7 @@ describe('LLM retry policy', () => {
     const abortController = new AbortController();
     abortController.abort();
 
-    const { streamLlm } = await import('../../../src/lib/agent/llm-client');
+    const { completeLlmNonStreaming, streamLlm } = await import('../../../src/lib/agent/llm-client');
 
     await expect(async () => {
       for await (const _chunk of streamLlm(
@@ -88,6 +88,34 @@ describe('LLM retry policy', () => {
         // consume stream
       }
     }).rejects.toThrow(/aborted/);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a request aborted with a custom deadline reason', async () => {
+    const deadline = new Error('Generation deadline exceeded.');
+    const abortController = new AbortController();
+    abortController.abort(deadline);
+    global.fetch = jest.fn(async (_input, init) => {
+      throw (init?.signal as AbortSignal).reason;
+    }) as typeof fetch;
+
+    const { completeLlmNonStreaming, streamLlm } = await import('../../../src/lib/agent/llm-client');
+
+    await expect(async () => {
+      for await (const _chunk of streamLlm(
+        [{ role: 'user', content: 'hello' }],
+        { signal: abortController.signal },
+      )) {
+        // consume stream
+      }
+    }).rejects.toBe(deadline);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    jest.mocked(global.fetch).mockClear();
+    await expect(completeLlmNonStreaming(
+      [{ role: 'user', content: 'hello' }],
+      { signal: abortController.signal },
+    )).rejects.toBe(deadline);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 

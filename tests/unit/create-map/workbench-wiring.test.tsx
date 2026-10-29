@@ -146,6 +146,8 @@ describe("Create Map V3 direct workbench", () => {
     );
     expect(direct).toContain("service.loadSavedMapV3(");
     expect(direct).toContain("generation.installRestore(prepared)");
+    expect(direct).toContain("getMapConversationLabels(");
+    expect(direct).not.toMatch(/Version\$\{draft\.identity\.revisionNumber\}/);
     expect(direct).toContain("<DirectMapCanvas");
     expect(direct).toContain("<MapChatPanel");
     expect(direct).toContain("chatMessages");
