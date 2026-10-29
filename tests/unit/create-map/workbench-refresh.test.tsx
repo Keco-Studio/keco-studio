@@ -14,7 +14,7 @@ const mockSaved = { maps: [mockMap], refetch: jest.fn(), isLoading: false, error
 const mockHistory = { revisions: [], refetch: jest.fn() };
 const mockDraft = { identity: { mapId, revisionId: 'revision', revisionNumber: 1, saveVersion: 0 }, status: 'saved', isDirty: false, isValid: true, error: null,
   create: jest.fn(), reset: jest.fn(), install: jest.fn(), reload: jest.fn() };
-const mockGeneration = { phase: 'idle', asset: null, error: null, boundImage: null, canRetry: false, canResolveUnknown: false,
+const mockGeneration = { phase: 'idle', asset: null, error: null, boundImage: null as null | { sourceRevisionId: string; sha256: string; signedUrl: string; width: number; height: number }, canRetry: false, canResolveUnknown: false,
   generate: jest.fn(), retry: jest.fn(), resolveUnknownAndRestart: jest.fn(), reset: jest.fn(), prepareRestore: jest.fn(), installRestore: jest.fn() };
 const mockService = {
   listReferences: jest.fn().mockResolvedValue([]),
@@ -24,6 +24,8 @@ const mockService = {
 const conversationId = '10000000-0000-4000-8000-000000000011';
 const planNodeId = '10000000-0000-4000-8000-000000000012';
 const followUpPlanNodeId = '10000000-0000-4000-8000-000000000016';
+const mapNodeId = '10000000-0000-4000-8000-000000000017';
+const mapRevisionId = '10000000-0000-4000-8000-000000000018';
 const mockConversation = {
   snapshot: null as null | {
     id: string;
@@ -39,7 +41,17 @@ const mockConversation = {
       mapPlanVersionId: string;
       createdAt: string;
       displayLabel: string;
-      maps: [];
+    maps: Array<{
+      id: string;
+      type: 'map';
+      planNodeId: string;
+      revisionId: string;
+      assetId: string;
+      mapVersionNumber: number;
+      status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
+      createdAt: string;
+      displayLabel: string;
+    }>;
     }>;
     messages: Array<{
       id: string;
@@ -79,7 +91,11 @@ jest.mock('@/features/create-map/hooks/useMapConversation', () => ({
   useMapConversation: () => mockConversation,
 }));
 jest.mock('@/features/create-map/components/DirectMapCanvas', () => ({ DirectMapCanvas: () => <div data-testid="map-canvas" /> }));
-jest.mock('@/features/create-map/components/DirectMapPlanInspector', () => ({ DirectMapPlanInspector: () => <div /> }));
+jest.mock('@/features/create-map/components/DirectMapPlanInspector', () => ({
+  DirectMapPlanInspector: ({ versionLabel }: { versionLabel?: string }) => (
+    <div data-testid="plan-version-label">{versionLabel}</div>
+  ),
+}));
 jest.mock('@/features/create-map/components/DirectMapGenerationPanel', () => ({ DirectMapGenerationPanel: () => <div data-testid="generation-monitor" /> }));
 jest.mock('@/features/create-map/components/MapReferencePanel', () => ({ MapReferencePanel: () => <div /> }));
 
@@ -90,6 +106,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/create-map');
   mockDraft.isDirty = false;
   mockDraft.identity = { mapId, revisionId: 'revision', revisionNumber: 1, saveVersion: 0 };
+  mockGeneration.boundImage = null;
   mockConversation.snapshot = null;
   mockConversation.refresh.mockImplementation(async () => mockConversation.snapshot);
   mockConversation.service.findConversationForMap.mockResolvedValue(null);
@@ -246,6 +263,80 @@ describe('workbench durable state refresh', () => {
     await waitFor(() => expect(mockService.loadSavedMapV3).toHaveBeenCalledWith(mapId));
     expect(screen.getByText('Create an island delivery map.')).toBeTruthy();
     expect(screen.getByText('Map Plan created')).toBeTruthy();
+  });
+
+  it('opens a historical Map with its owning Plan as the modification base', async () => {
+    mockSearchParams = new URLSearchParams(`conversationId=${conversationId}`);
+    mockDraft.identity = null as never;
+    const scene = makeEmptyMapSceneV3();
+    scene.mapImage = {
+      assetKey: 'map-image',
+      sourceRevisionId: mapRevisionId,
+      width: 512,
+      height: 512,
+      locked: true,
+    };
+    mockGeneration.boundImage = {
+      sourceRevisionId: mapRevisionId,
+      sha256: 'a'.repeat(64),
+      signedUrl: '/historical-map.png',
+      width: 512,
+      height: 512,
+    };
+    mockGeneration.prepareRestore.mockResolvedValue({
+      plan: makeValidMapPlanV3(),
+      scene,
+      phase: 'ready',
+    });
+    mockConversation.snapshot = {
+      id: conversationId,
+      projectId,
+      title: 'Island delivery',
+      nodes: [],
+      planNodes: [{
+        id: planNodeId,
+        type: 'plan',
+        displayVersion: 1,
+        parentPlanNodeId: null,
+        mapProjectId: mapId,
+        mapPlanVersionId: '10000000-0000-4000-8000-000000000013',
+        createdAt: '2026-10-23T00:00:00.000Z',
+        displayLabel: 'Plan V1',
+        maps: [{
+          id: mapNodeId,
+          type: 'map',
+          planNodeId,
+          revisionId: mapRevisionId,
+          assetId: '10000000-0000-4000-8000-000000000019',
+          mapVersionNumber: 1,
+          status: 'ready',
+          createdAt: '2026-10-23T00:01:00.000Z',
+          displayLabel: 'Map V1.1',
+        }],
+      }],
+      messages: [],
+    };
+    mockConversation.service.findConversationForMap.mockResolvedValue({
+      conversationId,
+      planNodeId,
+    });
+    mockConversation.service.resolveNode.mockResolvedValue({
+      mapProjectId: mapId,
+      planNodeId,
+    });
+
+    render(workbench());
+
+    await waitFor(() => expect(mockGeneration.installRestore).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Show map generation history' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Map V1.1 ready' }));
+
+    await waitFor(() => expect(mockConversation.service.resolveNode).toHaveBeenCalledWith(mapNodeId));
+    await waitFor(() => expect(
+      (screen.getByRole('combobox', { name: 'Base Plan' }) as HTMLSelectElement).value,
+    ).toBe(planNodeId));
+    expect(screen.getByTestId('plan-version-label').textContent).toBe('Plan V1');
+    expect(screen.getAllByText('Map V1.1').length).toBeGreaterThan(0);
   });
 
   it('does not reopen a Plan it just created when the URL normalizes to its conversation', async () => {
