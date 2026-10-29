@@ -48,6 +48,7 @@ import {
   type MapPlanV3,
   type MapSceneV3,
 } from "./model/directMapSchema";
+import { getMapConversationLabels } from "./model/mapConversation";
 import {
   createMapService,
   type MapReferenceRecord,
@@ -759,9 +760,11 @@ export function DirectMapWorkbench() {
       pending: true,
     })),
   ];
-  const mapVersionLabel = draft.identity
-    ? `Version${draft.identity.revisionNumber}`
-    : null;
+  const conversationLabels = getMapConversationLabels(
+    conversation.snapshot,
+    activePlanNodeId,
+    image?.sourceRevisionId ?? null,
+  );
   const activePlan = useMemo(() => {
     if (!activePlanNodeId) return null;
     const planNode = conversation.snapshot?.planNodes.find(
@@ -865,14 +868,17 @@ export function DirectMapWorkbench() {
             generationHistory={generationHistory}
             mapPlan={
               draft.identity
-                ? { title: plan.name, versionLabel: mapVersionLabel ?? "" }
+                ? {
+                    title: plan.name,
+                    versionLabel: conversationLabels.planLabel ?? "",
+                  }
                 : null
             }
             mapImage={
               image
                 ? {
                     title: plan.name,
-                    versionLabel: mapVersionLabel ?? "",
+                    versionLabel: conversationLabels.canvasLabel ?? "",
                     downloadUrl: image.signedUrl,
                   }
                 : null
@@ -908,8 +914,10 @@ export function DirectMapWorkbench() {
       ) : null}
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
-        {mapVersionLabel ? (
-          <div className={styles.mapVersionIndicator}>{mapVersionLabel}</div>
+        {conversationLabels.canvasLabel ? (
+          <div className={styles.mapVersionIndicator}>
+            {conversationLabels.canvasLabel}
+          </div>
         ) : null}
         <DirectMapCanvas
           plan={plan}
@@ -945,9 +953,7 @@ export function DirectMapWorkbench() {
               setRightOpen(false);
             }}
             versionLabel={
-              draft.identity
-                ? `Version${draft.identity.revisionNumber}`
-                : undefined
+              conversationLabels.planLabel ?? undefined
             }
           />
           <DirectMapGenerationPanel
