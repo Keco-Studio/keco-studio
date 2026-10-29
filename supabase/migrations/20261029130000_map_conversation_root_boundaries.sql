@@ -14,6 +14,75 @@ alter table public.map_conversations disable trigger map_conversations_immutable
 alter table public.map_conversation_nodes disable trigger map_conversation_nodes_immutable;
 alter table public.map_conversation_messages disable trigger map_conversation_messages_immutable;
 
+-- The legacy GDD backfill could materialize the same immutable Plan snapshot
+-- in more than one conversation. Keep the copy that owns generated Map nodes
+-- and redirect durable references before splitting conversations by root Plan.
+create temporary table map_conversation_duplicate_root_targets (
+  duplicate_node_id uuid primary key,
+  canonical_node_id uuid not null
+) on commit drop;
+
+insert into map_conversation_duplicate_root_targets (
+  duplicate_node_id, canonical_node_id
+)
+select ranked.node_id, ranked.canonical_node_id
+from (
+  select
+    node.id as node_id,
+    first_value(node.id) over (
+      partition by node.map_project_id, node.map_plan_version_id
+      order by
+        (select count(*) from public.map_conversation_nodes as child
+          where child.parent_plan_node_id = node.id) desc,
+        node.created_at,
+        node.id
+    ) as canonical_node_id,
+    row_number() over (
+      partition by node.map_project_id, node.map_plan_version_id
+      order by
+        (select count(*) from public.map_conversation_nodes as child
+          where child.parent_plan_node_id = node.id) desc,
+        node.created_at,
+        node.id
+    ) as duplicate_number
+  from public.map_conversation_nodes as node
+  where node.node_type = 'plan'
+    and node.parent_plan_node_id is null
+) as ranked
+where ranked.duplicate_number > 1;
+
+do $$
+begin
+  if exists (
+    select 1
+    from map_conversation_duplicate_root_targets as target
+    join public.map_conversation_nodes as child
+      on child.parent_plan_node_id = target.duplicate_node_id
+  ) then
+    raise exception 'duplicate root Plan with Map children cannot be coalesced';
+  end if;
+end;
+$$;
+
+update public.map_conversation_messages as message
+set artifact_node_id = target.canonical_node_id
+from map_conversation_duplicate_root_targets as target
+where message.artifact_node_id = target.duplicate_node_id;
+
+update public.map_conversation_messages as message
+set base_plan_node_id = target.canonical_node_id
+from map_conversation_duplicate_root_targets as target
+where message.base_plan_node_id = target.duplicate_node_id;
+
+update public.map_conversation_requests as request
+set plan_node_id = target.canonical_node_id
+from map_conversation_duplicate_root_targets as target
+where request.plan_node_id = target.duplicate_node_id;
+
+delete from public.map_conversation_nodes as node
+using map_conversation_duplicate_root_targets as target
+where node.id = target.duplicate_node_id;
+
 create temporary table map_conversation_root_targets (
   root_node_id uuid primary key,
   source_conversation_id uuid not null,
@@ -129,6 +198,24 @@ set conversation_id = target.target_conversation_id
 from map_conversation_node_targets as target
 where target.node_id = node.id
   and node.conversation_id <> target.target_conversation_id;
+
+-- Sequence numbers are unique only within a conversation. Give every message
+-- a temporary globally unique number before messages cross root boundaries.
+create temporary table map_conversation_staged_message_numbers on commit drop as
+select
+  message.id,
+  maximum.value + row_number() over (order by message.created_at, message.id)
+    as sequence_number
+from public.map_conversation_messages as message
+cross join (
+  select coalesce(max(sequence_number), 0)::bigint as value
+  from public.map_conversation_messages
+) as maximum;
+
+update public.map_conversation_messages as message
+set sequence_number = staged.sequence_number
+from map_conversation_staged_message_numbers as staged
+where staged.id = message.id;
 
 update public.map_conversation_messages as message
 set conversation_id = target.target_conversation_id
