@@ -9,7 +9,7 @@ import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, findGam
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 function idempotencyKey(request: Request): string | null {
   const value = request.headers.get('idempotency-key')?.trim();

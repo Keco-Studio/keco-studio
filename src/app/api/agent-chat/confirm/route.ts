@@ -13,7 +13,7 @@ import { contextFieldsFromScope } from '@/lib/agent/scope';
 import { workspaceAllowsAccountScope } from '@/lib/agent/workspace';
 import type { ToolContext } from '@/lib/agent/types';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export const POST = withAuth(async function POST(
   request: NextRequest,

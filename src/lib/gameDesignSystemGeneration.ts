@@ -250,9 +250,13 @@ export async function generateGameDesignSystemOutput(
   input: ResolvedGameDesignGenerationInput,
   complete: Completion = completeLlm,
   usageBinding?: AiUsageBinding,
+  signal?: AbortSignal,
 ): Promise<GeneratedGameDesignSystem> {
   const messages = buildStructuredGenerationMessages(input);
-  const options = gameDesignSystemLlmOptions();
+  const options = {
+    ...gameDesignSystemLlmOptions(),
+    ...(signal ? { signal } : {}),
+  };
   const first = await complete(messages, {
     ...options,
     ...(usageBinding ? { usageBinding: deriveAiUsageBinding(usageBinding, { operation: 'generate' }) } : {}),

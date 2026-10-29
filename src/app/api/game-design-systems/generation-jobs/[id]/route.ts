@@ -6,6 +6,7 @@ import { getGameDesignSystemGenerationJob, publicGameDesignSystemGenerationJob }
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
 type Params = { params: Promise<{ id: string }> };
+export const maxDuration = 300;
 const scheduledJobs = new Set<string>();
 
 function scheduleQueuedJob(jobId: string): void {
