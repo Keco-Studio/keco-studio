@@ -32,4 +32,19 @@ describe('Map conversation root boundary migration', () => {
     expect(migration).toContain('create or replace function public.attach_map_conversation_plan_to_agent_v1');
     expect(migration).toMatch(/alter column root_map_project_id set not null/i);
   });
+
+  it('coalesces duplicate legacy root snapshots before enforcing root uniqueness', () => {
+    expect(fs.existsSync(migrationPath)).toBe(true);
+    const migration = fs.existsSync(migrationPath) ? fs.readFileSync(migrationPath, 'utf8') : '';
+    const deduplication = migration.indexOf('map_conversation_duplicate_root_targets');
+    const uniqueRootIndex = migration.indexOf('create unique index map_conversations_root_map_project_idx');
+
+    expect(deduplication).toBeGreaterThan(-1);
+    expect(uniqueRootIndex).toBeGreaterThan(deduplication);
+    expect(migration).toMatch(
+      /partition by\s+node\.map_project_id,\s*node\.map_plan_version_id/i,
+    );
+    expect(migration).toContain('duplicate root Plan with Map children cannot be coalesced');
+    expect(migration).toContain('map_conversation_staged_message_numbers');
+  });
 });
