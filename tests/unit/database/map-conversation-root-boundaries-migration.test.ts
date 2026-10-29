@@ -46,5 +46,10 @@ describe('Map conversation root boundary migration', () => {
     );
     expect(migration).toContain('duplicate root Plan with Map children cannot be coalesced');
     expect(migration).toContain('map_conversation_staged_message_numbers');
+    expect(migration).toContain('duplicate_conversation_id');
+    expect(migration).toContain('duplicate root conversation retained dependent records');
+    expect(migration).toMatch(
+      /delete from public\.map_conversations as conversation[\s\S]*map_conversation_duplicate_root_targets/i,
+    );
   });
 });
