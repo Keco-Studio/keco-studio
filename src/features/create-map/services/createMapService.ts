@@ -378,72 +378,96 @@ export function createMapService(supabase: SupabaseClient) {
     listDocuments: (projectId: string) => listDocuments(supabase, projectId),
 
     async listSavedMaps(options?: { projectId?: string; cursor?: string; limit?: number }): Promise<SavedMapSummary[]> {
-      let query = supabase
-        .from('map_projects')
-        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name), map_conversation_nodes!left(id, conversation_id, node_type, plan_display_version, conversation:map_conversations!map_conversation_nodes_conversation_id_fkey(id, title, gdd_generation_job_id))')
-        .eq('current_revision.schema_version', 3)
-        .order('updated_at', { ascending: false });
-      if (options?.projectId) query = query.eq('project_id', options.projectId);
-      if (options) query = query.order('id', { ascending: false });
+      const selectSavedMapRows = () => {
+        let selected = supabase
+          .from('map_projects')
+          .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name), map_conversation_nodes!left(id, conversation_id, node_type, plan_display_version, conversation:map_conversations!map_conversation_nodes_conversation_id_fkey(id, title, gdd_generation_job_id))')
+          .eq('current_revision.schema_version', 3)
+          .order('updated_at', { ascending: false })
+          .order('id', { ascending: false });
+        if (options?.projectId) selected = selected.eq('project_id', options.projectId);
+        return selected;
+      };
+      const parseCursor = (row: { id: unknown; updated_at: unknown }) => {
+        const updatedAt = String(row.updated_at);
+        const id = String(row.id);
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(updatedAt)
+          || Number.isNaN(new Date(updatedAt).getTime()) || !/^[a-f0-9-]{36}$/i.test(id)) {
+          throw new CreateMapServiceError('map_cursor_invalid', 'Invalid map cursor.');
+        }
+        return { id, updatedAt };
+      };
+      let query = selectSavedMapRows();
       if (options?.cursor) {
         // Resolve the cursor through the same project/RLS boundary before using it.
         let cursorQuery = supabase.from('map_projects').select('id,updated_at').eq('id', options.cursor);
         if (options.projectId) cursorQuery = cursorQuery.eq('project_id', options.projectId);
         const { data: cursor, error: cursorError } = await cursorQuery.single();
         if (cursorError || !cursor) throw new CreateMapServiceError('map_cursor_invalid', 'Map cursor not found in this project.');
-        const updatedAt = String(cursor.updated_at);
-        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(updatedAt)
-          || Number.isNaN(new Date(updatedAt).getTime()) || !/^[a-f0-9-]{36}$/i.test(String(cursor.id))) {
-          throw new CreateMapServiceError('map_cursor_invalid', 'Invalid map cursor.');
-        }
+        const { id, updatedAt } = parseCursor(cursor);
         // Keep database microseconds so equal-timestamp pages cannot skip rows.
-        query = query.or(`updated_at.lt.${updatedAt},and(updated_at.eq.${updatedAt},id.lt.${cursor.id})`);
+        query = query.or(`updated_at.lt.${updatedAt},and(updated_at.eq.${updatedAt},id.lt.${id})`);
       }
       // A paginated server caller may request one lookahead row, never an unbounded load.
-      const { data, error } = await query.limit(Math.min(51, Math.max(1, options?.limit ?? 50)));
+      const pageSize = Math.min(51, Math.max(1, options?.limit ?? 50));
+      const { data, error } = await query.limit(pageSize);
       if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
-      const individual: SavedMapSummary[] = [];
-      const conversations = new Map<string, { summary: SavedMapSummary; displayVersion: number }>();
-      for (const row of data ?? []) {
-        const schemaVersion = relationSchemaVersion(row.current_revision);
-        const conversationNodes = Array.isArray(row.map_conversation_nodes) ? row.map_conversation_nodes : [];
-        if (!row.current_revision_id || !schemaVersion) continue;
-        const summary = {
-          id: String(row.id), conversationId: null, projectId: String(row.project_id), projectName: projectName(row.projects),
-          name: String(row.name), currentRevisionId: String(row.current_revision_id),
-          updatedAt: String(row.updated_at), schemaVersion,
-        };
-        const planNode = conversationNodes.find((node) =>
-          node?.node_type === 'plan' && typeof node.conversation_id === 'string'
+      const rows = [...(data ?? [])];
+      const summarize = (sourceRows: typeof rows) => {
+        const individual: SavedMapSummary[] = [];
+        const conversations = new Map<string, { summary: SavedMapSummary; displayVersion: number }>();
+        for (const row of sourceRows) {
+          const schemaVersion = relationSchemaVersion(row.current_revision);
+          const conversationNodes = Array.isArray(row.map_conversation_nodes) ? row.map_conversation_nodes : [];
+          if (!row.current_revision_id || !schemaVersion) continue;
+          const summary = {
+            id: String(row.id), conversationId: null, projectId: String(row.project_id), projectName: projectName(row.projects),
+            name: String(row.name), currentRevisionId: String(row.current_revision_id),
+            updatedAt: String(row.updated_at), schemaVersion,
+          };
+          const planNode = conversationNodes.find((node) =>
+            node?.node_type === 'plan' && typeof node.conversation_id === 'string'
+          );
+          if (!planNode) {
+            individual.push(summary);
+            continue;
+          }
+          const conversationId = String(planNode.conversation_id);
+          const displayVersion = Number(planNode.plan_display_version) || 0;
+          const conversation = Array.isArray(planNode.conversation)
+            ? planNode.conversation[0]
+            : planNode.conversation;
+          const conversationTitle = typeof conversation?.title === 'string' && conversation.title.trim()
+            ? conversation.title.trim()
+            : summary.name;
+          const conversationSummary = {
+            ...summary,
+            conversationId,
+            name: conversationTitle,
+          };
+          const current = conversations.get(conversationId);
+          if (!current || displayVersion > current.displayVersion) {
+            conversations.set(conversationId, { summary: conversationSummary, displayVersion });
+          }
+        }
+        return [...individual, ...[...conversations.values()].map(({ summary }) => summary)]
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
+      };
+      let summaries = summarize(rows);
+      let rawPage = data ?? [];
+      while (!options && rawPage.length === pageSize && summaries.length < 50) {
+        const { id, updatedAt } = parseCursor(rawPage[rawPage.length - 1]);
+        const nextQuery = selectSavedMapRows().or(
+          `updated_at.lt.${updatedAt},and(updated_at.eq.${updatedAt},id.lt.${id})`,
         );
-        if (!planNode) {
-          individual.push(summary);
-          continue;
-        }
-        const conversationId = String(planNode.conversation_id);
-        const displayVersion = Number(planNode.plan_display_version) || 0;
-        const conversation = Array.isArray(planNode.conversation)
-          ? planNode.conversation[0]
-          : planNode.conversation;
-        const conversationTitle = typeof conversation?.title === 'string' && conversation.title.trim()
-          ? conversation.title.trim()
-          : summary.name;
-        if (typeof conversation?.gdd_generation_job_id === 'string') {
-          individual.push({ ...summary, conversationId });
-          continue;
-        }
-        const conversationSummary = {
-          ...summary,
-          conversationId,
-          name: conversationTitle,
-        };
-        const current = conversations.get(conversationId);
-        if (!current || displayVersion > current.displayVersion) {
-          conversations.set(conversationId, { summary: conversationSummary, displayVersion });
-        }
+        const { data: nextPage, error: nextError } = await nextQuery.limit(pageSize);
+        if (nextError) throw new CreateMapServiceError(nextError.code ?? 'map_list_failed', nextError.message);
+        rawPage = nextPage ?? [];
+        if (rawPage.length === 0) break;
+        rows.push(...rawPage);
+        summaries = summarize(rows);
       }
-      return [...individual, ...[...conversations.values()].map(({ summary }) => summary)]
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
+      return summaries.slice(0, pageSize);
     },
 
     async listGenerationHistoryV3(mapId: string): Promise<MapGenerationHistoryRevision[]> {

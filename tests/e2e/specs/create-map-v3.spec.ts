@@ -917,7 +917,7 @@ async function askForMapPlan(page: Page, prompt: string): Promise<void> {
 async function createSavedMap(page: Page): Promise<void> {
   await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-  await expect(page.getByLabel('Map canvas').getByText(/^Version\d+$/)).toBeVisible();
+  await expect(page.getByLabel('Map canvas').getByText('Plan V1', { exact: true })).toBeVisible();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {

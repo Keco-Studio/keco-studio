@@ -154,6 +154,8 @@ export function DirectMapWorkbench() {
   const openedRequestedMapId = useRef<string | null>(null);
   const openedRequestedConversationId = useRef<string | null>(null);
   const previousGenerationPhase = useRef<string>("idle");
+  const pendingMapAttachments = useRef(new Set<string>());
+  const completedMapAttachments = useRef(new Set<string>());
   const pendingRefresh = useRef<{ projectId: string; mapId?: string } | null>(
     null,
   );
@@ -237,21 +239,7 @@ export function DirectMapWorkbench() {
       previousGenerationPhase.current !== generation.phase;
     if (becameVisibleOutput) {
       void mapGenerationHistory.refetch();
-      if (
-        conversationId &&
-        activePlanNodeId &&
-        generation.target &&
-        generation.asset
-      ) {
-        void conversation.service
-          .attachGeneratedMap(
-            activePlanNodeId,
-            generation.target.revisionId,
-            generation.asset.id,
-          )
-          .then(() => conversation.refetch())
-          .catch(() => undefined);
-      } else {
+      if (!conversationId) {
         setChatMessages((current) => {
           if (
             current.some(
@@ -272,13 +260,57 @@ export function DirectMapWorkbench() {
     }
     previousGenerationPhase.current = generation.phase;
   }, [
+    conversationId,
+    generation.phase,
+    mapGenerationHistory,
+  ]);
+
+  useEffect(() => {
+    if (
+      (generation.phase !== "generating" && generation.phase !== "ready") ||
+      readOnly ||
+      !conversationId ||
+      !activePlanNodeId ||
+      !generation.target ||
+      !generation.asset
+    )
+      return;
+    const activePlan = conversation.snapshot?.planNodes.find(
+      (node) => node.id === activePlanNodeId,
+    );
+    if (!activePlan || activePlan.mapProjectId !== generation.target.mapId)
+      return;
+    const revisionId = generation.target.revisionId;
+    const assetId = generation.asset.id;
+    if (
+      activePlan.maps.some(
+        (map) => map.revisionId === revisionId && map.assetId === assetId,
+      )
+    )
+      return;
+    const attachmentKey = `${activePlanNodeId}:${revisionId}:${assetId}`;
+    if (
+      pendingMapAttachments.current.has(attachmentKey) ||
+      completedMapAttachments.current.has(attachmentKey)
+    )
+      return;
+    pendingMapAttachments.current.add(attachmentKey);
+    void conversation.service
+      .attachGeneratedMap(activePlanNodeId, revisionId, assetId)
+      .then(() => {
+        completedMapAttachments.current.add(attachmentKey);
+        return conversation.refetch();
+      })
+      .catch(() => undefined)
+      .finally(() => pendingMapAttachments.current.delete(attachmentKey));
+  }, [
     activePlanNodeId,
     conversation,
     conversationId,
     generation.asset,
     generation.phase,
     generation.target,
-    mapGenerationHistory,
+    readOnly,
   ]);
 
   const closeDrawers = useCallback(() => {
