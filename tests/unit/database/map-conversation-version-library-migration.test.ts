@@ -6,6 +6,10 @@ const migration = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20261023090000_map_conversation_version_library.sql'),
   'utf8',
 );
+const rootBoundaryMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20261029130000_map_conversation_root_boundaries.sql',
+);
 
 describe('map conversation version library migration', () => {
   it('creates append-only Plan/Map conversation records and atomic writer RPCs', () => {
@@ -19,5 +23,15 @@ describe('map conversation version library migration', () => {
     expect(migration).toMatch(/map_require_writer/i);
     expect(migration).toMatch(/save_map_plan_v3/i);
     expect(migration).not.toMatch(/drop table|truncate|delete from public\.map_/i);
+  });
+
+  it('enforces one root Plan whose Map project identifies the conversation', () => {
+    expect(fs.existsSync(rootBoundaryMigrationPath)).toBe(true);
+    const rootBoundaryMigration = fs.existsSync(rootBoundaryMigrationPath)
+      ? fs.readFileSync(rootBoundaryMigrationPath, 'utf8')
+      : '';
+    expect(rootBoundaryMigration).toContain('map_conversation_one_root_plan_idx');
+    expect(rootBoundaryMigration).toContain('map_conversations_root_map_project_idx');
+    expect(rootBoundaryMigration).toMatch(/root Plan Map project mismatch/i);
   });
 });
