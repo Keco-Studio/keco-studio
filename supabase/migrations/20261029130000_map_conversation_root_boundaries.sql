@@ -19,16 +19,18 @@ alter table public.map_conversation_messages disable trigger map_conversation_me
 -- and redirect durable references before splitting conversations by root Plan.
 create temporary table map_conversation_duplicate_root_targets (
   duplicate_node_id uuid primary key,
+  duplicate_conversation_id uuid not null,
   canonical_node_id uuid not null
 ) on commit drop;
 
 insert into map_conversation_duplicate_root_targets (
-  duplicate_node_id, canonical_node_id
+  duplicate_node_id, duplicate_conversation_id, canonical_node_id
 )
-select ranked.node_id, ranked.canonical_node_id
+select ranked.node_id, ranked.conversation_id, ranked.canonical_node_id
 from (
   select
     node.id as node_id,
+    node.conversation_id,
     first_value(node.id) over (
       partition by node.map_project_id, node.map_plan_version_id
       order by
@@ -234,6 +236,41 @@ set conversation_id = target.target_conversation_id
 from map_conversation_node_targets as target
 where target.node_id = request.plan_node_id
   and request.conversation_id <> target.target_conversation_id;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.map_conversations as conversation
+    join map_conversation_duplicate_root_targets as duplicate
+      on duplicate.duplicate_conversation_id = conversation.id
+    where not exists (
+      select 1 from public.map_conversation_nodes as node
+      where node.conversation_id = conversation.id
+    )
+      and (
+        exists (
+          select 1 from public.map_conversation_messages as message
+          where message.conversation_id = conversation.id
+        )
+        or exists (
+          select 1 from public.map_conversation_requests as request
+          where request.conversation_id = conversation.id
+        )
+      )
+  ) then
+    raise exception 'duplicate root conversation retained dependent records';
+  end if;
+end;
+$$;
+
+delete from public.map_conversations as conversation
+using map_conversation_duplicate_root_targets as duplicate
+where conversation.id = duplicate.duplicate_conversation_id
+  and not exists (
+    select 1 from public.map_conversation_nodes as node
+    where node.conversation_id = conversation.id
+  );
 
 create temporary table map_conversation_plan_numbers on commit drop as
 select
