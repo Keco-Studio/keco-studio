@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
@@ -217,6 +219,42 @@ describe('CI workflow gates', () => {
     expect(playwrightWorkflow).not.toContain(
       'curl -f -s http://127.0.0.1:54321/rest/v1/'
     );
+  });
+
+  it('does not kill unrelated runner processes while cleaning Supabase', () => {
+    expect(playwrightWorkflow).not.toMatch(/fuser\s+-k/);
+    expect(workflow).not.toMatch(/fuser\s+-k/);
+  });
+
+  it('selects another Supabase port block when the preferred API port is occupied', async () => {
+    const listener = createServer();
+    await new Promise<void>((resolve, reject) => {
+      listener.once('error', reject);
+      listener.listen(0, '127.0.0.1', resolve);
+    });
+
+    try {
+      const address = listener.address();
+      if (!address || typeof address === 'string') throw new Error('Expected a TCP address');
+      const preferredShadowPort = address.port - 1;
+      const output = execFileSync(
+        'bash',
+        [path.join(repoRoot, 'scripts/select-local-supabase-ports.sh'), String(preferredShadowPort)],
+        { encoding: 'utf8' },
+      );
+      const ports = Object.fromEntries(
+        output.trim().split('\n').map((line) => line.split('=')),
+      );
+
+      expect(Number(ports.SUPABASE_API_PORT)).not.toBe(address.port);
+      expect(Number(ports.SUPABASE_API_PORT)).toBe(Number(ports.SUPABASE_SHADOW_PORT) + 1);
+      expect(Number(ports.SUPABASE_DB_PORT)).toBe(Number(ports.SUPABASE_SHADOW_PORT) + 2);
+      expect(Number(ports.SUPABASE_POOLER_PORT)).toBe(Number(ports.SUPABASE_SHADOW_PORT) + 9);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        listener.close((error) => error ? reject(error) : resolve());
+      });
+    }
   });
 
   it('uses the local JWT anon key for Playwright Realtime authentication', () => {
