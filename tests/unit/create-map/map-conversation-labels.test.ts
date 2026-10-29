@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   getMapConversationLabels,
+  mapRevisionBelongsToPlan,
   type MapConversationSnapshot,
 } from '@/features/create-map/model/mapConversation';
 
@@ -60,5 +61,28 @@ describe('Map conversation semantic labels', () => {
       planLabel: null,
       canvasLabel: null,
     });
+  });
+
+  it('does not treat a previous Plan Map as output for the active Plan', () => {
+    const nextPlanId = '10000000-0000-4000-8000-000000000009';
+    const nextSnapshot: MapConversationSnapshot = {
+      ...snapshot,
+      planNodes: [
+        ...snapshot.planNodes,
+        {
+          ...snapshot.planNodes[0],
+          id: nextPlanId,
+          displayVersion: 2,
+          displayLabel: 'Plan V2',
+          parentPlanNodeId: planId,
+          mapProjectId: '10000000-0000-4000-8000-000000000010',
+          mapPlanVersionId: '10000000-0000-4000-8000-000000000011',
+          maps: [],
+        },
+      ],
+    };
+
+    expect(mapRevisionBelongsToPlan(nextSnapshot, nextPlanId, mapRevisionId)).toBe(false);
+    expect(mapRevisionBelongsToPlan(nextSnapshot, planId, mapRevisionId)).toBe(true);
   });
 });

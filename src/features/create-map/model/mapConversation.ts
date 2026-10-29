@@ -86,6 +86,19 @@ export function getMapConversationLabels(
   };
 }
 
+export function mapRevisionBelongsToPlan(
+  snapshot: MapConversationSnapshot | null | undefined,
+  planNodeId: string | null | undefined,
+  mapRevisionId: string | null | undefined,
+): boolean {
+  if (!snapshot || !planNodeId || !mapRevisionId) return false;
+  return Boolean(
+    snapshot.planNodes
+      .find((node) => node.id === planNodeId)
+      ?.maps.some((node) => node.revisionId === mapRevisionId),
+  );
+}
+
 export function parseMapConversationSnapshot(
   value: unknown,
 ): MapConversationSnapshot {

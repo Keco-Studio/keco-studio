@@ -48,7 +48,10 @@ import {
   type MapPlanV3,
   type MapSceneV3,
 } from "./model/directMapSchema";
-import { getMapConversationLabels } from "./model/mapConversation";
+import {
+  getMapConversationLabels,
+  mapRevisionBelongsToPlan,
+} from "./model/mapConversation";
 import {
   createMapService,
   type MapReferenceRecord,
@@ -676,7 +679,7 @@ export function DirectMapWorkbench() {
     }
   };
 
-  const image = useMemo((): DirectMapCanvasImage | null => {
+  const boundCanvasImage = useMemo((): DirectMapCanvasImage | null => {
     const binding = scene.mapImage;
     const boundImage = generation.boundImage;
     if (
@@ -693,6 +696,21 @@ export function DirectMapWorkbench() {
       height: boundImage.height,
     };
   }, [generation.boundImage, scene.mapImage]);
+  const image = useMemo(() => {
+    if (!boundCanvasImage || !conversationId) return boundCanvasImage;
+    return mapRevisionBelongsToPlan(
+      conversation.snapshot,
+      activePlanNodeId,
+      boundCanvasImage.sourceRevisionId,
+    )
+      ? boundCanvasImage
+      : null;
+  }, [
+    activePlanNodeId,
+    boundCanvasImage,
+    conversation.snapshot,
+    conversationId,
+  ]);
   const collision = useDirectMapCollisionGrid({
     projectId,
     identity: draft.identity,
