@@ -572,6 +572,19 @@ describe('workbench durable state refresh', () => {
     expect(mockConversation.service.attachGeneratedMap).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes the conversation when a generated Map becomes ready', async () => {
+    mockSearchParams = new URLSearchParams(`conversationId=${conversationId}`);
+    mockGeneration.phase = 'generating';
+    const view = render(workbench());
+    await act(async () => Promise.resolve());
+    mockConversation.refetch.mockClear();
+
+    mockGeneration.phase = 'ready';
+    view.rerender(workbench());
+
+    await waitFor(() => expect(mockConversation.refetch).toHaveBeenCalledTimes(1));
+  });
+
   it('does not reopen a Plan it just created when the URL normalizes to its conversation', async () => {
     mockConversation.service.findConversationForMap.mockResolvedValue({
       conversationId,

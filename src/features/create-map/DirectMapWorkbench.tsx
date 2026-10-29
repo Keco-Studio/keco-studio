@@ -174,6 +174,7 @@ export function DirectMapWorkbench() {
     draft.identity?.mapId ?? null,
   );
   const conversation = useMapConversation(projectId, conversationId);
+  const refetchConversation = conversation.refetch;
   const generation = useDirectMapGeneration({
     projectId,
     plan,
@@ -239,7 +240,9 @@ export function DirectMapWorkbench() {
       previousGenerationPhase.current !== generation.phase;
     if (becameVisibleOutput) {
       void mapGenerationHistory.refetch();
-      if (!conversationId) {
+      if (conversationId) {
+        void refetchConversation().catch(() => undefined);
+      } else {
         setChatMessages((current) => {
           if (
             current.some(
@@ -263,6 +266,7 @@ export function DirectMapWorkbench() {
     conversationId,
     generation.phase,
     mapGenerationHistory,
+    refetchConversation,
   ]);
 
   useEffect(() => {
