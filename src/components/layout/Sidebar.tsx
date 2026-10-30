@@ -1257,6 +1257,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       owner_id: userId ?? '',
       name,
       description,
+      genres: [],
+      design_philosophies: [],
       created_at: now,
       updated_at: now,
     });

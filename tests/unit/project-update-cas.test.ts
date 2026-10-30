@@ -9,6 +9,16 @@ jest.mock('@/lib/services/authorizationService', () => ({
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const updatedAt = '2026-09-28T00:00:00.000Z';
+const updatedProject = {
+  id: projectId,
+  owner_id: 'user-1',
+  name: 'New',
+  description: 'Updated',
+  genres: ['RPG'],
+  design_philosophies: ['Player Agency'],
+  created_at: '2026-09-27T00:00:00.000Z',
+  updated_at: '2026-09-28T00:00:01.000Z',
+};
 
 function clientWithUpdateResult(data: unknown) {
   const nameCheck = {
@@ -45,12 +55,31 @@ it('rejects a stale project update in the database write', async () => {
     name: 'New', description: 'Updated', expectedUpdatedAt: updatedAt,
   })).rejects.toThrow('Project changed after approval');
   expect(update.eq.mock.calls).toEqual([['id', projectId], ['updated_at', updatedAt]]);
-  expect(update.select).toHaveBeenCalledWith('id');
+  expect(update.select).toHaveBeenCalledWith('*');
+});
+
+it('writes the complete Foundation in one update and returns the updated project', async () => {
+  const { client, update } = clientWithUpdateResult(updatedProject);
+  await expect(updateProject(client, projectId, {
+    name: 'New',
+    description: 'Updated',
+    genres: ['RPG'],
+    designPhilosophies: ['Player Agency'],
+    expectedUpdatedAt: updatedAt,
+  })).resolves.toEqual(updatedProject);
+  expect(update.update).toHaveBeenCalledWith(expect.objectContaining({
+    name: 'New',
+    description: 'Updated',
+    genres: ['RPG'],
+    design_philosophies: ['Player Agency'],
+  }));
+  expect(update.eq.mock.calls).toEqual([['id', projectId], ['updated_at', updatedAt]]);
+  expect(update.select).toHaveBeenCalledWith('*');
 });
 
 it('keeps the existing unsealed UI update path', async () => {
-  const { client, update } = clientWithUpdateResult(null);
-  await expect(updateProject(client, projectId, { name: 'New' })).resolves.toBeUndefined();
+  const { client, update } = clientWithUpdateResult(updatedProject);
+  await expect(updateProject(client, projectId, { name: 'New' })).resolves.toEqual(updatedProject);
   expect(update.eq.mock.calls).toEqual([['id', projectId]]);
-  expect(update.select).not.toHaveBeenCalled();
+  expect(update.select).toHaveBeenCalledWith('*');
 });

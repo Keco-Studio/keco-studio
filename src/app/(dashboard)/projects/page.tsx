@@ -63,6 +63,8 @@ export default function ProjectsPage() {
       owner_id: userProfile?.id ?? '',
       name,
       description,
+      genres: [],
+      design_philosophies: [],
       created_at: now,
       updated_at: now,
     });

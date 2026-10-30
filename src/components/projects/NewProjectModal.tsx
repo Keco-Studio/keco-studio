@@ -64,15 +64,15 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       const notes = description.trim() ? description.trim() : null;
 
       // If name doesn't exist, proceed with creation
-      const { projectId, defaultFolderId } = await createProject(supabase, {
+      const { project, defaultFolderId } = await createProject(supabase, {
         name: trimmed,
         description: notes ?? undefined,
       });
       onCreated({
-        projectId,
+        projectId: project.id,
         defaultFolderId,
-        name: trimmed,
-        description: notes,
+        name: project.name,
+        description: project.description,
       });
       setName('');
       setDescription('');
