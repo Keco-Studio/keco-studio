@@ -16,6 +16,7 @@ import {
   type AssetGridSizeIndex,
 } from '@/components/libraries/utils/assetGridPresentation';
 import {
+  GAME_ASSETS_DISPLAY_NAME,
   parseGameAssetsCategoryParam,
   type GameAssetStatus,
   type ProjectGameAsset,
@@ -319,7 +320,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
             open={!!assetPendingRemoval}
             title="Confirm deletion"
             content={assetPendingRemoval
-              ? `Remove "${assetPendingRemoval.name}" from this project's Assets library? This does not delete the original resource.`
+              ? `Remove "${assetPendingRemoval.name}" from this project's ${GAME_ASSETS_DISPLAY_NAME} library? This does not delete the original resource.`
               : ''}
             onConfirm={() => {
               const asset = assetPendingRemoval;

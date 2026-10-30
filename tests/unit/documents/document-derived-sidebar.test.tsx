@@ -123,6 +123,9 @@ describe('document-derived sidebar tree', () => {
     const assetsRoot = activeTree.find((node) => node.key === 'game-assets');
     expect(assetsRoot?.isLeaf).toBe(false);
     expect(Array.isArray(assetsRoot?.children)).toBe(true);
+    expect(assetsRoot?._titleStr).toBe('Art Resource');
+    expect(renderToStaticMarkup(assetsRoot?.title)).toContain('Art Resource');
+    expect(renderToStaticMarkup(assetsRoot?.title)).not.toContain('>Assets<');
 
     let routeTree: any[] = [];
     function RouteHarness() {

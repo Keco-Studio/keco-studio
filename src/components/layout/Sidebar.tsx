@@ -85,6 +85,7 @@ import {
   patchProjectFoundationCaches,
 } from '@/lib/queryInvalidation';
 import {
+  GAME_ASSETS_DISPLAY_NAME,
   GAME_ASSETS_TREE_KEY,
   parseGameAssetsCategoryParam,
   type GameAssetNavCategory,
@@ -838,12 +839,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       });
       if (!response.ok) {
         const result = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(result?.error ?? 'Unable to delete Assets folder');
+        throw new Error(result?.error ?? `Unable to delete ${GAME_ASSETS_DISPLAY_NAME} folder`);
       }
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       router.push(`/${projectId}`);
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : 'Unable to delete Assets folder');
+      showErrorToast(error instanceof Error ? error.message : `Unable to delete ${GAME_ASSETS_DISPLAY_NAME} folder`);
     }
   }, [currentIds.projectId, queryClient, router]);
 
@@ -1359,14 +1360,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       });
       if (!response.ok) {
         const result = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(result?.error ?? 'Unable to activate Assets workspace');
+        throw new Error(result?.error ?? `Unable to activate ${GAME_ASSETS_DISPLAY_NAME} workspace`);
       }
       if (userId) {
         await queryClient.invalidateQueries({ queryKey: ['projects', userId] });
       }
       await navigateWithFlush(`/${projectId}/admin/assets`);
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : 'Unable to activate Assets workspace');
+      showErrorToast(error instanceof Error ? error.message : `Unable to activate ${GAME_ASSETS_DISPLAY_NAME} workspace`);
     }
   }, [navigateWithFlush, queryClient, userId]);
 
