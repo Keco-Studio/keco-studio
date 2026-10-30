@@ -9,6 +9,8 @@ import { updateProject, type Project } from '@/lib/services/projectService';
 import { patchProjectFoundationCaches } from '@/lib/queryInvalidation';
 import { AdminSettingsPage } from './AdminSettingsPage';
 
+const setCurrentProjectName = jest.fn();
+
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
   useQueryClient: jest.fn(),
@@ -19,6 +21,9 @@ jest.mock('@/lib/queryInvalidation', () => ({ patchProjectFoundationCaches: jest
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({ client: 'supabase' }) }));
 jest.mock('@/lib/contexts/AuthContext', () => ({
   useAuth: () => ({ userProfile: { id: 'user-1' } }),
+}));
+jest.mock('@/lib/contexts/NavigationContext', () => ({
+  useNavigation: () => ({ setCurrentProjectName }),
 }));
 jest.mock('@/components/admin/AdminTabs', () => ({ AdminTabs: () => <nav>Settings tabs</nav> }));
 jest.mock('@/lib/utils/toast', () => ({
@@ -74,7 +79,7 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-it('saves all four Foundation fields and refreshes project caches', async () => {
+it('saves all four Foundation fields and refreshes project caches and breadcrumb', async () => {
   renderSettings({ role: 'admin', project });
   await user.clear(screen.getByLabelText('Project name'));
   await user.type(screen.getByLabelText('Project name'), 'New name');
@@ -94,6 +99,7 @@ it('saves all four Foundation fields and refreshes project caches', async () => 
     });
   });
   expect(patchProjectFoundationCaches).toHaveBeenCalledWith(expect.anything(), updatedProject);
+  expect(setCurrentProjectName).toHaveBeenCalledWith('New name');
 });
 
 it('disables Save until the draft differs from persisted values', () => {

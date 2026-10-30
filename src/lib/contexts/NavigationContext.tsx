@@ -49,6 +49,7 @@ type NavigationContextType = {
   isLibraryPage: boolean;
   showCreateProjectBreadcrumb: boolean;
   setShowCreateProjectBreadcrumb: (show: boolean) => void;
+  setCurrentProjectName: (name: string | null) => void;
 };
 
 const NavigationContext = createContext<NavigationContextType | null>(null);
@@ -808,6 +809,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     isLibraryPage: routeParams.isLibraryPage,
     showCreateProjectBreadcrumb,
     setShowCreateProjectBreadcrumb,
+    setCurrentProjectName: setProjectName,
   }), [
     assetName,
     breadcrumbs,

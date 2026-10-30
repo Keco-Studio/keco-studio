@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminTabs } from '@/components/admin/AdminTabs';
 import { ProjectFoundationFields } from '@/components/projects/ProjectFoundationFields';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { ROLE_PERMISSIONS } from '@/lib/types/collaboration';
@@ -40,6 +41,7 @@ type PrefModal = 'billing' | 'notifications' | 'privacy' | null;
 export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const { setCurrentProjectName } = useNavigation();
   const { userProfile } = useAuth();
   const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const userRole = roleQuery.data?.role ?? null;
@@ -119,6 +121,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
         expectedUpdatedAt: projectQuery.data.updated_at,
       });
       patchProjectFoundationCaches(queryClient, updated);
+      setCurrentProjectName(updated.name);
       setProjectDraft({
         name: updated.name,
         description: updated.description ?? '',
