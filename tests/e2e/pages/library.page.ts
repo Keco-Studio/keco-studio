@@ -468,12 +468,14 @@ export class LibraryPage {
     await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill(dataTypeLabel);
 
-    const option = this.page
+    const option = dropdown
       .locator('.ant-select-item-option')
       .filter({ hasText: new RegExp(dataTypeLabel, 'i') })
       .first();
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.click();
+    await addModal.locator('#add-column-name').click();
+    await expect(this.page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
 
     await addModal.getByRole('button', { name: /^add$/i }).click();
     await expect(addModal).not.toBeVisible({ timeout: 10000 });
