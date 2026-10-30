@@ -265,7 +265,7 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).not.toContain('No script data');
   });
 
-  it('renders the approved three-region Script workspace chrome', () => {
+  it('renders workspace actions without a separate structure rail', () => {
     const markup = renderToStaticMarkup(
       <ScriptSplitView
         libraryId="lib"
@@ -285,7 +285,7 @@ describe('ScriptSplitView plot selection', () => {
 
     expect(markup).toContain('剧情脚本');
     expect(markup).toContain('深夜客房');
-    expect(markup).toContain('剧情结构');
+    expect(markup).not.toContain('aria-label="剧情结构"');
     expect(markup).toContain('模板');
     expect(markup).toContain('保存为模板');
     expect(markup).toContain('结构检查');

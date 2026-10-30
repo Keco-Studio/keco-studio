@@ -35,10 +35,7 @@ import {
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
-import {
-  deriveScriptWorkspaceStructure,
-  validateScriptWorkspaceStructure,
-} from '@/lib/script-system/scriptWorkspaceStructure';
+import { validateScriptWorkspaceStructure } from '@/lib/script-system/scriptWorkspaceStructure';
 import {
   BUILT_IN_SCRIPT_TEMPLATES,
   deleteScriptStructureTemplate,
@@ -49,7 +46,6 @@ import {
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
-import { ScriptStructurePanel } from './ScriptStructurePanel';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptStructureCheckModal } from './ScriptStructureCheckModal';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
@@ -187,7 +183,6 @@ export function ScriptSplitView({
   const bodyRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
 
-  const structure = useMemo(() => deriveScriptWorkspaceStructure(graph), [graph]);
   const validation = useMemo(() => validateScriptWorkspaceStructure(graph), [graph]);
   const templates = useMemo(
     () => [...BUILT_IN_SCRIPT_TEMPLATES, ...personalTemplates],
@@ -428,16 +423,10 @@ export function ScriptSplitView({
           <button type="button" onClick={() => setReferenceTemplateId(null)}>退出参考</button>
         </div>
       ) : null}
-      <div className={styles.workspaceBody}>
-        <ScriptStructurePanel
-          structure={structure}
-          selectedNodeId={selectedPlotNodeId}
-          onSelectNode={selectPlotNode}
-        />
-        <div
-          ref={bodyRef}
-          className={`${styles.body} ${dragging ? styles.dragging : ''}`}
-        >
+      <div
+        ref={bodyRef}
+        className={`${styles.body} ${dragging ? styles.dragging : ''}`}
+      >
           <div
             className={styles.leftPane}
             style={
@@ -485,7 +474,6 @@ export function ScriptSplitView({
               </div>
             </>
           ) : null}
-        </div>
       </div>
       <ScriptStructureCheckModal
         open={checkOpen}

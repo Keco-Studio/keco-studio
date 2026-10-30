@@ -4,11 +4,7 @@ import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ScriptStructureTemplate } from '@/lib/script-system/scriptStructureTemplates';
-import type {
-  ScriptStructureValidation,
-  ScriptWorkspaceStructure,
-} from '@/lib/script-system/scriptWorkspaceStructure';
-import { ScriptStructurePanel } from './ScriptStructurePanel';
+import type { ScriptStructureValidation } from '@/lib/script-system/scriptWorkspaceStructure';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptStructureCheckModal } from './ScriptStructureCheckModal';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
@@ -33,15 +29,6 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
-const structure: ScriptWorkspaceStructure = {
-  items: [
-    { nodeId: 'entry', title: '客房', kind: 'entry', summary: '故事入口', rowIndex: 0 },
-    { nodeId: 'choice', title: '接下来怎么做？', kind: 'choice', summary: '2 个分支', rowIndex: 3 },
-    { nodeId: 'merge', title: '回到主线', kind: 'merge', summary: '2 条路线汇合', rowIndex: 10 },
-  ],
-  counts: { nodes: 3, choices: 1, merges: 1, endings: 0 },
-};
-
 const template: ScriptStructureTemplate = {
   id: 'personal-one',
   name: '我的模板',
@@ -54,29 +41,6 @@ const template: ScriptStructureTemplate = {
   counts: { nodes: 1, choices: 0, merges: 0, endings: 0 },
   isBuiltIn: false,
 };
-
-describe('ScriptStructurePanel', () => {
-  it('shows ordered semantic node types and routes selection through one callback', () => {
-    const onSelectNode = jest.fn();
-    render(
-      <ScriptStructurePanel
-        structure={structure}
-        selectedNodeId="choice"
-        onSelectNode={onSelectNode}
-      />,
-    );
-
-    expect(screen.getByText('入口')).not.toBeNull();
-    expect(screen.getByText('选择')).not.toBeNull();
-    expect(screen.getByText('汇合')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /接下来怎么做/ }).getAttribute('aria-current'))
-      .toBe('true');
-    expect(screen.getByText('3 个节点 · 1 个选择 · 0 个结局')).not.toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /回到主线/ }));
-    expect(onSelectNode).toHaveBeenCalledWith('merge');
-  });
-});
 
 describe('ScriptWorkspaceToolbar', () => {
   it('exposes all approved actions without an animation action', () => {

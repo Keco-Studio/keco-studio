@@ -56,7 +56,7 @@ describe('Keco Script split view wiring', () => {
     );
     expect(source).toContain('VisualNovelScriptView');
     expect(source).toContain('FlowChartPanel');
-    expect(source).toContain('ScriptStructurePanel');
+    expect(source).not.toContain('ScriptStructurePanel');
     expect(source).toContain('ScriptWorkspaceToolbar');
     expect(source).toContain('readSplitRatio');
     expect(source).toContain('writeSplitRatio');
