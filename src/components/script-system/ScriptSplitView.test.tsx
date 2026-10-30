@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
@@ -34,6 +34,11 @@ import {
   resolveOptionTargetPlotNodeId,
   ScriptSplitView,
 } from './ScriptSplitView';
+
+beforeAll(() => {
+  const getComputedStyle = window.getComputedStyle.bind(window);
+  window.getComputedStyle = (element: Element) => getComputedStyle(element);
+});
 
 afterEach(cleanup);
 
@@ -291,6 +296,34 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).toContain('结构检查');
     expect(markup).toContain('分支结构');
     expect(markup).not.toContain('生成动画');
+  });
+
+  it('navigates the left script pane when a structure-template node is clicked', () => {
+    render(
+      <ScriptSplitView
+        libraryId="lib"
+        rows={rows}
+        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
+        flowRows={[]}
+        persistedGraph={{
+          nodes: [
+            { id: 'Start', label: 'Plot background', rowIndex: 0, rowIndexes: [0, 1] },
+            { id: 'Opening', label: 'Opening dialogue', rowIndex: 2, rowIndexes: [2, 3] },
+          ],
+          edges: [{ from: 'Start', to: 'Opening' }],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '模板' }));
+    fireEvent.click(screen.getByRole('button', { name: '使用 双分支后汇合 作为参考' }));
+
+    const branchNode = document.querySelector('[data-flow-node-id="branch-b"]');
+    expect(branchNode).not.toBeNull();
+    fireEvent.click(branchNode!);
+
+    expect(screen.getByText('SECOND_PLOT_CONTENT')).not.toBeNull();
+    expect(screen.queryByText('FIRST_PLOT_CONTENT')).toBeNull();
   });
 
   it('reports an already-saved state when no dialogue draft is active', () => {

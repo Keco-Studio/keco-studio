@@ -176,6 +176,10 @@ export function ScriptSplitView({
     typeof window === 'undefined' ? [] : readScriptStructureTemplates(window.localStorage)
   ));
   const [referenceTemplateId, setReferenceTemplateId] = useState<string | null>(null);
+  const [referenceSelection, setReferenceSelection] = useState({
+    templateId: '',
+    nodeId: '',
+  });
   const [checkOpen, setCheckOpen] = useState(false);
   const [saveRequestVersion, setSaveRequestVersion] = useState(0);
   const [saveRequestPending, setSaveRequestPending] = useState(false);
@@ -193,18 +197,26 @@ export function ScriptSplitView({
     [referenceTemplateId, templates],
   );
   const displayedGraph = referenceTemplate?.graph ?? graphPreview?.graph ?? graph;
+  const referenceNodeId = referenceTemplate
+    ? referenceSelection.templateId === referenceTemplate.id
+      && referenceTemplate.graph.nodes.some((node) => node.id === referenceSelection.nodeId)
+        ? referenceSelection.nodeId
+        : referenceTemplate.graph.nodes[0]?.id ?? ''
+    : '';
+  const selectedGraph = referenceTemplate?.graph ?? graph;
+  const displayedSelectedNodeId = referenceTemplate ? referenceNodeId : selectedPlotNodeId;
 
   const selectedRows = useMemo(() => {
-    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    const selected = selectedGraph.nodes.find((node) => node.id === displayedSelectedNodeId);
     return selected?.rowIndexes
       .map((index) => rows[index])
       .filter((row): row is AssetRow => Boolean(row)) ?? [];
-  }, [graph.nodes, rows, selectedPlotNodeId]);
+  }, [displayedSelectedNodeId, rows, selectedGraph.nodes]);
 
   const selectedBranchName = useMemo(() => {
-    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    const selected = selectedGraph.nodes.find((node) => node.id === displayedSelectedNodeId);
     return selected?.label?.trim() || '';
-  }, [graph.nodes, selectedPlotNodeId]);
+  }, [displayedSelectedNodeId, selectedGraph.nodes]);
 
   const dialogueFields = useMemo(() => {
     if (!scriptColumns.typeKey || !scriptColumns.nameKey || !scriptColumns.contentKey) {
@@ -358,6 +370,15 @@ export function ScriptSplitView({
     });
   }, [graph.nodes, libraryId, rows]);
 
+  const selectDisplayedPlotNode = useCallback((nodeId: string) => {
+    if (referenceTemplate) {
+      if (!referenceTemplate.graph.nodes.some((node) => node.id === nodeId)) return;
+      setReferenceSelection({ templateId: referenceTemplate.id, nodeId });
+      return;
+    }
+    selectPlotNode(nodeId);
+  }, [referenceTemplate, selectPlotNode]);
+
   const selectOptionTarget = useCallback((targetLabel: string) => {
     const nodeId = resolveOptionTargetPlotNodeId(
       targetLabel,
@@ -441,7 +462,9 @@ export function ScriptSplitView({
                   scriptColumns={scriptColumns}
                   mode="plot-node"
                   branchName={selectedBranchName || undefined}
-                  branchKey={plotSelection.anchorRowId ?? selectedPlotNodeId}
+                  branchKey={referenceTemplate
+                    ? `${referenceTemplate.id}:${referenceNodeId}`
+                    : plotSelection.anchorRowId ?? selectedPlotNodeId}
                   onSelectOptionTarget={selectOptionTarget}
                   editing={editingProps}
                 />
@@ -465,10 +488,9 @@ export function ScriptSplitView({
                   graph={displayedGraph}
                   title="分支结构"
                   referenceLabel={referenceTemplate?.name}
-                  readOnly={Boolean(referenceTemplate)}
-                  selectedPlotNodeId={referenceTemplate ? '' : selectedPlotNodeId}
+                  selectedPlotNodeId={displayedSelectedNodeId}
                   previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}
-                  onSelectPlotNode={selectPlotNode}
+                  onSelectPlotNode={selectDisplayedPlotNode}
                   onClose={() => setCollapsed(true)}
                 />
               </div>
