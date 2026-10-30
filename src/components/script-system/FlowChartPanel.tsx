@@ -302,7 +302,7 @@ export function FlowChartPanel({
           <span className={styles.flowTitleGroup}>
             <span>{title}</span>
             {referenceLabel ? (
-              <span className={styles.flowPreviewBadge}>参考：{referenceLabel}</span>
+              <span className={styles.flowPreviewBadge}>Reference: {referenceLabel}</span>
             ) : null}
             {previewNodes.size > 0 ? (
               <span className={styles.flowPreviewBadge}>Preview</span>

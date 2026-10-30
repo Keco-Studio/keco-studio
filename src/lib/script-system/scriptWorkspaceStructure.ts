@@ -87,12 +87,12 @@ function summarizeNode(nodeId: string, kind: ScriptStructureKind, topology: Topo
   const outgoing = topology.outgoing.get(nodeId) ?? [];
   const incoming = topology.incoming.get(nodeId) ?? [];
   switch (kind) {
-    case 'entry': return '故事入口';
-    case 'choice': return `${outgoing.filter((edge) => typeof edge.optionIndex === 'number').length} 个分支`;
-    case 'branch': return '分支路线';
-    case 'merge': return `${incoming.length} 条路线汇合`;
-    case 'ending': return '路线结束';
-    default: return '主线场景';
+    case 'entry': return 'Story entry';
+    case 'choice': return `${outgoing.filter((edge) => typeof edge.optionIndex === 'number').length} branches`;
+    case 'branch': return 'Branch path';
+    case 'merge': return `${incoming.length} paths merge`;
+    case 'ending': return 'Path ending';
+    default: return 'Main story scene';
   }
 }
 
@@ -134,7 +134,7 @@ export function validateScriptWorkspaceStructure(graph: FlowGraph): ScriptStruct
       id: 'empty-graph',
       code: 'empty-graph',
       severity: 'error',
-      message: '脚本中还没有可检查的剧情节点',
+      message: 'The Script does not have any story nodes to check yet',
     }]);
   }
 
@@ -148,7 +148,7 @@ export function validateScriptWorkspaceStructure(graph: FlowGraph): ScriptStruct
       id: `unknown-edge-endpoint-${index}`,
       code: 'unknown-edge-endpoint',
       severity: 'error',
-      message: `连接 ${edge.from} → ${edge.to} 指向不存在的节点`,
+      message: `Connection ${edge.from} → ${edge.to} points to a missing node`,
       edge: { from: edge.from, to: edge.to },
       ...(nodeIds.has(edge.from) ? { nodeId: edge.from } : {}),
     });
@@ -177,7 +177,7 @@ export function validateScriptWorkspaceStructure(graph: FlowGraph): ScriptStruct
       id: 'cycle',
       code: 'cycle',
       severity: 'error',
-      message: `“${nodeById.get(cycleNodeId)?.label ?? cycleNodeId}”所在路线形成循环`,
+      message: `The path containing "${nodeById.get(cycleNodeId)?.label ?? cycleNodeId}" forms a cycle`,
       nodeId: cycleNodeId,
     });
   }
@@ -198,7 +198,7 @@ export function validateScriptWorkspaceStructure(graph: FlowGraph): ScriptStruct
       id: `unreachable-node-${node.id}`,
       code: 'unreachable-node',
       severity: 'warning',
-      message: `“${node.label}”无法从入口到达`,
+      message: `"${node.label}" cannot be reached from the entry`,
       nodeId: node.id,
     });
   }
@@ -211,7 +211,7 @@ export function validateScriptWorkspaceStructure(graph: FlowGraph): ScriptStruct
       id: 'no-reachable-ending',
       code: 'no-reachable-ending',
       severity: 'warning',
-      message: '从入口出发没有可到达的结局',
+      message: 'No ending can be reached from the entry',
       nodeId: entryId,
     });
   }

@@ -203,7 +203,7 @@ function resolveReferenceScriptNodeId(
 
 export function ScriptSplitView({
   libraryId,
-  libraryName = '未命名脚本',
+  libraryName = 'Untitled Script',
   projectId,
   rows,
   scriptColumns,
@@ -465,9 +465,9 @@ export function ScriptSplitView({
       });
       setPersonalTemplates((current) => [...current, saved]);
       setTemplateMode(null);
-      showSuccessToast('结构模板已保存');
+      showSuccessToast('Structure template saved');
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : '结构模板保存失败');
+      showErrorToast(error instanceof Error ? error.message : 'Failed to save structure template');
     }
   }, [graph]);
 
@@ -476,9 +476,9 @@ export function ScriptSplitView({
       deleteScriptStructureTemplate(window.localStorage, templateId);
       setPersonalTemplates((current) => current.filter((template) => template.id !== templateId));
       setReferenceTemplateId((current) => current === templateId ? null : current);
-      showSuccessToast('结构模板已删除');
+      showSuccessToast('Structure template deleted');
     } catch {
-      showErrorToast('结构模板删除失败');
+      showErrorToast('Failed to delete structure template');
     }
   }, []);
 
@@ -491,8 +491,8 @@ export function ScriptSplitView({
       />
       {referenceTemplate ? (
         <div className={styles.referenceBanner} role="status">
-          <span>正在参考“{referenceTemplate.name}”的结构，当前 Script 不会被改写。</span>
-          <button type="button" onClick={() => setReferenceTemplateId(null)}>退出参考</button>
+          <span>Using “{referenceTemplate.name}” as a structure reference. The current Script will not be changed.</span>
+          <button type="button" onClick={() => setReferenceTemplateId(null)}>Exit reference</button>
         </div>
       ) : null}
       <div
@@ -537,7 +537,7 @@ export function ScriptSplitView({
               >
                 <FlowChartPanel
                   graph={displayedGraph}
-                  title="分支结构"
+                  title="Branch Structure"
                   referenceLabel={referenceTemplate?.name}
                   selectedPlotNodeId={displayedSelectedNodeId}
                   previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}

@@ -79,26 +79,26 @@ function deepFreezeTemplate(template: ScriptStructureTemplate): ScriptStructureT
 
 const linearGraph: FlowGraph = {
   nodes: [
-    { id: 'entry', label: '开场', rowIndex: 0, rowIndexes: [0] },
-    { id: 'scene', label: '场景推进', rowIndex: 1, rowIndexes: [1] },
-    { id: 'ending', label: '结局', rowIndex: 2, rowIndexes: [2] },
+    { id: 'entry', label: 'Opening', rowIndex: 0, rowIndexes: [0] },
+    { id: 'scene', label: 'Scene Progression', rowIndex: 1, rowIndexes: [1] },
+    { id: 'ending', label: 'Ending', rowIndex: 2, rowIndexes: [2] },
   ],
   edges: [{ from: 'entry', to: 'scene' }, { from: 'scene', to: 'ending' }],
 };
 
 const mergeGraph: FlowGraph = {
   nodes: [
-    { id: 'entry', label: '开场', rowIndex: 0, rowIndexes: [0] },
-    { id: 'choice', label: '选择', rowIndex: 1, rowIndexes: [1] },
-    { id: 'branch-a', label: '分支 A', rowIndex: 2, rowIndexes: [2] },
-    { id: 'branch-b', label: '分支 B', rowIndex: 3, rowIndexes: [3] },
-    { id: 'merge', label: '汇合', rowIndex: 4, rowIndexes: [4] },
-    { id: 'ending', label: '结局', rowIndex: 5, rowIndexes: [5] },
+    { id: 'entry', label: 'Opening', rowIndex: 0, rowIndexes: [0] },
+    { id: 'choice', label: 'Choice', rowIndex: 1, rowIndexes: [1] },
+    { id: 'branch-a', label: 'Branch A', rowIndex: 2, rowIndexes: [2] },
+    { id: 'branch-b', label: 'Branch B', rowIndex: 3, rowIndexes: [3] },
+    { id: 'merge', label: 'Merge', rowIndex: 4, rowIndexes: [4] },
+    { id: 'ending', label: 'Ending', rowIndex: 5, rowIndexes: [5] },
   ],
   edges: [
     { from: 'entry', to: 'choice' },
-    { from: 'choice', to: 'branch-a', optionIndex: 0, optionText: '选择 A' },
-    { from: 'choice', to: 'branch-b', optionIndex: 1, optionText: '选择 B' },
+    { from: 'choice', to: 'branch-a', optionIndex: 0, optionText: 'Choose A' },
+    { from: 'choice', to: 'branch-b', optionIndex: 1, optionText: 'Choose B' },
     { from: 'branch-a', to: 'merge' },
     { from: 'branch-b', to: 'merge' },
     { from: 'merge', to: 'ending' },
@@ -107,25 +107,25 @@ const mergeGraph: FlowGraph = {
 
 const independentEndingsGraph: FlowGraph = {
   nodes: [
-    { id: 'entry', label: '开场', rowIndex: 0, rowIndexes: [0] },
-    { id: 'choice', label: '选择', rowIndex: 1, rowIndexes: [1] },
-    { id: 'ending-a', label: '结局 A', rowIndex: 2, rowIndexes: [2] },
-    { id: 'ending-b', label: '结局 B', rowIndex: 3, rowIndexes: [3] },
+    { id: 'entry', label: 'Opening', rowIndex: 0, rowIndexes: [0] },
+    { id: 'choice', label: 'Choice', rowIndex: 1, rowIndexes: [1] },
+    { id: 'ending-a', label: 'Ending A', rowIndex: 2, rowIndexes: [2] },
+    { id: 'ending-b', label: 'Ending B', rowIndex: 3, rowIndexes: [3] },
   ],
   edges: [
     { from: 'entry', to: 'choice' },
-    { from: 'choice', to: 'ending-a', optionIndex: 0, optionText: '选择 A' },
-    { from: 'choice', to: 'ending-b', optionIndex: 1, optionText: '选择 B' },
+    { from: 'choice', to: 'ending-a', optionIndex: 0, optionText: 'Choose A' },
+    { from: 'choice', to: 'ending-b', optionIndex: 1, optionText: 'Choose B' },
   ],
 };
 
 export const BUILT_IN_SCRIPT_TEMPLATES: readonly ScriptStructureTemplate[] = Object.freeze([
-  deepFreezeTemplate(createTemplate('built-in-linear', '线性场景', '顺序推进并抵达一个结局', linearGraph)),
-  deepFreezeTemplate(createTemplate('built-in-merge', '双分支后汇合', '两个选择分支在后续剧情重新汇合', mergeGraph)),
+  deepFreezeTemplate(createTemplate('built-in-linear', 'Linear Scene', 'Progress sequentially toward a single ending', linearGraph)),
+  deepFreezeTemplate(createTemplate('built-in-merge', 'Two Branches Rejoin', 'Two choice branches rejoin later in the story', mergeGraph)),
   deepFreezeTemplate(createTemplate(
     'built-in-independent-endings',
-    '双分支独立结局',
-    '两个选择分别抵达不同结局',
+    'Two Branches with Separate Endings',
+    'Two choices lead to different endings',
     independentEndingsGraph,
   )),
 ]);
@@ -198,7 +198,7 @@ export function saveScriptStructureTemplate(
   input: SaveScriptStructureTemplateInput,
 ): ScriptStructureTemplate {
   const name = input.name.trim().slice(0, MAX_NAME_LENGTH);
-  if (!name) throw new Error('请输入模板名称');
+  if (!name) throw new Error('Please enter a template name');
   const graph = cloneGraph(input.graph);
   const template: ScriptStructureTemplate = {
     id: input.id ?? generatedId(),

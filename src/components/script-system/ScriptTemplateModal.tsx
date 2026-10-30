@@ -43,7 +43,7 @@ export function ScriptTemplateModal({
     event.preventDefault();
     const normalizedName = name.trim().slice(0, 80);
     if (!normalizedName) {
-      setError('请输入模板名称');
+      setError('Please enter a template name');
       return;
     }
     setError('');
@@ -58,7 +58,7 @@ export function ScriptTemplateModal({
   return (
     <Modal
       open={open}
-      title={mode === 'save' ? '保存为结构模板' : '结构模板'}
+      title={mode === 'save' ? 'Save as Structure Template' : 'Structure Templates'}
       width={720}
       footer={null}
       onCancel={onClose}
@@ -66,11 +66,11 @@ export function ScriptTemplateModal({
     >
       {mode === 'save' ? (
         <form className={styles.saveForm} onSubmit={submit}>
-          <p className={styles.lead}>保存当前 Script 的结构快照，之后可作为编排参考。</p>
+          <p className={styles.lead}>Save a snapshot of the current Script structure for future planning reference.</p>
           <label className={styles.field}>
-            <span>模板名称</span>
+            <span>Template name</span>
             <input
-              aria-label="模板名称"
+              aria-label="Template name"
               value={name}
               maxLength={80}
               autoFocus
@@ -78,9 +78,9 @@ export function ScriptTemplateModal({
             />
           </label>
           <label className={styles.field}>
-            <span>模板说明 <em>选填</em></span>
+            <span>Template description <em>Optional</em></span>
             <textarea
-              aria-label="模板说明"
+              aria-label="Template description"
               value={description}
               rows={3}
               onChange={(event) => setDescription(event.target.value)}
@@ -88,20 +88,20 @@ export function ScriptTemplateModal({
           </label>
           {error ? <p className={styles.formError} role="alert">{error}</p> : null}
           <div className={styles.formActions}>
-            <button type="button" className={styles.secondaryButton} onClick={onClose}>取消</button>
+            <button type="button" className={styles.secondaryButton} onClick={onClose}>Cancel</button>
             <button
               type="submit"
               className={styles.primaryButton}
-              aria-label="确认保存模板"
+              aria-label="Confirm save template"
               disabled={saving}
             >
-              {saving ? '保存中…' : '保存模板'}
+              {saving ? 'Saving…' : 'Save Template'}
             </button>
           </div>
         </form>
       ) : (
         <div>
-          <p className={styles.lead}>选择模板后只会预览结构，不会覆盖或改写当前 Script。</p>
+          <p className={styles.lead}>Selecting a template only previews its structure. It will not overwrite or change the current Script.</p>
           {templates.length > 0 ? (
             <div className={styles.templateGrid}>
               {templates.map((template) => {
@@ -114,7 +114,7 @@ export function ScriptTemplateModal({
                     <div className={styles.cardHeader}>
                       <div>
                         <span className={styles.sourceLabel}>
-                          {template.isBuiltIn ? '内置' : '个人'}
+                          {template.isBuiltIn ? 'Built-in' : 'Personal'}
                         </span>
                         <h3>{template.name}</h3>
                       </div>
@@ -122,34 +122,34 @@ export function ScriptTemplateModal({
                         <button
                           type="button"
                           className={styles.deleteButton}
-                          aria-label={`删除 ${template.name}`}
+                          aria-label={`Delete ${template.name}`}
                           onClick={() => onDeleteTemplate(template.id)}
                         >
-                          删除
+                          Delete
                         </button>
                       ) : null}
                     </div>
                     {template.description ? <p>{template.description}</p> : null}
                     <div className={styles.cardStats}>
-                      <span>{template.counts.nodes} 节点</span>
-                      <span>{template.counts.choices} 选择</span>
-                      <span>{template.counts.merges} 汇合</span>
-                      <span>{template.counts.endings} 结局</span>
+                      <span>{template.counts.nodes} nodes</span>
+                      <span>{template.counts.choices} choices</span>
+                      <span>{template.counts.merges} merges</span>
+                      <span>{template.counts.endings} endings</span>
                     </div>
                     <button
                       type="button"
                       className={active ? styles.activeButton : styles.referenceButton}
-                      aria-label={`使用 ${template.name} 作为参考`}
+                      aria-label={`Use ${template.name} as reference`}
                       onClick={() => onUseReference(template.id)}
                     >
-                      {active ? '正在参考' : '查看结构参考'}
+                      {active ? 'Using as Reference' : 'View Structure Reference'}
                     </button>
                   </article>
                 );
               })}
             </div>
           ) : (
-            <div className={styles.healthyState}>还没有个人模板。</div>
+            <div className={styles.healthyState}>No personal templates yet.</div>
           )}
         </div>
       )}
