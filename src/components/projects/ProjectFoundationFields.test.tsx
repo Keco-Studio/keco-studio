@@ -1,8 +1,18 @@
 /** @jest-environment jsdom */
 
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { ProjectFoundationFields } from './ProjectFoundationFields';
+
+jest.mock('./ProjectFoundationFields.module.css', () => ({
+  fields: 'fields',
+  field: 'field',
+  nameField: 'nameField',
+  input: 'input',
+  tagFields: 'tagFields',
+  descriptionField: 'descriptionField',
+  textarea: 'textarea',
+}));
 
 const draft = {
   name: '',
@@ -30,4 +40,11 @@ it('uses unique label targets when two Foundation forms render together', () => 
       expect(document.getElementById(targetId)).not.toBeNull();
     }
   }
+});
+
+it('places the project name in a full-width row above the tag columns', () => {
+  render(<ProjectFoundationFields value={draft} onChange={jest.fn()} />);
+
+  const nameField = screen.getByLabelText('Project name').parentElement;
+  expect(nameField?.classList.contains('nameField')).toBe(true);
 });

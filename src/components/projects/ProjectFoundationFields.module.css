@@ -64,6 +64,7 @@
   padding: 0;
 }
 
+.nameField,
 .descriptionField {
   grid-column: 1 / -1;
 }
@@ -73,6 +74,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .nameField,
   .descriptionField {
     grid-column: auto;
   }
