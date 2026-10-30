@@ -121,6 +121,55 @@
   color: #0b99ff;
 }
 
+.designToggle {
+  position: relative;
+}
+
+.designIconWrap {
+  position: relative;
+}
+
+.disclosure {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 8px !important;
+  height: 8px !important;
+  color: currentColor;
+  transform: translateX(-50%);
+  transition: transform 140ms ease;
+}
+
+.disclosureExpanded {
+  transform: translateX(-50%) rotate(90deg);
+}
+
+.designGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 52px;
+  margin: 0 4px 6px;
+  padding: 2px 0 4px;
+  border: 0.5px solid rgba(17, 17, 17, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  box-sizing: border-box;
+}
+
+.designItem {
+  width: 51px;
+  height: 53px;
+  min-height: 53px;
+  padding: 4px 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure {
+    transition: none;
+  }
+}
+
 .itemDisabled {
   opacity: 0.45;
   cursor: default;

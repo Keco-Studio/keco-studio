@@ -126,13 +126,14 @@ describe('LeftNav wiring', () => {
     ).toBe('/script-system/project-a');
   });
 
-  it('renders Create Map as the fourth product control with the active page state', () => {
+  it('renders Create Map inside the Design product group with the active page state', () => {
     const markup = renderToStaticMarkup(React.createElement(LeftNav));
-    const controls = [...markup.matchAll(/aria-label="([^"]+)"/g)].map((match) => match[1]);
+    const controls = [...markup.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]);
 
-    expect(controls.slice(1, 7)).toEqual([
+    expect(controls.slice(0, 7)).toEqual([
       'Keco 101',
-      'Libraries',
+      'Library',
+      'Design',
       'Simulator',
       'Script',
       'Map',
