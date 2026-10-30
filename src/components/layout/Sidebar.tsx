@@ -18,8 +18,7 @@ import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
 import { normalizeSearchString } from "@/lib/utils/normalizeSearchString";
-import { NewProjectModal } from "@/components/projects/NewProjectModal";
-import { EditProjectModal } from "@/components/projects/EditProjectModal";
+import { NewProjectModal, type CreatedProjectPayload } from "@/components/projects/NewProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
@@ -83,8 +82,7 @@ import {
   invalidateLibraryData,
   invalidateProjectData,
   removeProjectFromListCache,
-  updateProjectsListCache,
-  upsertProjectInListCache,
+  patchProjectFoundationCaches,
 } from '@/lib/queryInvalidation';
 import {
   GAME_ASSETS_TREE_KEY,
@@ -189,8 +187,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const modals = useSidebarModals();
   const {
     showProjectModal,
-    showEditProjectModal,
-    editingProjectId,
     showLibraryModal,
     showEditLibraryModal,
     editingLibraryId,
@@ -205,8 +201,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     editingAssetId,
     openNewProject,
     closeProjectModal,
-    openEditProject,
-    closeEditProjectModal,
     openNewLibrary,
     closeLibraryModal,
     openEditLibrary,
@@ -319,21 +313,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
 
       try {
-        if (key.startsWith('project-')) {
-          const id = key.replace('project-', '');
-          updateProjectsListCache(queryClient, (old) => {
-            if (!old) return old;
-            return old.map((project) => (project.id === id ? { ...project, name: trimmed } : project));
-          });
-          await updateName.mutateAsync({
-            id,
-            name: trimmed,
-            entityType: 'project',
-          });
-          showSuccessToast('Project name updated');
-          return;
-        }
-
         const foldersLibrariesKey = currentIds.projectId
           ? (['folders-libraries', currentIds.projectId] as const)
           : null;
@@ -1152,7 +1131,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     contextMenu,
     closeContextMenu,
     router,
-    openEditProject,
     openEditLibrary,
     openEditDocument,
     openDuplicateLibrary,
@@ -1237,39 +1215,31 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     handleProjectDeleteViaAPI(projectId);
   };
 
-  const handleProjectCreated = ({
-    projectId,
-    name,
-    description,
-  }: {
-    projectId: string;
-    defaultFolderId: string;
-    name: string;
-    description: string | null;
-  }) => {
+  const handleProjectCreated = ({ project, defaultFolderId }: CreatedProjectPayload) => {
     closeProjectModal();
 
     // Optimistically insert into every `['projects', userId]` cache entry so the
     // compact selector shows the new project immediately (before refetch).
-    const now = new Date().toISOString();
-    upsertProjectInListCache(queryClient, {
-      id: projectId,
-      owner_id: userId ?? '',
-      name,
-      description,
-      created_at: now,
-      updated_at: now,
-    });
-
-    if (projectId) {
-      router.push(`/${projectId}/recent`);
-    }
+    patchProjectFoundationCaches(queryClient, project);
+    const optimisticFolder: Folder = {
+      id: defaultFolderId,
+      project_id: project.id,
+      parent_folder_id: null,
+      name: 'Resources Folder',
+      description: 'Default resources folder',
+      created_at: project.created_at,
+      updated_at: project.created_at,
+      updated_by: project.owner_id,
+    };
+    queryClient.setQueryData<Folder[]>(queryKeys.projectFolders(project.id), [optimisticFolder]);
+    router.push(`/${project.id}/recent`);
 
     // Refresh in the background so production network latency does not delay navigation.
     void queryClient.invalidateQueries({ queryKey: ['projects'] });
-    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(project.id) });
+    void queryClient.invalidateQueries({ queryKey: ['folders-libraries', project.id] });
     void invalidateProjectData(queryClient, {
-      projectId,
+      projectId: project.id,
       userProjectList: true,
       refetchActiveProjects: true,
     });
@@ -1514,10 +1484,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           currentProjectId={currentIds.projectId}
           currentLibraryId={currentIds.libraryId}
           currentFolderId={currentIds.folderId}
-          userRole={userRole}
           onOpenNewProject={openNewProject}
           onProjectClick={handleProjectClick}
-          onSaveRename={handleSaveRename}
           onContextMenu={handleContextMenu}
         />
 
@@ -1587,21 +1555,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onClose={closeProjectModal}
         onCreated={handleProjectCreated}
       />
-
-      {editingProjectId && (
-        <EditProjectModal
-          open={showEditProjectModal}
-          projectId={editingProjectId}
-          onClose={closeEditProjectModal}
-          onUpdated={() => {
-            void invalidateProjectData(queryClient, {
-              projectId: editingProjectId,
-              userProjectList: true,
-              refetchActiveProjects: true,
-            });
-          }}
-        />
-      )}
 
       <NewLibraryModal
         open={showLibraryModal}

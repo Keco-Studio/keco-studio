@@ -129,7 +129,14 @@ describe('Recent / Admin sidebar wiring', () => {
     expect(legacy).toContain('/admin/collaborators');
     expect(adminSettings).toContain('Payment details');
     expect(adminSettings).toContain('readBillingPrefs');
+    expect(adminSettings).not.toContain('EditProjectModal');
     expect(adminSettings).not.toContain('StripeCheckoutPanel');
+  });
+
+  it('routes the project info context action to Settings', () => {
+    const actions = read('src/components/layout/hooks/useSidebarContextMenuActions.ts');
+    expect(actions).toContain("router.push(`/${contextMenu.id}/admin`)");
+    expect(actions).not.toContain('openEditProject(contextMenu.id)');
   });
 
   it('hosts account billing plans from the avatar menu', () => {

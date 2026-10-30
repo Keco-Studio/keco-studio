@@ -8,7 +8,9 @@ import { listProjects } from '@/lib/services/projectService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal, type CreatedProjectPayload } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
-import { upsertProjectInListCache } from '@/lib/queryInvalidation';
+import { patchProjectFoundationCaches } from '@/lib/queryInvalidation';
+import { queryKeys } from '@/lib/utils/queryKeys';
+import type { Folder } from '@/lib/services/folderService';
 import { EmptyContentState } from '@/components/shared/EmptyContentState';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
@@ -56,19 +58,23 @@ export default function ProjectsPage() {
     };
   }, [loading, projectsError, projects.length, setShowCreateProjectBreadcrumb]);
 
-  const handleCreated = ({ projectId, name, description }: CreatedProjectPayload) => {
-    const now = new Date().toISOString();
-    upsertProjectInListCache(queryClient, {
-      id: projectId,
-      owner_id: userProfile?.id ?? '',
-      name,
-      description,
-      created_at: now,
-      updated_at: now,
-    });
-    router.push(`/${projectId}/recent`);
+  const handleCreated = ({ project, defaultFolderId }: CreatedProjectPayload) => {
+    patchProjectFoundationCaches(queryClient, project);
+    const optimisticFolder: Folder = {
+      id: defaultFolderId,
+      project_id: project.id,
+      parent_folder_id: null,
+      name: 'Resources Folder',
+      description: 'Default resources folder',
+      created_at: project.created_at,
+      updated_at: project.created_at,
+      updated_by: project.owner_id,
+    };
+    queryClient.setQueryData<Folder[]>(queryKeys.projectFolders(project.id), [optimisticFolder]);
+    router.push(`/${project.id}/recent`);
     void queryClient.invalidateQueries({ queryKey: ['projects'] });
-    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(project.id) });
+    void queryClient.invalidateQueries({ queryKey: ['folders-libraries', project.id] });
   };
 
   const showEmpty = !loading && !projectsError && projects.length === 0;
@@ -78,7 +84,7 @@ export default function ProjectsPage() {
       {loading && <div>Loading projects...</div>}
       {projectsError && (
         <div className={styles.error}>
-          {(projectsError as any)?.message || 'Failed to load projects'}
+          {projectsError instanceof Error ? projectsError.message : 'Failed to load projects'}
         </div>
       )}
 

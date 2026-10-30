@@ -69,6 +69,28 @@
   min-width: 0;
 }
 
+.projectProfileForm {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.projectFormActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.projectFormError {
+  color: #b91c1c;
+  font-size: 0.8125rem;
+}
+
+.projectFormActions .modalPrimary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .row {
   display: flex;
   align-items: center;

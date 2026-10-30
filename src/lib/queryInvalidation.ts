@@ -29,6 +29,19 @@ export function upsertProjectInListCache(
   });
 }
 
+export function patchProjectFoundationCaches(
+  queryClient: QueryClient,
+  project: Project
+): void {
+  upsertProjectInListCache(queryClient, project);
+  queryClient.setQueryData(queryKeys.project(project.id), project);
+  queryClient.setQueryData(['project', project.id, 'admin-settings'], project);
+  queryClient.setQueryData<{ name: string } | undefined>(
+    ['project', project.id, 'admin-collaborators'],
+    (old) => old ? { ...old, name: project.name } : old,
+  );
+}
+
 export function removeProjectFromListCache(
   queryClient: QueryClient,
   projectId: string

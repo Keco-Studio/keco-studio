@@ -1,13 +1,15 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
+import {
+  DESIGN_PHILOSOPHY_PRESETS,
+  GAME_GENRE_PRESETS,
+  normalizeFoundationTags,
+} from '@/lib/projectFoundation';
+import { validateName } from '@/lib/utils/nameValidation';
 
 type ProjectCreateRpcResult = {
-  project_id?: unknown;
-  projectId?: unknown;
+  project?: Record<string, unknown>;
   folder_id?: unknown;
-  folderId?: unknown;
-  0?: unknown;
-  1?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -42,17 +44,28 @@ export const POST = withAuth(async function POST(
   { supabase }
 ) {
   const body = await request.json().catch(() => null);
-  const name: string = body?.name ?? '';
+  const name = typeof body?.name === 'string' ? body.name : '';
   const description: string | null = body?.description ?? null;
+  const genres = body?.genres ?? [];
+  const designPhilosophies = body?.designPhilosophies ?? [];
 
   const trimmed = name.trim();
   if (!trimmed) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
   }
+  const validationError = validateName(trimmed);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+  if (!isStringArray(genres) || !isStringArray(designPhilosophies)) {
+    return NextResponse.json({ error: 'Foundation tags must be arrays of strings' }, { status: 400 });
+  }
 
-  const { data, error } = await supabase.rpc('create_project_with_default_resource', {
+  const { data, error } = await supabase.rpc('create_project_with_foundation', {
     p_name: trimmed,
     p_description: description,
+    p_genres: normalizeFoundationTags(genres, GAME_GENRE_PRESETS),
+    p_design_philosophies: normalizeFoundationTags(designPhilosophies, DESIGN_PHILOSOPHY_PRESETS),
   });
 
   if (error) {
@@ -100,13 +113,12 @@ export const POST = withAuth(async function POST(
     return NextResponse.json({ error: 'Project creation failed: invalid response format' }, { status: 500 });
   }
 
-  // Extract project_id and folder_id from result
-  const projectId = result.project_id || result.projectId || result[0];
-  const folderId = result.folder_id || result.folderId || result[1];
+  const project = result.project;
+  const folderId = result.folder_id;
 
-  if (typeof projectId !== 'string' || !projectId) {
-    console.error('Missing project_id in result:', result);
-    return NextResponse.json({ error: 'Project creation failed: missing project_id' }, { status: 500 });
+  if (!project || typeof project.id !== 'string' || !project.id) {
+    console.error('Missing project in result:', result);
+    return NextResponse.json({ error: 'Project creation failed: invalid response format' }, { status: 500 });
   }
 
   if (typeof folderId !== 'string' || !folderId) {
@@ -116,10 +128,8 @@ export const POST = withAuth(async function POST(
 
   return NextResponse.json(
     {
-      id: projectId,
+      ...project,
       default_folder_id: folderId,
-      name: trimmed,
-      description: description ?? null,
     },
     { status: 201 }
   );
@@ -127,3 +137,7 @@ export const POST = withAuth(async function POST(
   unauthorizedResponse: () =>
     NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
 });
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}

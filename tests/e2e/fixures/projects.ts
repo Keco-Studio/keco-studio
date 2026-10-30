@@ -8,6 +8,8 @@
 export interface ProjectData {
   name: string;
   description?: string;
+  genres?: string[];
+  designPhilosophies?: string[];
 }
 
 /**
@@ -44,4 +46,3 @@ export const projects = {
     description: 'A simple project for basic testing',
   } as ProjectData,
 };
-

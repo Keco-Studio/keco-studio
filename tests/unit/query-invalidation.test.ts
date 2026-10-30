@@ -1,11 +1,12 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { CancelledError } from '@tanstack/react-query';
+import { CancelledError, QueryClient } from '@tanstack/react-query';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
   invalidateLibraryData,
   invalidateLibrarySchemaData,
   invalidateProjectData,
+  patchProjectFoundationCaches,
   projectsListCacheHasId,
   removeProjectFromListCache,
   sidebarAssetsKey,
@@ -87,6 +88,59 @@ describe('query invalidation helpers', () => {
 
     updateProjectsListCache(client as never, (old) => old);
     expect(setQueriesData).toHaveBeenCalledTimes(3);
+  });
+
+  it('patches project list and explicit project metadata caches', () => {
+    const setQueryData = jest.fn();
+    const setQueriesData = jest.fn();
+    const project = {
+      id: 'project-1',
+      owner_id: 'user-1',
+      name: 'Harbor Signal',
+      description: 'A cooperative mystery.',
+      genres: ['RPG'],
+      design_philosophies: ['Player Agency'],
+      created_at: '2026-10-30T10:00:00.000Z',
+      updated_at: '2026-10-30T10:00:00.000Z',
+    };
+
+    patchProjectFoundationCaches({ setQueryData, setQueriesData } as never, project);
+
+    expect(setQueryData).toHaveBeenCalledWith(queryKeys.project('project-1'), project);
+    expect(setQueryData).toHaveBeenCalledWith(
+      ['project', 'project-1', 'admin-settings'],
+      project,
+    );
+    expect(setQueryData).toHaveBeenCalledWith(
+      ['project', 'project-1', 'admin-collaborators'],
+      expect.any(Function),
+    );
+    expect(setQueriesData).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not modify Maps or unrelated objects under the project cache prefix', () => {
+    const client = new QueryClient();
+    const project = {
+      id: 'project-1',
+      owner_id: 'user-1',
+      name: 'Harbor Signal',
+      description: 'A cooperative mystery.',
+      genres: ['RPG'],
+      design_philosophies: ['Player Agency'],
+      created_at: '2026-10-30T10:00:00.000Z',
+      updated_at: '2026-10-30T10:00:00.000Z',
+    };
+    const references = new Map([['asset-1', { id: 'reference-1' }]]);
+    const designSystem = { id: 'gds-1', name: 'Unrelated design system', status: 'ready' };
+    const referenceKey = queryKeys.resourceReferences(project.id, ['asset-1']);
+    const designSystemKey = queryKeys.projectGameDesignSystem(project.id);
+    client.setQueryData(referenceKey, references);
+    client.setQueryData(designSystemKey, designSystem);
+
+    patchProjectFoundationCaches(client, project);
+
+    expect(client.getQueryData(referenceKey)).toBe(references);
+    expect(client.getQueryData(designSystemKey)).toBe(designSystem);
   });
 
   it('invalidates folder and folder/library collection keys', async () => {
