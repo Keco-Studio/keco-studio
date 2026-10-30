@@ -22,6 +22,7 @@ import {
   type AdminPrivacyPrefs,
 } from '@/lib/adminPrefs/storage';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
+import { validateName } from '@/lib/utils/nameValidation';
 import { patchProjectFoundationCaches } from '@/lib/queryInvalidation';
 import { updateProject, type Project } from '@/lib/services/projectService';
 import {
@@ -113,6 +114,11 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
 
   const saveProjectInformation = async () => {
     if (!canEditProfile || !projectQuery.data || !normalizedProjectDraft || !projectDirty) return;
+    const validationError = validateName(normalizedProjectDraft.name);
+    if (validationError) {
+      setProjectSaveError(validationError);
+      return;
+    }
     setSavingProject(true);
     setProjectSaveError(null);
     try {

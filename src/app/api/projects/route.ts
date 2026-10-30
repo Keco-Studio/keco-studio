@@ -5,6 +5,7 @@ import {
   GAME_GENRE_PRESETS,
   normalizeFoundationTags,
 } from '@/lib/projectFoundation';
+import { validateName } from '@/lib/utils/nameValidation';
 
 type ProjectCreateRpcResult = {
   project?: Record<string, unknown>;
@@ -51,6 +52,10 @@ export const POST = withAuth(async function POST(
   const trimmed = name.trim();
   if (!trimmed) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+  }
+  const validationError = validateName(trimmed);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
   }
   if (!isStringArray(genres) || !isStringArray(designPhilosophies)) {
     return NextResponse.json({ error: 'Foundation tags must be arrays of strings' }, { status: 400 });

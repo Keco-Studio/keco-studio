@@ -10,6 +10,7 @@ import {
   GAME_GENRE_PRESETS,
   normalizeFoundationTags,
 } from '@/lib/projectFoundation';
+import { validateName } from '@/lib/utils/nameValidation';
 
 export type Project = {
   id: string;
@@ -59,6 +60,10 @@ export async function createProject(
 
   if (!name) {
     throw new Error('Project name is required.');
+  }
+  const validationError = validateName(name);
+  if (validationError) {
+    throw new Error(validationError);
   }
 
   const { data, error } = await supabase.rpc('create_project_with_foundation', {
@@ -247,6 +252,10 @@ export async function updateProject(
 
   if (!name) {
     throw new Error('Project name is required.');
+  }
+  const validationError = validateName(name);
+  if (validationError) {
+    throw new Error(validationError);
   }
 
   // Check if the new name conflicts with another project (excluding current project)

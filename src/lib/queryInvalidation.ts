@@ -35,9 +35,10 @@ export function patchProjectFoundationCaches(
 ): void {
   upsertProjectInListCache(queryClient, project);
   queryClient.setQueryData(queryKeys.project(project.id), project);
-  queryClient.setQueriesData(
-    { queryKey: ['project', project.id] },
-    (old: unknown) => old && !Array.isArray(old) ? { ...(old as object), ...project } : old,
+  queryClient.setQueryData(['project', project.id, 'admin-settings'], project);
+  queryClient.setQueryData<{ name: string } | undefined>(
+    ['project', project.id, 'admin-collaborators'],
+    (old) => old ? { ...old, name: project.name } : old,
   );
 }
 

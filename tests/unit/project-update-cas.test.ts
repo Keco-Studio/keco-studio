@@ -1,9 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { updateProject } from '@/lib/services/projectService';
-import { getCurrentUserId, verifyProjectUpdatePermission } from '@/lib/services/authorizationService';
+import { createProject, updateProject } from '@/lib/services/projectService';
+import {
+  getCurrentUserId,
+  verifyProjectCreation,
+  verifyProjectUpdatePermission,
+} from '@/lib/services/authorizationService';
 
 jest.mock('@/lib/services/authorizationService', () => ({
   getCurrentUserId: jest.fn(),
+  verifyProjectCreation: jest.fn(),
   verifyProjectUpdatePermission: jest.fn(),
 }));
 
@@ -46,7 +51,23 @@ function clientWithUpdateResult(data: unknown) {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(getCurrentUserId).mockResolvedValue('user-1');
+  jest.mocked(verifyProjectCreation).mockResolvedValue(undefined);
   jest.mocked(verifyProjectUpdatePermission).mockResolvedValue(undefined);
+});
+
+it('rejects invalid project names before create or update writes', async () => {
+  const client = {
+    from: jest.fn(),
+    rpc: jest.fn(),
+  } as unknown as SupabaseClient;
+
+  await expect(createProject(client, { name: 'Harbor!' }))
+    .rejects.toThrow('No emojis, HTML tags or !@#$% allowed');
+  await expect(updateProject(client, projectId, { name: '<Harbor>' }))
+    .rejects.toThrow('No emojis, HTML tags or !@#$% allowed');
+
+  expect(client.rpc).not.toHaveBeenCalled();
+  expect(client.from).not.toHaveBeenCalled();
 });
 
 it('rejects a stale project update in the database write', async () => {

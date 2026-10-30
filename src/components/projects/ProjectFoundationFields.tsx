@@ -1,6 +1,6 @@
 'use client';
 
-import type { SetStateAction } from 'react';
+import { useId, type SetStateAction } from 'react';
 import {
   DESIGN_PHILOSOPHY_PRESETS,
   GAME_GENRE_PRESETS,
@@ -29,14 +29,19 @@ export function ProjectFoundationFields({
   showName = true,
 }: ProjectFoundationFieldsProps) {
   const controlsDisabled = disabled || readOnly;
+  const id = useId();
+  const nameId = `${id}-name`;
+  const genresId = `${id}-genres`;
+  const philosophiesId = `${id}-philosophies`;
+  const descriptionId = `${id}-description`;
 
   return (
     <div className={styles.fields}>
       {showName ? (
         <div className={styles.field}>
-          <label htmlFor="project-foundation-name">Project name</label>
+          <label htmlFor={nameId}>Project name</label>
           <input
-            id="project-foundation-name"
+            id={nameId}
             className={styles.input}
             value={value.name}
             disabled={controlsDisabled}
@@ -48,7 +53,7 @@ export function ProjectFoundationFields({
 
       <fieldset className={styles.tagFields} disabled={controlsDisabled}>
         <FoundationTagSelector
-          id="project-foundation-genres"
+          id={genresId}
           label="Game genres"
           singularLabel="game genre"
           placeholder="Custom genre"
@@ -60,7 +65,7 @@ export function ProjectFoundationFields({
           })}
         />
         <FoundationTagSelector
-          id="project-foundation-philosophies"
+          id={philosophiesId}
           label="Design philosophies"
           singularLabel="design philosophy"
           placeholder="Custom philosophy"
@@ -74,9 +79,9 @@ export function ProjectFoundationFields({
       </fieldset>
 
       <div className={`${styles.field} ${styles.descriptionField}`}>
-        <label htmlFor="project-foundation-description">Description</label>
+        <label htmlFor={descriptionId}>Description</label>
         <textarea
-          id="project-foundation-description"
+          id={descriptionId}
           className={styles.textarea}
           value={value.description}
           disabled={controlsDisabled}

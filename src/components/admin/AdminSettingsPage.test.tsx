@@ -124,3 +124,14 @@ it('retains the draft and reports a failed save', async () => {
   expect((await screen.findByRole('alert')).textContent).toContain('Save failed');
   expect((screen.getByLabelText('Project name') as HTMLInputElement).value).toBe('Unsaved name');
 });
+
+it('retains an invalid project name and reports validation without calling the service', async () => {
+  renderSettings({ role: 'admin', project });
+  await user.clear(screen.getByLabelText('Project name'));
+  await user.type(screen.getByLabelText('Project name'), 'Harbor!');
+  await user.click(screen.getByRole('button', { name: 'Save project information' }));
+
+  expect((await screen.findByRole('alert')).textContent).toBe('No emojis, HTML tags or !@#$% allowed');
+  expect((screen.getByLabelText('Project name') as HTMLInputElement).value).toBe('Harbor!');
+  expect(updateProject).not.toHaveBeenCalled();
+});

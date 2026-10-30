@@ -70,4 +70,14 @@ describe('POST /api/projects', () => {
       p_design_philosophies: ['Player Agency', 'Readable Systems'],
     });
   });
+
+  it('rejects invalid project names before calling the creation RPC', async () => {
+    const response = await POST(request({ name: 'Tactics!' }) as never, undefined as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'No emojis, HTML tags or !@#$% allowed',
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
 });

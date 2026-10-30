@@ -33,4 +33,16 @@ describe('project Foundation migration', () => {
     expect(sql).toMatch(/accepted_at is not null/i);
     expect(sql).toMatch(/create policy "projects_update_policy"[\s\S]*is_project_admin_collaborator/i);
   });
+
+  it('normalizes every Foundation array write through a shared insert/update trigger', () => {
+    const sql = readFileSync(migrationPath, 'utf8');
+    expect(sql).toMatch(/create or replace function public\.normalize_project_foundation_tags/i);
+    expect(sql).toMatch(/regexp_replace\([\s\S]*btrim\([\s\S]*'\\s\+'[\s\S]*' '[\s\S]*'g'/i);
+    expect(sql).toMatch(/lower\(preset\.value\)\s*=\s*lower\(input\.value\)/i);
+    expect(sql).toMatch(/distinct on \(lower\(value\)\)/i);
+    expect(sql).toMatch(/limit 20/i);
+    expect(sql).toMatch(/new\.genres\s*:=\s*public\.normalize_project_foundation_tags\([\s\S]*'RPG'[\s\S]*'Visual Novel'/i);
+    expect(sql).toMatch(/new\.design_philosophies\s*:=\s*public\.normalize_project_foundation_tags\([\s\S]*'Meaningful Decisions'[\s\S]*'Cooperative Play'/i);
+    expect(sql).toMatch(/create trigger normalize_project_foundation_arrays[\s\S]*before insert or update of genres, design_philosophies[\s\S]*on public\.projects[\s\S]*execute function public\.normalize_project_foundation_arrays/i);
+  });
 });

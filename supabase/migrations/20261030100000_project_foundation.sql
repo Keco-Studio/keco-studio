@@ -6,6 +6,81 @@ alter table public.projects
   add constraint projects_genres_limit check (cardinality(genres) <= 20),
   add constraint projects_design_philosophies_limit check (cardinality(design_philosophies) <= 20);
 
+create or replace function public.normalize_project_foundation_tags(
+  p_values text[],
+  p_presets text[]
+) returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  with normalized_values as (
+    select
+      entry.ordinality,
+      regexp_replace(btrim(entry.value), '\s+', ' ', 'g') as value
+    from unnest(coalesce(p_values, '{}'::text[])) with ordinality as entry(value, ordinality)
+  ),
+  canonicalized as (
+    select
+      input.ordinality,
+      coalesce((
+        select preset.value
+        from unnest(coalesce(p_presets, '{}'::text[])) with ordinality as preset(value, ordinality)
+        where lower(preset.value) = lower(input.value)
+        order by preset.ordinality
+        limit 1
+      ), input.value) as value
+    from normalized_values as input
+    where input.value <> ''
+  ),
+  deduplicated as (
+    select distinct on (lower(value)) value, ordinality
+    from canonicalized
+    order by lower(value), ordinality
+  ),
+  limited as (
+    select value, ordinality
+    from deduplicated
+    order by ordinality
+    limit 20
+  )
+  select coalesce(array_agg(value order by ordinality), '{}'::text[])
+  from limited;
+$$;
+
+create or replace function public.normalize_project_foundation_arrays()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.genres := public.normalize_project_foundation_tags(
+    new.genres,
+    array[
+      'RPG', 'Strategy', 'Deckbuilder', 'Roguelike', 'Simulation', 'Narrative',
+      'Action', 'Puzzle', 'Management', 'Adventure', 'Platformer', 'Shooter',
+      'Survival', 'Horror', 'Sandbox', 'Sports', 'Visual Novel', 'Metroidvania'
+    ]::text[]
+  );
+  new.design_philosophies := public.normalize_project_foundation_tags(
+    new.design_philosophies,
+    array[
+      'Meaningful Decisions', 'Readable Systems', 'System Driven', 'Narrative First',
+      'Player Agency', 'Emergent Play', 'Competitive Fairness',
+      'Expressive Customization', 'Accessibility First',
+      'Easy to Learn, Hard to Master', 'Risk and Reward', 'Fail Forward',
+      'Mastery Through Practice', 'Cooperative Play'
+    ]::text[]
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists normalize_project_foundation_arrays on public.projects;
+create trigger normalize_project_foundation_arrays
+  before insert or update of genres, design_philosophies on public.projects
+  for each row execute function public.normalize_project_foundation_arrays();
+
 create or replace function public.is_project_admin_collaborator(
   p_project_id uuid,
   p_user_id uuid
