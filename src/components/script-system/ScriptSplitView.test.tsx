@@ -274,29 +274,29 @@ describe('ScriptSplitView plot selection', () => {
     const markup = renderToStaticMarkup(
       <ScriptSplitView
         libraryId="lib"
-        libraryName="深夜客房"
+        libraryName="Midnight Guest Room"
         rows={rows}
         scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
         flowRows={[]}
         persistedGraph={{
           nodes: [
-            { id: 'Start', label: '客房', rowIndex: 0, rowIndexes: [0, 1] },
-            { id: 'Ending', label: '走廊尽头', rowIndex: 2, rowIndexes: [2, 3] },
+            { id: 'Start', label: 'Guest Room', rowIndex: 0, rowIndexes: [0, 1] },
+            { id: 'Ending', label: 'End of the Hallway', rowIndex: 2, rowIndexes: [2, 3] },
           ],
           edges: [{ from: 'Start', to: 'Ending' }],
         }}
       />,
     );
 
-    expect(markup).toContain('剧情脚本');
-    expect(markup).toContain('深夜客房');
-    expect(markup).not.toContain('aria-label="剧情结构"');
-    expect(markup).toContain('模板');
-    expect(markup).toContain('保存为模板');
-    expect(markup).not.toContain('结构检查');
-    expect(markup).not.toContain('aria-label="保存脚本"');
-    expect(markup).toContain('分支结构');
-    expect(markup).not.toContain('生成动画');
+    expect(markup).toContain('Story Script');
+    expect(markup).toContain('Midnight Guest Room');
+    expect(markup).not.toContain('aria-label="Story Structure"');
+    expect(markup).toContain('Templates');
+    expect(markup).toContain('Save as Template');
+    expect(markup).not.toContain('Structure Check');
+    expect(markup).not.toContain('aria-label="Save Script"');
+    expect(markup).toContain('Branch Structure');
+    expect(markup).not.toContain('Generate Animation');
   });
 
   it('navigates the left script pane when a structure-template node is clicked', () => {
@@ -316,8 +316,8 @@ describe('ScriptSplitView plot selection', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '模板' }));
-    fireEvent.click(screen.getByRole('button', { name: '使用 双分支后汇合 作为参考' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use Two Branches Rejoin as reference' }));
 
     const branchNode = document.querySelector('[data-flow-node-id="branch-b"]');
     expect(branchNode).not.toBeNull();

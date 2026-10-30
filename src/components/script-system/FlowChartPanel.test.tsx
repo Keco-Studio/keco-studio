@@ -47,16 +47,16 @@ describe('FlowChartPanel', () => {
           nodes: [{ id: 'Start', label: 'Opening', rowIndex: 0, rowIndexes: [0] }],
           edges: [],
         }}
-        title="分支结构"
-        referenceLabel="双分支后汇合"
+        title="Branch Structure"
+        referenceLabel="Two Branches Rejoin"
         readOnly
         selectedPlotNodeId="Start"
         onSelectPlotNode={() => undefined}
       />,
     );
 
-    expect(markup).toContain('分支结构');
-    expect(markup).toContain('参考：双分支后汇合');
+    expect(markup).toContain('Branch Structure');
+    expect(markup).toContain('Reference: Two Branches Rejoin');
     expect(markup).not.toContain('role="button"');
   });
 

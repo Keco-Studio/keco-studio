@@ -12,17 +12,17 @@ describe('deriveScriptWorkspaceStructure', () => {
   test('keeps graph order and classifies a two-way branch with a merge', () => {
     const graph: FlowGraph = {
       nodes: [
-        node('opening', '客房', 0),
-        node('decision', '接下来怎么做？', 3),
-        node('inspect', '检查房间', 4),
-        node('leave', '立即离开', 7),
-        node('rejoin', '回到主线', 10),
-        node('ending', '继续前进', 12),
+        node('opening', 'Guest Room', 0),
+        node('decision', 'What should happen next?', 3),
+        node('inspect', 'Inspect the Room', 4),
+        node('leave', 'Leave Immediately', 7),
+        node('rejoin', 'Return to Main Story', 10),
+        node('ending', 'Continue Forward', 12),
       ],
       edges: [
         { from: 'opening', to: 'decision' },
-        { from: 'decision', to: 'inspect', optionIndex: 0, optionText: '检查房间' },
-        { from: 'decision', to: 'leave', optionIndex: 1, optionText: '立即离开' },
+        { from: 'decision', to: 'inspect', optionIndex: 0, optionText: 'Inspect the Room' },
+        { from: 'decision', to: 'leave', optionIndex: 1, optionText: 'Leave Immediately' },
         { from: 'inspect', to: 'rejoin' },
         { from: 'leave', to: 'rejoin' },
         { from: 'rejoin', to: 'ending' },
@@ -40,16 +40,16 @@ describe('deriveScriptWorkspaceStructure', () => {
       { nodeId: 'ending', kind: 'ending' },
     ]);
     expect(result.counts).toEqual({ nodes: 6, choices: 1, merges: 1, endings: 1 });
-    expect(result.items[1]?.summary).toBe('2 个分支');
-    expect(result.items[4]?.summary).toBe('2 条路线汇合');
+    expect(result.items[1]?.summary).toBe('2 branches');
+    expect(result.items[4]?.summary).toBe('2 paths merge');
   });
 
   test('gives entry and ending precedence when classifications overlap', () => {
     const graph: FlowGraph = {
-      nodes: [node('start', '选择入口', 0), node('left', '左侧结局', 1), node('right', '右侧结局', 2)],
+      nodes: [node('start', 'Choose an Entry', 0), node('left', 'Left Ending', 1), node('right', 'Right Ending', 2)],
       edges: [
-        { from: 'start', to: 'left', optionIndex: 0, optionText: '向左' },
-        { from: 'start', to: 'right', optionIndex: 1, optionText: '向右' },
+        { from: 'start', to: 'left', optionIndex: 0, optionText: 'Go Left' },
+        { from: 'start', to: 'right', optionIndex: 1, optionText: 'Go Right' },
       ],
     };
 
@@ -63,7 +63,7 @@ describe('deriveScriptWorkspaceStructure', () => {
 describe('validateScriptWorkspaceStructure', () => {
   test('reports no issues for a healthy reachable graph', () => {
     const graph: FlowGraph = {
-      nodes: [node('start', '开始', 0), node('end', '结束', 1)],
+      nodes: [node('start', 'Start', 0), node('end', 'End', 1)],
       edges: [{ from: 'start', to: 'end' }],
     };
 
@@ -76,7 +76,7 @@ describe('validateScriptWorkspaceStructure', () => {
 
   test('reports unreachable nodes in graph order with node evidence', () => {
     const graph: FlowGraph = {
-      nodes: [node('start', '开始', 0), node('end', '结束', 1), node('orphan', '遗漏场景', 2)],
+      nodes: [node('start', 'Start', 0), node('end', 'End', 1), node('orphan', 'Missing Scene', 2)],
       edges: [{ from: 'start', to: 'end' }],
     };
 
@@ -86,7 +86,7 @@ describe('validateScriptWorkspaceStructure', () => {
       code: 'unreachable-node',
       severity: 'warning',
       nodeId: 'orphan',
-      message: '“遗漏场景”无法从入口到达',
+      message: '"Missing Scene" cannot be reached from the entry',
     }));
     expect(result.errorCount).toBe(0);
     expect(result.warningCount).toBe(1);
@@ -94,7 +94,7 @@ describe('validateScriptWorkspaceStructure', () => {
 
   test('reports a cycle as an error and no reachable ending as a warning', () => {
     const graph: FlowGraph = {
-      nodes: [node('start', '开始', 0), node('loop', '循环', 1)],
+      nodes: [node('start', 'Start', 0), node('loop', 'Loop', 1)],
       edges: [
         { from: 'start', to: 'loop' },
         { from: 'loop', to: 'start' },
@@ -111,7 +111,7 @@ describe('validateScriptWorkspaceStructure', () => {
 
   test('reports each unknown edge endpoint without throwing', () => {
     const graph: FlowGraph = {
-      nodes: [node('start', '开始', 0)],
+      nodes: [node('start', 'Start', 0)],
       edges: [
         { from: 'missing-source', to: 'start' },
         { from: 'start', to: 'missing-target' },

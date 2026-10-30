@@ -29,11 +29,11 @@ afterEach(cleanup);
 
 const template: ScriptStructureTemplate = {
   id: 'personal-one',
-  name: '我的模板',
-  description: '用于悬疑场景',
+  name: 'My Template',
+  description: 'For suspense scenes',
   createdAt: '2026-10-30T10:00:00.000Z',
   graph: {
-    nodes: [{ id: 'entry', label: '开场', rowIndex: 0, rowIndexes: [0] }],
+    nodes: [{ id: 'entry', label: 'Opening', rowIndex: 0, rowIndexes: [0] }],
     edges: [],
   },
   counts: { nodes: 1, choices: 0, merges: 0, endings: 0 },
@@ -48,27 +48,27 @@ describe('ScriptWorkspaceToolbar', () => {
     };
     render(
       <ScriptWorkspaceToolbar
-        libraryName="深夜客房"
+        libraryName="Midnight Guest Room"
         {...callbacks}
       />,
     );
 
-    expect(screen.getByText('剧情脚本')).not.toBeNull();
-    expect(screen.getByText('深夜客房')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '模板' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存为模板' }));
+    expect(screen.getByText('Story Script')).not.toBeNull();
+    expect(screen.getByText('Midnight Guest Room')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save as Template' }));
 
     expect(callbacks.onOpenTemplates).toHaveBeenCalledTimes(1);
     expect(callbacks.onSaveAsTemplate).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /结构检查/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: '保存脚本' })).toBeNull();
-    expect(screen.queryByText('生成动画')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Structure Check/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save Script' })).toBeNull();
+    expect(screen.queryByText('Generate Animation')).toBeNull();
   });
 });
 
 describe('ScriptTemplateModal', () => {
   it('uses references without mutating them and permits only personal deletion', () => {
-    const builtIn = { ...template, id: 'built-in-linear', name: '线性场景', isBuiltIn: true };
+    const builtIn = { ...template, id: 'built-in-linear', name: 'Linear Scene', isBuiltIn: true };
     const onUseReference = jest.fn();
     const onDeleteTemplate = jest.fn();
     render(
@@ -84,12 +84,12 @@ describe('ScriptTemplateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '使用 线性场景 作为参考' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除 我的模板' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use Linear Scene as reference' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete My Template' }));
 
     expect(onUseReference).toHaveBeenCalledWith('built-in-linear');
     expect(onDeleteTemplate).toHaveBeenCalledWith('personal-one');
-    expect(screen.queryByRole('button', { name: '删除 线性场景' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete Linear Scene' })).toBeNull();
   });
 
   it('validates the template name before requesting a save', async () => {
@@ -107,21 +107,21 @@ describe('ScriptTemplateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '确认保存模板' }));
-    expect(screen.getByText('请输入模板名称')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm save template' }));
+    expect(screen.getByText('Please enter a template name')).not.toBeNull();
     expect(onSaveTemplate).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByRole('textbox', { name: '模板名称' }), {
-      target: { value: '  深夜分支  ' },
+    fireEvent.change(screen.getByRole('textbox', { name: 'Template name' }), {
+      target: { value: '  Midnight Branch  ' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: '模板说明' }), {
-      target: { value: '  两路汇合  ' },
+    fireEvent.change(screen.getByRole('textbox', { name: 'Template description' }), {
+      target: { value: '  Two paths rejoin  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '确认保存模板' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm save template' }));
 
     await waitFor(() => {
-      expect(onSaveTemplate).toHaveBeenCalledWith('深夜分支', '两路汇合');
-      expect(screen.getByRole('button', { name: '确认保存模板' }).hasAttribute('disabled'))
+      expect(onSaveTemplate).toHaveBeenCalledWith('Midnight Branch', 'Two paths rejoin');
+      expect(screen.getByRole('button', { name: 'Confirm save template' }).hasAttribute('disabled'))
         .toBe(false);
     });
   });
