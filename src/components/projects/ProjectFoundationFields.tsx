@@ -38,7 +38,7 @@ export function ProjectFoundationFields({
   return (
     <div className={styles.fields}>
       {showName ? (
-        <div className={styles.field}>
+        <div className={`${styles.field} ${styles.nameField}`}>
           <label htmlFor={nameId}>Project name</label>
           <input
             id={nameId}
