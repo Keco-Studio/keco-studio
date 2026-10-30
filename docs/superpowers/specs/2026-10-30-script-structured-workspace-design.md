@@ -36,14 +36,14 @@ slice.
 The Script page adds an in-workspace header below the global product toolbar.
 It contains:
 
-- `剧情脚本 / <library name>` as the stable context label;
-- `模板` to open the personal structure-template library;
-- `保存为模板` to store the current structure locally;
-- `结构检查` with a visible issue count;
-- `保存` to commit the currently active dialogue draft through the existing
+- `Story Script / <library name>` as the stable context label;
+- `Templates` to open the personal structure-template library;
+- `Save as Template` to store the current structure locally;
+- `Structure Check` with a visible issue count;
+- `Save` to commit the currently active dialogue draft through the existing
   dialogue-save path.
 
-There is no `生成动画` button in this slice. Animation tags and generation are
+There is no `Generate Animation` button in this slice. Animation tags and generation are
 explicitly deferred.
 
 ## Structure outline
@@ -113,7 +113,7 @@ Script remains selected and editable.
 ## Save behavior
 
 Existing dialogue blocks keep their current autosave and keyboard behavior.
-The workspace `保存` button provides an explicit author action:
+The workspace `Save` button provides an explicit author action:
 
 - if a dialogue draft is active, it requests that block to run its existing
   validation and persistence callback;
