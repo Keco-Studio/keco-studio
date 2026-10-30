@@ -182,7 +182,9 @@ async function addReferenceColumn(
     .first();
   await expect(referenceTypeOption).toBeVisible({ timeout: 10000 });
   await referenceTypeOption.click();
-  await expect(addModal.locator('#add-column-type')).toContainText('Reference');
+  await expect(
+    addModal.locator('.ant-select-selection-item').filter({ hasText: /^reference$/i }),
+  ).toBeVisible();
   await nameInput.click();
   await expect(dropdown).not.toBeVisible({ timeout: 5000 });
   await expect(nameInput).toHaveValue(columnName);

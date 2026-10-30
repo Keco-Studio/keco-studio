@@ -479,7 +479,11 @@ export class LibraryPage {
       .first();
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.click();
-    await expect(addModal.locator('#add-column-type')).toContainText(dataTypeLabel);
+    await expect(
+      addModal.locator('.ant-select-selection-item').filter({
+        hasText: new RegExp(`^${dataTypeLabel}$`, 'i'),
+      }),
+    ).toBeVisible();
     await nameInput.click();
     await expect(dropdown).not.toBeVisible({ timeout: 5000 });
     await expect(nameInput).toHaveValue(columnName);

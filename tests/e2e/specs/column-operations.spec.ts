@@ -84,7 +84,9 @@ async function ensureEditableColumnExists(page: Page): Promise<void> {
     .first();
   await expect(option).toBeVisible({ timeout: 10000 });
   await option.click();
-  await expect(addModal.locator('#add-column-type')).toContainText('String');
+  await expect(
+    addModal.locator('.ant-select-selection-item').filter({ hasText: /^string$/i }),
+  ).toBeVisible();
 
   // Move focus back into the form so an animated Select popup cannot cover Add.
   await addModal.locator('#add-column-name').click();
