@@ -5,6 +5,10 @@ const migrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20261030100000_project_foundation.sql',
 );
+const permissionMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20261030110000_restore_editor_project_operations.sql',
+);
 
 describe('project Foundation migration', () => {
   it('adds non-null Foundation arrays with a 20-tag database limit', () => {
@@ -26,12 +30,20 @@ describe('project Foundation migration', () => {
     expect(sql).not.toMatch(/drop function[^;]*create_project_with_default_resource/i);
   });
 
-  it('limits project updates to accepted admins at the RLS boundary', () => {
+  it('defines the accepted-admin helper used by Foundation permissions', () => {
     const sql = readFileSync(migrationPath, 'utf8');
     expect(sql).toMatch(/create or replace function public\.is_project_admin_collaborator/i);
     expect(sql).toMatch(/role = 'admin'/i);
     expect(sql).toMatch(/accepted_at is not null/i);
-    expect(sql).toMatch(/create policy "projects_update_policy"[\s\S]*is_project_admin_collaborator/i);
+  });
+
+  it('keeps editor operational updates while limiting Foundation changes to admins', () => {
+    expect(existsSync(permissionMigrationPath)).toBe(true);
+    const sql = readFileSync(permissionMigrationPath, 'utf8');
+    expect(sql).toMatch(/create policy "projects_update_policy"[\s\S]*is_editor_or_admin_collaborator/i);
+    expect(sql).toMatch(/create trigger projects_guard_foundation_updates/i);
+    expect(sql).toMatch(/before update of name, description, genres, design_philosophies/i);
+    expect(sql).toMatch(/not public\.is_project_admin_collaborator\(old\.id, auth\.uid\(\)\)/i);
   });
 
   it('normalizes every Foundation array write through a shared insert/update trigger', () => {
