@@ -110,7 +110,6 @@ export type UseSidebarContextMenuActionsParams = {
   contextMenu: SidebarContextMenuState;
   closeContextMenu: () => void;
   router: AppRouterInstance;
-  openEditProject: (id: string) => void;
   openEditLibrary: (id: string) => void;
   openEditDocument?: (id: string) => void;
   openDuplicateLibrary: (id: string) => void;
@@ -157,7 +156,6 @@ export function useSidebarContextMenuActions({
   contextMenu,
   closeContextMenu,
   router,
-  openEditProject,
   openEditLibrary,
   openEditDocument,
   openDuplicateLibrary,
@@ -210,13 +208,15 @@ export function useSidebarContextMenuActions({
         return;
       }
 
-      // Handle rename action (Project info / Library info / Folder rename)
+      if (action === 'rename' && contextMenu.type === 'project') {
+        closeContextMenu();
+        router.push(`/${contextMenu.id}/admin`);
+        return;
+      }
+
+      // Handle rename action (Library info / Folder rename)
       if (action === 'rename') {
-        if (contextMenu.type === 'project') {
-          openEditProject(contextMenu.id);
-          closeContextMenu();
-          return;
-        } else if (contextMenu.type === 'library') {
+        if (contextMenu.type === 'library') {
           // Library info opens the name/notes modal; inline rename is the Rename item.
           openEditLibrary(contextMenu.id);
           closeContextMenu();
@@ -620,7 +620,6 @@ export function useSidebarContextMenuActions({
       contextMenu,
       closeContextMenu,
       router,
-      openEditProject,
       openEditLibrary,
       openEditDocument,
       openDuplicateLibrary,

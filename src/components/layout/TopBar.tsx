@@ -56,7 +56,10 @@ import {
 } from '@/components/documents/documentPresenceEvents';
 import { useKecoAdminAccess } from '@/lib/hooks/useKecoAdminAccess';
 import { uploadProjectAssets } from '@/lib/services/projectAssetUploadContract';
-import { parseGameAssetsCategoryParam } from '@/lib/services/gameAssetsService';
+import {
+  GAME_ASSETS_DISPLAY_NAME,
+  parseGameAssetsCategoryParam,
+} from '@/lib/services/gameAssetsService';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -1529,7 +1532,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       return (
         <LibraryToolbar
           mode="admin"
-          title={onGameAssetsPage ? 'Assets' : 'Settings'}
+          title={onGameAssetsPage ? GAME_ASSETS_DISPLAY_NAME : 'Settings'}
           onCreateFolder={handleTopbarCreateFolder}
           onCreateLibrary={handleTopbarCreateLibrary}
           onCreateDocument={handleTopbarCreateDocument}

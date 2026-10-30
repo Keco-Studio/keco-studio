@@ -15,7 +15,7 @@ import {
  *
  * Prefer this over Generate conversation — LLM/import generate is flaky in CI.
  * Seeds: Studio document → script_workspace_documents membership → document-derived
- * script library (Label/Name/Content + Option0_Next) → open split VN + Flow chart.
+ * script library (Label/Name/Content + Option0_Next) → open split VN + branch structure.
  *
  * Run:
  *   npx playwright test tests/e2e/specs/keco-script-workspace.spec.ts
@@ -249,7 +249,7 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
     await expect(page.getByText('Select form', { exact: true })).toBeVisible();
   });
 
-  test('seeded script route shows VN pane, Flow chart, and library title', async ({
+  test('seeded script route shows VN pane, branch structure, and library title', async ({
     page,
   }) => {
     await loginAs(page, fixture.owner);
@@ -262,8 +262,8 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
     await expect(
       page.locator('aside').locator(`[title="${fixture.libraryName}"]`)
     ).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Flow chart', level: 2 })).toBeVisible();
+    await expect(page.getByRole('complementary', { name: 'Branch Structure' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Branch Structure', level: 2 })).toBeVisible();
 
     // Plot-node VN pane (no player Restart toolbar). Branch chip uses the
     // deterministic entry title; dialogue keeps the seeded line separately.

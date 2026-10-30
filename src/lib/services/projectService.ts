@@ -5,21 +5,37 @@ import {
   verifyProjectUpdatePermission,
   getCurrentUserId,
 } from './authorizationService';
+import {
+  DESIGN_PHILOSOPHY_PRESETS,
+  GAME_GENRE_PRESETS,
+  normalizeFoundationTags,
+} from '@/lib/projectFoundation';
+import { validateName } from '@/lib/utils/nameValidation';
 
 export type Project = {
   id: string;
   owner_id: string;
   name: string;
   description: string | null;
+  genres: string[];
+  design_philosophies: string[];
   created_at: string;
   updated_at: string;
   default_library_id?: string;
   assets_workspace_enabled?: boolean;
 };
 
-type CreateProjectInput = {
+export type ProjectFoundationInput = {
   name: string;
   description?: string;
+  genres?: string[];
+  designPhilosophies?: string[];
+};
+
+export type CreateProjectInput = ProjectFoundationInput;
+
+export type UpdateProjectInput = ProjectFoundationInput & {
+  expectedUpdatedAt?: string;
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -31,98 +47,75 @@ const trimOrNull = (value?: string | null) => {
 export async function createProject(
   supabase: SupabaseClient,
   input: CreateProjectInput
-): Promise<{ projectId: string; defaultFolderId: string }> {
-  // verfiy user is authenticated
+): Promise<{ project: Project; defaultFolderId: string }> {
   await verifyProjectCreation(supabase);
 
   const name = input.name.trim();
   const description = trimOrNull(input.description ?? null);
+  const genres = normalizeFoundationTags(input.genres ?? [], GAME_GENRE_PRESETS);
+  const designPhilosophies = normalizeFoundationTags(
+    input.designPhilosophies ?? [],
+    DESIGN_PHILOSOPHY_PRESETS
+  );
 
   if (!name) {
     throw new Error('Project name is required.');
   }
+  const validationError = validateName(name);
+  if (validationError) {
+    throw new Error(validationError);
+  }
 
-  // Prefer RPC to ensure transactional creation with default Resources Folder
-  console.log('Calling RPC with params:', { p_name: name, p_description: description });
-  
-  const { data, error } = await supabase.rpc('create_project_with_default_resource', {
+  const { data, error } = await supabase.rpc('create_project_with_foundation', {
     p_name: name,
     p_description: description,
+    p_genres: genres,
+    p_design_philosophies: designPhilosophies,
   });
 
-  console.log('RPC full response:', { data, error });
-  console.log('Data type:', Array.isArray(data) ? 'array' : typeof data);
-  console.log('Data stringified:', JSON.stringify(data, null, 2));
-
   if (error) {
-    console.error('RPC error:', error);
     throw error;
   }
 
   if (!data) {
-    console.error('No data returned from RPC (data is null/undefined)');
     throw new Error('Project creation failed: no data returned');
   }
 
-  // Handle different return formats:
-  // 1. If function returns JSON type, Supabase RPC returns the JSON object directly (not array)
-  // 2. If function returns TABLE type, Supabase RPC returns an array
-  let result: any;
-  
+  let result: unknown;
   if (Array.isArray(data)) {
-    // TABLE return type - get first element
     if (data.length === 0) {
-      console.error('Data array is empty');
       throw new Error('Project creation failed: empty response');
     }
     result = data[0];
   } else if (typeof data === 'object' && data !== null) {
-    // JSON return type - data is already the result object
     result = data;
   } else if (typeof data === 'string') {
-    // JSON string - parse it
     try {
       result = JSON.parse(data);
-    } catch (e) {
-      console.error('Failed to parse JSON string:', e);
+    } catch {
       throw new Error('Project creation failed: invalid JSON response');
     }
   } else {
-    console.error('Unexpected data format:', data);
     throw new Error('Project creation failed: invalid response format');
   }
 
-  console.log('RPC result (parsed):', result);
-  console.log('RPC result keys:', Object.keys(result || {}));
-
-  // Extract project_id and folder_id from result
-  let projectId: string | undefined;
-  let folderId: string | undefined;
-
-  // Try different possible field names
-  projectId = result.project_id || result.projectId || result[0];
-  folderId = result.folder_id || result.folderId || result[1];
-
-  if (!projectId) {
-    console.error('Missing project_id in result:', result);
-    console.error('Result type:', typeof result);
-    console.error('Result structure:', JSON.stringify(result, null, 2));
-    throw new Error('Project creation failed: missing project_id');
+  if (!isProjectCreationResult(result)) {
+    throw new Error('Project creation failed: invalid response format');
   }
-
-  if (!folderId) {
-    console.error('Missing folder_id in result:', result);
-    console.error('Result type:', typeof result);
-    console.error('Result structure:', JSON.stringify(result, null, 2));
-    throw new Error('Project creation failed: missing folder_id');
-  }
-
-  console.log('Parsed result:', { projectId, folderId });
 
   return {
-    projectId,
-    defaultFolderId: folderId,
+    project: result.project,
+    defaultFolderId: result.folder_id,
   };
+}
+
+function isProjectCreationResult(value: unknown): value is { project: Project; folder_id: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const result = value as { project?: unknown; folder_id?: unknown };
+  return typeof result.folder_id === 'string'
+    && typeof result.project === 'object'
+    && result.project !== null
+    && typeof (result.project as { id?: unknown }).id === 'string';
 }
 
 export async function listProjects(
@@ -241,25 +234,28 @@ export async function checkProjectNameExists(
   return (data && data.length > 0) || false;
 }
 
-type UpdateProjectInput = {
-  name: string;
-  description?: string;
-  expectedUpdatedAt?: string;
-};
-
 export async function updateProject(
   supabase: SupabaseClient,
   projectId: string,
   input: UpdateProjectInput
-): Promise<void> {
+): Promise<Project> {
   // Verify user has admin permission (owner or admin collaborator)
   await verifyProjectUpdatePermission(supabase, projectId);
 
   const name = input.name.trim();
   const description = trimOrNull(input.description ?? null);
+  const genres = normalizeFoundationTags(input.genres ?? [], GAME_GENRE_PRESETS);
+  const designPhilosophies = normalizeFoundationTags(
+    input.designPhilosophies ?? [],
+    DESIGN_PHILOSOPHY_PRESETS
+  );
 
   if (!name) {
     throw new Error('Project name is required.');
+  }
+  const validationError = validateName(name);
+  if (validationError) {
+    throw new Error(validationError);
   }
 
   // Check if the new name conflicts with another project (excluding current project)
@@ -286,17 +282,23 @@ export async function updateProject(
     .update({
       name,
       description,
+      genres,
+      design_philosophies: designPhilosophies,
       updated_at: new Date().toISOString(),
     })
     .eq('id', projectId);
 
-  if (input.expectedUpdatedAt) {
-    const { data, error } = await updateQuery.eq('updated_at', input.expectedUpdatedAt).select('id').maybeSingle();
-    if (error) throw error;
-    if (!data) throw new Error('Project changed after approval; review it again.');
-  } else {
-    const { error } = await updateQuery;
-    if (error) throw error;
+  const filteredQuery = input.expectedUpdatedAt
+    ? updateQuery.eq('updated_at', input.expectedUpdatedAt)
+    : updateQuery;
+  const { data, error } = await filteredQuery.select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    if (input.expectedUpdatedAt) {
+      throw new Error('Project changed after approval; review it again.');
+    }
+    throw new Error('Project update failed: project not found.');
   }
 
+  return data;
 }

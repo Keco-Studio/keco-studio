@@ -1,5 +1,8 @@
-import { describe, expect, it, jest } from '@jest/globals';
+/** @jest-environment jsdom */
+
+import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 
 jest.mock('./ScriptSplitView.module.css', () => ({}));
@@ -31,6 +34,13 @@ import {
   resolveOptionTargetPlotNodeId,
   ScriptSplitView,
 } from './ScriptSplitView';
+
+beforeAll(() => {
+  const getComputedStyle = window.getComputedStyle.bind(window);
+  window.getComputedStyle = (element: Element) => getComputedStyle(element);
+});
+
+afterEach(cleanup);
 
 const rows: AssetRow[] = [
   { id: 'r1', libraryId: 'lib', name: 'background', propertyValues: { type: '4', content: 'Plot background' } },
@@ -106,7 +116,7 @@ describe('ScriptSplitView plot selection', () => {
 
     expect(markup).toContain('FIRST_PLOT_CONTENT');
     expect(markup).not.toContain('SECOND_PLOT_CONTENT');
-    expect(markup.match(/role="button"/g)).toHaveLength(2);
+    expect(markup.match(/data-flow-node-id=/g)).toHaveLength(2);
     expect(markup).toContain('Plot background');
     expect(markup).toContain('Opening dialogue');
     expect(markup).toContain('data-testid="script-branch-name"');
@@ -259,4 +269,62 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).toContain('Continue onward');
     expect(markup).not.toContain('No script data');
   });
+
+  it('renders workspace actions without a separate structure rail', () => {
+    const markup = renderToStaticMarkup(
+      <ScriptSplitView
+        libraryId="lib"
+        libraryName="Midnight Guest Room"
+        rows={rows}
+        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
+        flowRows={[]}
+        persistedGraph={{
+          nodes: [
+            { id: 'Start', label: 'Guest Room', rowIndex: 0, rowIndexes: [0, 1] },
+            { id: 'Ending', label: 'End of the Hallway', rowIndex: 2, rowIndexes: [2, 3] },
+          ],
+          edges: [{ from: 'Start', to: 'Ending' }],
+        }}
+      />,
+    );
+
+    expect(markup).toContain('Story Script');
+    expect(markup).toContain('Midnight Guest Room');
+    expect(markup).not.toContain('aria-label="Story Structure"');
+    expect(markup).toContain('Templates');
+    expect(markup).toContain('Save as Template');
+    expect(markup).not.toContain('Structure Check');
+    expect(markup).not.toContain('aria-label="Save Script"');
+    expect(markup).toContain('Branch Structure');
+    expect(markup).not.toContain('Generate Animation');
+  });
+
+  it('navigates the left script pane when a structure-template node is clicked', () => {
+    render(
+      <ScriptSplitView
+        libraryId="lib"
+        rows={rows}
+        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
+        flowRows={[]}
+        persistedGraph={{
+          nodes: [
+            { id: 'Start', label: 'Plot background', rowIndex: 0, rowIndexes: [0, 1] },
+            { id: 'Opening', label: 'Opening dialogue', rowIndex: 2, rowIndexes: [2, 3] },
+          ],
+          edges: [{ from: 'Start', to: 'Opening' }],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use Two Branches Rejoin as reference' }));
+
+    const branchNode = document.querySelector('[data-flow-node-id="branch-b"]');
+    expect(branchNode).not.toBeNull();
+    fireEvent.click(branchNode!);
+
+    expect(screen.getByText('SECOND_PLOT_CONTENT')).not.toBeNull();
+    expect(screen.queryByText('FIRST_PLOT_CONTENT')).toBeNull();
+  });
+
 });

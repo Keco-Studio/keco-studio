@@ -10,20 +10,27 @@ describe('project create list refresh', () => {
     expect(source).not.toContain(".order('created_at', { ascending: true })");
   });
 
-  it('optimistically upserts into the user-scoped projects cache on create', () => {
+  it('patches complete Foundation caches and primes the default folder on create', () => {
     const sidebar = read('src/components/layout/Sidebar.tsx');
-    expect(sidebar).toContain('upsertProjectInListCache');
-    expect(sidebar).toContain('updateProjectsListCache');
+    expect(sidebar).toContain('patchProjectFoundationCaches');
+    expect(sidebar).toContain('queryKeys.projectFolders(project.id)');
+    expect(sidebar).toContain("['folders-libraries', project.id]");
     expect(sidebar).toContain('removeProjectFromListCache');
     expect(sidebar).not.toContain("setQueryData<Project[]>(['projects']");
 
+    const invalidation = read('src/lib/queryInvalidation.ts');
+    expect(invalidation).toContain('updateProjectsListCache');
+    expect(invalidation).toContain('patchProjectFoundationCaches');
+
     const page = read('src/app/(dashboard)/projects/page.tsx');
-    expect(page).toContain('upsertProjectInListCache');
+    expect(page).toContain('patchProjectFoundationCaches');
+    expect(page).toContain('queryKeys.projectFolders(project.id)');
+    expect(page).toContain("['folders-libraries', project.id]");
     expect(page).toContain('CreatedProjectPayload');
 
     const modal = read('src/components/projects/NewProjectModal.tsx');
     expect(modal).toContain('CreatedProjectPayload');
-    expect(modal).toContain('name: trimmed');
+    expect(modal).toContain('designPhilosophies: normalizeFoundationTags');
   });
 
   it('reads realtime project membership from prefix-matched list caches', () => {

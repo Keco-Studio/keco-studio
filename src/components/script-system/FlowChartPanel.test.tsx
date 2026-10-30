@@ -40,6 +40,26 @@ import {
 } from './FlowChartPanel';
 
 describe('FlowChartPanel', () => {
+  it('supports a workspace title and a read-only structure-reference label', () => {
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={{
+          nodes: [{ id: 'Start', label: 'Opening', rowIndex: 0, rowIndexes: [0] }],
+          edges: [],
+        }}
+        title="Branch Structure"
+        referenceLabel="Two Branches Rejoin"
+        readOnly
+        selectedPlotNodeId="Start"
+        onSelectPlotNode={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('Branch Structure');
+    expect(markup).toContain('Reference: Two Branches Rejoin');
+    expect(markup).not.toContain('role="button"');
+  });
+
   it('fits wide canvases by shrinking and narrow canvases by enlarging', () => {
     expect(calculateFitScale(500, 1000)).toBe(0.5);
     expect(calculateFitScale(1200, 600)).toBe(2);

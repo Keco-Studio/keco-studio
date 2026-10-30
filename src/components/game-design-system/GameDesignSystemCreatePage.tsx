@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftOutlined,
-  CloseOutlined,
   DeleteOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -31,47 +30,12 @@ import {
 import type { PublicGameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { DESIGN_PHILOSOPHY_PRESETS, GAME_GENRE_PRESETS } from '@/lib/projectFoundation';
+import { FoundationTagSelector } from '@/components/shared/FoundationTagSelector';
 import { GameArtStylePreview } from './GameArtStylePreview';
 import { GameArtStyleCatalog } from './GameArtStyleCatalog';
 import styles from './GameDesignSystemsPage.module.css';
 
-const GENRES = [
-  'RPG',
-  'Strategy',
-  'Deckbuilder',
-  'Roguelike',
-  'Simulation',
-  'Narrative',
-  'Action',
-  'Puzzle',
-  'Management',
-  'Adventure',
-  'Platformer',
-  'Shooter',
-  'Survival',
-  'Horror',
-  'Sandbox',
-  'Sports',
-  'Visual Novel',
-  'Metroidvania',
-];
-const PHILOSOPHIES = [
-  'Meaningful Decisions',
-  'Readable Systems',
-  'System Driven',
-  'Narrative First',
-  'Player Agency',
-  'Emergent Play',
-  'Competitive Fairness',
-  'Expressive Customization',
-  'Accessibility First',
-  'Easy to Learn, Hard to Master',
-  'Risk and Reward',
-  'Fail Forward',
-  'Mastery Through Practice',
-  'Cooperative Play',
-];
-const TAG_LIMIT = 20;
 const SOURCE_REFERENCE_LIMIT = 10;
 const stages = ['foundation', 'art-style', 'sources', 'review'] as const;
 
@@ -109,117 +73,6 @@ const phaseLabels: Record<string, string> = {
   completed: 'Completed',
   failed: 'Generation failed',
 };
-
-type TagSelectorProps = {
-  id: string;
-  label: string;
-  singularLabel: string;
-  placeholder: string;
-  presets: readonly string[];
-  values: string[];
-  maxLength: number;
-  onChange: Dispatch<SetStateAction<string[]>>;
-};
-
-function tagsMatch(left: string, right: string): boolean {
-  return left.toLowerCase() === right.toLowerCase();
-}
-
-function TagSelector({ id, label, singularLabel, placeholder, presets, values, maxLength, onChange }: TagSelectorProps) {
-  const [draft, setDraft] = useState('');
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const atLimit = values.length >= TAG_LIMIT;
-
-  function addDraft(restoreFocus = true) {
-    const normalized = draft.trim().replace(/\s+/g, ' ');
-    if (!normalized || atLimit) return;
-    const canonical = presets.find((preset) => tagsMatch(preset, normalized)) ?? normalized;
-    onChange((current) => current.some((value) => tagsMatch(value, canonical)) ? current : [...current, canonical]);
-    setDraft('');
-    if (restoreFocus) inputRef.current?.focus();
-  }
-
-  function remove(value: string) {
-    onChange((current) => current.filter((item) => !tagsMatch(item, value)));
-  }
-
-  function togglePreset(preset: string) {
-    onChange((current) => {
-      const selected = current.some((value) => tagsMatch(value, preset));
-      if (selected) return current.filter((value) => !tagsMatch(value, preset));
-      return current.length >= TAG_LIMIT ? current : [...current, preset];
-    });
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    addDraft();
-  }
-
-  return (
-    <div className={styles.field}>
-      <label htmlFor={id}>{label}</label>
-      <div className={styles.tagInput}>
-        {values.map((value) => (
-          <span className={styles.selectedTag} key={value.toLowerCase()}>
-            <span>{value}</span>
-            <button
-              className={styles.tagRemoveButton}
-              type="button"
-              aria-label={`Remove ${singularLabel} ${value}`}
-              title={`Remove ${value}`}
-              onClick={() => remove(value)}
-            >
-              <CloseOutlined />
-            </button>
-          </span>
-        ))}
-        <input
-          id={id}
-          ref={inputRef}
-          className={styles.tagTextInput}
-          value={draft}
-          maxLength={maxLength}
-          readOnly={atLimit}
-          aria-disabled={atLimit}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={() => addDraft(false)}
-          placeholder={atLimit ? '' : placeholder}
-        />
-        <button
-          className={styles.tagAddButton}
-          type="button"
-          aria-label={`Add ${singularLabel}`}
-          title={`Add ${singularLabel}`}
-          disabled={atLimit || !draft.trim()}
-          onClick={() => addDraft()}
-        >
-          <PlusOutlined />
-        </button>
-      </div>
-      <div className={styles.tagMeta}><span>{values.length} / {TAG_LIMIT}</span></div>
-      <div className={styles.checks} aria-label={`${label} suggestions`}>
-        {presets.map((preset) => {
-          const selected = values.some((value) => tagsMatch(value, preset));
-          return (
-            <button
-              type="button"
-              key={preset}
-              className={selected ? styles.checkActive : styles.check}
-              aria-pressed={selected}
-              disabled={!selected && atLimit}
-              onClick={() => togglePreset(preset)}
-            >
-              {preset}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 async function fetchProjects(): Promise<ProjectOption[]> {
   const response = await fetch('/api/projects', { cache: 'no-store' });
@@ -583,8 +436,8 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.formGrid}>
             <div className={styles.field}><label htmlFor="gds-title">System name</label><input id="gds-title" className={styles.input} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tactical Deckbuilder" /></div>
             <div className={styles.field}><label htmlFor="gds-suitable">Suitable for</label><input id="gds-suitable" className={styles.input} value={suitableFor} onChange={(event) => setSuitableFor(event.target.value)} placeholder="Single-player, run-based games" /></div>
-            <TagSelector id="gds-genres" label="Game genres" singularLabel="game genre" placeholder="Custom genre" presets={GENRES} values={genres} maxLength={80} onChange={setGenres} />
-            <TagSelector id="gds-philosophies" label="Design philosophies" singularLabel="design philosophy" placeholder="Custom philosophy" presets={PHILOSOPHIES} values={philosophies} maxLength={120} onChange={setPhilosophies} />
+            <FoundationTagSelector id="gds-genres" label="Game genres" singularLabel="game genre" placeholder="Custom genre" presets={GAME_GENRE_PRESETS} values={genres} maxLength={80} onChange={setGenres} />
+            <FoundationTagSelector id="gds-philosophies" label="Design philosophies" singularLabel="design philosophy" placeholder="Custom philosophy" presets={DESIGN_PHILOSOPHY_PRESETS} values={philosophies} maxLength={120} onChange={setPhilosophies} />
             <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="gds-description">Natural language description</label><textarea id="gds-description" className={styles.textarea} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the intended player experience, decisions, and tradeoffs." /></div>
           </div>
           <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={leave}>Cancel</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('art-style'); }}>Continue to art style</button></div>

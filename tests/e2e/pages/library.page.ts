@@ -233,11 +233,14 @@ export class LibraryPage {
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Submit the form using the generic submit button
-    // Use force: true because React may re-render the button during form state changes
-    await expect(this.submitButton).toBeVisible({ timeout: 5000 });
-    await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
-    await this.submitButton.click({ force: true });
+    // Scope submission to the current named dialog. A generic dialog button locator can
+    // re-resolve to a hidden portal while the controlled form is rendering.
+    const newLibraryDialog = this.page.getByRole('dialog', { name: 'Create Library' });
+    const createButton = newLibraryDialog.getByRole('button', { name: 'Create', exact: true });
+    await expect(this.libraryNameInput).toHaveValue(library.name);
+    await expect(createButton).toBeVisible({ timeout: 5000 });
+    await expect(createButton).toBeEnabled({ timeout: 5000 });
+    await createButton.click();
 
     // Wait for modal to close
     await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
@@ -460,7 +463,9 @@ export class LibraryPage {
       .first();
     await expect(addModal).toBeVisible({ timeout: 5000 });
 
-    await addModal.locator('#add-column-name').fill(columnName);
+    const nameInput = addModal.locator('#add-column-name:visible').first();
+    await nameInput.fill(columnName);
+    await expect(nameInput).toHaveValue(columnName);
     await addModal.locator('#add-column-type').click();
 
     const dropdown = this.page.locator('[class*="dataTypeDropdown"]').last();
@@ -468,14 +473,31 @@ export class LibraryPage {
     await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill(dataTypeLabel);
 
-    const option = this.page
+    const option = dropdown
       .locator('.ant-select-item-option')
       .filter({ hasText: new RegExp(dataTypeLabel, 'i') })
       .first();
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.click();
+    await expect(
+      addModal.locator('.ant-select-selection-item').filter({
+        hasText: new RegExp(`^${dataTypeLabel}$`, 'i'),
+      }),
+    ).toBeVisible();
+    await nameInput.click();
+    await expect(dropdown).not.toBeVisible({ timeout: 5000 });
+    await expect(nameInput).toHaveValue(columnName);
 
-    await addModal.getByRole('button', { name: /^add$/i }).click();
+    const addButton = addModal.getByRole('button', { name: /^add$/i });
+    await addButton.click();
+    const missingNameError = addModal
+      .locator('[class*="errorText"]')
+      .filter({ hasText: /header name is required\./i });
+    if (await missingNameError.isVisible({ timeout: 1200 }).catch(() => false)) {
+      await nameInput.fill(columnName);
+      await expect(nameInput).toHaveValue(columnName);
+      await addButton.click();
+    }
     await expect(addModal).not.toBeVisible({ timeout: 10000 });
   }
 

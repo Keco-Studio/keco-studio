@@ -11,6 +11,7 @@ import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
 import {
+  GAME_ASSETS_DISPLAY_NAME,
   GAME_ASSET_NAV_CATEGORIES,
   GAME_ASSETS_TREE_KEY,
   gameAssetsCategoryTreeKey,
@@ -289,7 +290,7 @@ export function useSidebarTree(
       _titleStr: item.label,
     })) as DataNode[];
 
-    // Fixed project Assets library — first when its workspace has been enabled.
+    // Fixed project art resource library — first when its workspace has been enabled.
     const assetsRoot: DataNode = {
       title: (
         <div
@@ -298,8 +299,8 @@ export function useSidebarTree(
           data-testid="sidebar-assets-nav"
         >
           <div className={styles.itemMain}>
-            <span className={styles.itemText} style={{ fontWeight: 500 }} title="Assets">
-              Assets
+            <span className={styles.itemText} style={{ fontWeight: 500 }} title={GAME_ASSETS_DISPLAY_NAME}>
+              {GAME_ASSETS_DISPLAY_NAME}
             </span>
           </div>
         </div>
@@ -307,7 +308,7 @@ export function useSidebarTree(
       key: GAME_ASSETS_TREE_KEY,
       isLeaf: false,
       children: assetsChildren,
-      _titleStr: 'Assets',
+      _titleStr: GAME_ASSETS_DISPLAY_NAME,
     } as DataNode;
 
     const result: DataNode[] = currentIds.assetsWorkspaceEnabled || currentIds.isGameAssetsPage

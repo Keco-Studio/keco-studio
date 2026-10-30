@@ -1,0 +1,81 @@
+.fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.field label {
+  color: #4b5764;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d6dce3;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #27313d;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.input {
+  min-height: 2.375rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.textarea {
+  min-height: 7rem;
+  resize: vertical;
+  padding: 0.625rem;
+  line-height: 1.5;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: #4d91e6;
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(32, 112, 216, 0.1);
+}
+
+.input:disabled,
+.textarea:disabled {
+  background: #f5f7f9;
+  color: #66717e;
+  cursor: default;
+}
+
+.tagFields {
+  display: contents;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.nameField,
+.descriptionField {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 42rem) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nameField,
+  .descriptionField {
+    grid-column: auto;
+  }
+}

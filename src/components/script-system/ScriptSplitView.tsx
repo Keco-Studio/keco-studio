@@ -35,13 +35,24 @@ import {
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
+import {
+  BUILT_IN_SCRIPT_TEMPLATES,
+  deleteScriptStructureTemplate,
+  readScriptStructureTemplates,
+  saveScriptStructureTemplate,
+  type ScriptStructureTemplate,
+} from '@/lib/script-system/scriptStructureTemplates';
+import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
+import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
+import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
 
 export type ScriptSplitViewProps = {
   projectId?: string;
   libraryId: string;
+  libraryName?: string;
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
@@ -105,8 +116,94 @@ function sameRowIds(left: readonly string[], right: readonly string[]): boolean 
     && left.every((rowId, index) => rowId === right[index]);
 }
 
+function resolveReferenceScriptNodeId(
+  referenceGraph: FlowGraph,
+  scriptGraph: FlowGraph,
+  referenceNodeId: string,
+): string {
+  if (scriptGraph.nodes.some((node) => node.id === referenceNodeId)) {
+    return referenceNodeId;
+  }
+
+  const referenceNodeIndex = referenceGraph.nodes.findIndex(
+    (node) => node.id === referenceNodeId,
+  );
+  if (referenceNodeIndex < 0) return scriptGraph.nodes[0]?.id ?? '';
+
+  const referenceIncoming = referenceGraph.edges.filter(
+    (edge) => edge.to === referenceNodeId,
+  );
+  const referenceOutgoing = referenceGraph.edges.filter(
+    (edge) => edge.from === referenceNodeId,
+  );
+  const referenceOptionEdge = referenceIncoming.find(
+    (edge) => edge.optionIndex !== undefined,
+  );
+
+  const referenceChoiceIds = referenceGraph.nodes
+    .filter((node) => referenceGraph.edges.some(
+      (edge) => edge.from === node.id && edge.optionIndex !== undefined,
+    ))
+    .map((node) => node.id);
+  const scriptChoiceIds = scriptGraph.nodes
+    .filter((node) => scriptGraph.edges.some(
+      (edge) => edge.from === node.id && edge.optionIndex !== undefined,
+    ))
+    .map((node) => node.id);
+
+  if (referenceOptionEdge) {
+    const choiceIndex = Math.max(0, referenceChoiceIds.indexOf(referenceOptionEdge.from));
+    const scriptChoiceId = scriptChoiceIds[Math.min(choiceIndex, scriptChoiceIds.length - 1)];
+    if (scriptChoiceId) {
+      const scriptOptions = scriptGraph.edges.filter(
+        (edge) => edge.from === scriptChoiceId && edge.optionIndex !== undefined,
+      );
+      const matched = scriptOptions.find(
+        (edge) => edge.optionIndex === referenceOptionEdge.optionIndex,
+      ) ?? scriptOptions[referenceOptionEdge.optionIndex ?? 0];
+      if (matched) return matched.to;
+    }
+  }
+
+  if (referenceOutgoing.some((edge) => edge.optionIndex !== undefined)) {
+    const choiceIndex = Math.max(0, referenceChoiceIds.indexOf(referenceNodeId));
+    const matched = scriptChoiceIds[Math.min(choiceIndex, scriptChoiceIds.length - 1)];
+    if (matched) return matched;
+  }
+
+  if (referenceIncoming.length > 1) {
+    const referenceMergeIds = referenceGraph.nodes
+      .filter((node) => referenceGraph.edges.filter((edge) => edge.to === node.id).length > 1)
+      .map((node) => node.id);
+    const scriptMergeIds = scriptGraph.nodes
+      .filter((node) => scriptGraph.edges.filter((edge) => edge.to === node.id).length > 1)
+      .map((node) => node.id);
+    const mergeIndex = Math.max(0, referenceMergeIds.indexOf(referenceNodeId));
+    const matched = scriptMergeIds[Math.min(mergeIndex, scriptMergeIds.length - 1)];
+    if (matched) return matched;
+  }
+
+  if (referenceNodeIndex === 0) return scriptGraph.nodes[0]?.id ?? '';
+
+  if (referenceOutgoing.length === 0) {
+    const scriptEnding = [...scriptGraph.nodes].reverse().find(
+      (node) => !scriptGraph.edges.some((edge) => edge.from === node.id),
+    );
+    if (scriptEnding) return scriptEnding.id;
+  }
+
+  const scaledIndex = referenceGraph.nodes.length <= 1
+    ? 0
+    : Math.round(
+      referenceNodeIndex * Math.max(0, scriptGraph.nodes.length - 1)
+      / (referenceGraph.nodes.length - 1),
+    );
+  return scriptGraph.nodes[scaledIndex]?.id ?? scriptGraph.nodes[0]?.id ?? '';
+}
+
 export function ScriptSplitView({
   libraryId,
+  libraryName = 'Untitled Script',
   projectId,
   rows,
   scriptColumns,
@@ -139,7 +236,6 @@ export function ScriptSplitView({
     setGraphState({ libraryId, graph, rowIds });
   }
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
-  const displayedGraph = graphPreview?.graph ?? graph;
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
     nodeId: graph.nodes[0]?.id ?? '',
@@ -158,20 +254,49 @@ export function ScriptSplitView({
   const [ratio, setRatio] = useState(() => readSplitRatio());
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [templateMode, setTemplateMode] = useState<'browse' | 'save' | null>(null);
+  const [personalTemplates, setPersonalTemplates] = useState<ScriptStructureTemplate[]>(() => (
+    typeof window === 'undefined' ? [] : readScriptStructureTemplates(window.localStorage)
+  ));
+  const [referenceTemplateId, setReferenceTemplateId] = useState<string | null>(null);
+  const [referenceSelection, setReferenceSelection] = useState({
+    templateId: '',
+    nodeId: '',
+  });
   const bodyRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
 
+  const templates = useMemo(
+    () => [...BUILT_IN_SCRIPT_TEMPLATES, ...personalTemplates],
+    [personalTemplates],
+  );
+  const referenceTemplate = useMemo(
+    () => templates.find((template) => template.id === referenceTemplateId) ?? null,
+    [referenceTemplateId, templates],
+  );
+  const displayedGraph = referenceTemplate?.graph ?? graphPreview?.graph ?? graph;
+  const referenceNodeId = referenceTemplate
+    ? referenceSelection.templateId === referenceTemplate.id
+      && referenceTemplate.graph.nodes.some((node) => node.id === referenceSelection.nodeId)
+        ? referenceSelection.nodeId
+        : referenceTemplate.graph.nodes[0]?.id ?? ''
+    : '';
+  const displayedSelectedNodeId = referenceTemplate ? referenceNodeId : selectedPlotNodeId;
+  const contentNodeId = referenceTemplate
+    ? resolveReferenceScriptNodeId(referenceTemplate.graph, graph, referenceNodeId)
+    : selectedPlotNodeId;
+
   const selectedRows = useMemo(() => {
-    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    const selected = graph.nodes.find((node) => node.id === contentNodeId);
     return selected?.rowIndexes
       .map((index) => rows[index])
       .filter((row): row is AssetRow => Boolean(row)) ?? [];
-  }, [graph.nodes, rows, selectedPlotNodeId]);
+  }, [contentNodeId, graph.nodes, rows]);
 
   const selectedBranchName = useMemo(() => {
-    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    const selected = graph.nodes.find((node) => node.id === contentNodeId);
     return selected?.label?.trim() || '';
-  }, [graph.nodes, selectedPlotNodeId]);
+  }, [contentNodeId, graph.nodes]);
 
   const dialogueFields = useMemo(() => {
     if (!scriptColumns.typeKey || !scriptColumns.nameKey || !scriptColumns.contentKey) {
@@ -302,6 +427,25 @@ export function ScriptSplitView({
     setDragging(true);
   }, []);
 
+  const selectPlotNode = useCallback((nodeId: string) => {
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    setPlotSelection({
+      libraryId,
+      nodeId,
+      anchorRowId: node.rowIndexes.map((index) => rows[index]?.id).find(Boolean) ?? null,
+    });
+  }, [graph.nodes, libraryId, rows]);
+
+  const selectDisplayedPlotNode = useCallback((nodeId: string) => {
+    if (referenceTemplate) {
+      if (!referenceTemplate.graph.nodes.some((node) => node.id === nodeId)) return;
+      setReferenceSelection({ templateId: referenceTemplate.id, nodeId });
+      return;
+    }
+    selectPlotNode(nodeId);
+  }, [referenceTemplate, selectPlotNode]);
+
   const selectOptionTarget = useCallback((targetLabel: string) => {
     const nodeId = resolveOptionTargetPlotNodeId(
       targetLabel,
@@ -309,76 +453,114 @@ export function ScriptSplitView({
       scriptColumns.labelKey,
       graph,
     );
-    if (nodeId) {
-      const node = graph.nodes.find((item) => item.id === nodeId);
-      setPlotSelection({
-        libraryId,
-        nodeId,
-        anchorRowId: node?.rowIndexes.map((index) => rows[index]?.id).find(Boolean) ?? null,
+    if (nodeId) selectPlotNode(nodeId);
+  }, [graph, rows, scriptColumns.labelKey, selectPlotNode]);
+
+  const saveTemplate = useCallback(async (name: string, description: string) => {
+    try {
+      const saved = saveScriptStructureTemplate(window.localStorage, {
+        name,
+        description,
+        graph,
       });
+      setPersonalTemplates((current) => [...current, saved]);
+      setTemplateMode(null);
+      showSuccessToast('Structure template saved');
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : 'Failed to save structure template');
     }
-  }, [graph, libraryId, rows, scriptColumns.labelKey]);
+  }, [graph]);
+
+  const deleteTemplate = useCallback((templateId: string) => {
+    try {
+      deleteScriptStructureTemplate(window.localStorage, templateId);
+      setPersonalTemplates((current) => current.filter((template) => template.id !== templateId));
+      setReferenceTemplateId((current) => current === templateId ? null : current);
+      showSuccessToast('Structure template deleted');
+    } catch {
+      showErrorToast('Failed to delete structure template');
+    }
+  }, []);
 
   return (
     <div className={styles.root}>
+      <ScriptWorkspaceToolbar
+        libraryName={libraryName}
+        onOpenTemplates={() => setTemplateMode('browse')}
+        onSaveAsTemplate={() => setTemplateMode('save')}
+      />
+      {referenceTemplate ? (
+        <div className={styles.referenceBanner} role="status">
+          <span>Using “{referenceTemplate.name}” as a structure reference. The current Script will not be changed.</span>
+          <button type="button" onClick={() => setReferenceTemplateId(null)}>Exit reference</button>
+        </div>
+      ) : null}
       <div
         ref={bodyRef}
         className={`${styles.body} ${dragging ? styles.dragging : ''}`}
       >
-        <div
-          className={styles.leftPane}
-          style={
-            collapsed
-              ? { flex: '1 1 auto' }
-              : { flex: `${ratio} 1 0%` }
-          }
-        >
-          <div className={styles.leftBody}>
-              <VisualNovelScriptView
-                rows={selectedRows}
-                scriptColumns={scriptColumns}
-                mode="plot-node"
-                branchName={selectedBranchName || undefined}
-                branchKey={plotSelection.anchorRowId ?? selectedPlotNodeId}
-                onSelectOptionTarget={selectOptionTarget}
-                editing={editingProps}
-              />
-          </div>
-        </div>
-
-        {!collapsed ? (
-          <>
-            <div
-              className={styles.divider}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize script panes"
-              onMouseDown={startDrag}
-            />
-            <div
-              className={styles.rightPane}
-              style={{ flex: `${1 - ratio} 1 0%` }}
-            >
-              <FlowChartPanel
-                graph={displayedGraph}
-                selectedPlotNodeId={selectedPlotNodeId}
-                previewNodeIds={graphPreview?.graph.createdNodeIds}
-                onSelectPlotNode={(nodeId) => {
-                  const node = graph.nodes.find((item) => item.id === nodeId);
-                  setPlotSelection({
-                    libraryId,
-                    nodeId,
-                    anchorRowId: node?.rowIndexes
-                      .map((index) => rows[index]?.id)
-                      .find(Boolean) ?? null,
-                  });
-                }}
-                onClose={() => setCollapsed(true)}
-              />
+          <div
+            className={styles.leftPane}
+            style={
+              collapsed
+                ? { flex: '1 1 auto' }
+                : { flex: `${ratio} 1 0%` }
+            }
+          >
+            <div className={styles.leftBody}>
+                <VisualNovelScriptView
+                  rows={selectedRows}
+                  scriptColumns={scriptColumns}
+                  mode="plot-node"
+                  branchName={selectedBranchName || undefined}
+                  branchKey={referenceTemplate
+                    ? `${referenceTemplate.id}:${referenceNodeId}`
+                    : plotSelection.anchorRowId ?? selectedPlotNodeId}
+                  onSelectOptionTarget={selectOptionTarget}
+                  editing={editingProps}
+                />
             </div>
-          </>
-        ) : null}
+          </div>
+
+          {!collapsed ? (
+            <>
+              <div
+                className={styles.divider}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize script panes"
+                onMouseDown={startDrag}
+              />
+              <div
+                className={styles.rightPane}
+                style={{ flex: `${1 - ratio} 1 0%` }}
+              >
+                <FlowChartPanel
+                  graph={displayedGraph}
+                  title="Branch Structure"
+                  referenceLabel={referenceTemplate?.name}
+                  selectedPlotNodeId={displayedSelectedNodeId}
+                  previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}
+                  onSelectPlotNode={selectDisplayedPlotNode}
+                  onClose={() => setCollapsed(true)}
+                />
+              </div>
+            </>
+          ) : null}
       </div>
+      <ScriptTemplateModal
+        open={templateMode !== null}
+        mode={templateMode ?? 'browse'}
+        templates={templates}
+        activeReferenceId={referenceTemplateId}
+        onClose={() => setTemplateMode(null)}
+        onUseReference={(templateId) => {
+          setReferenceTemplateId(templateId);
+          setTemplateMode(null);
+        }}
+        onDeleteTemplate={deleteTemplate}
+        onSaveTemplate={saveTemplate}
+      />
     </div>
   );
 }

@@ -6,7 +6,6 @@ import { Tooltip } from 'antd';
 import { CheckOutlined, DownOutlined } from '@ant-design/icons';
 import type { Project } from '@/lib/services/projectService';
 import projectRightIcon from '@/assets/images/ProjectDescIcon.svg';
-import { snapSidebarHorizontalScroll, focusRenameInputAtEnd } from '../sidebarScrollReset';
 import styles from '../Sidebar.module.css';
 
 export type SidebarProjectsListProps = {
@@ -15,10 +14,8 @@ export type SidebarProjectsListProps = {
   currentProjectId: string | null;
   currentLibraryId: string | null;
   currentFolderId: string | null;
-  userRole: 'admin' | 'editor' | 'viewer' | null;
   onOpenNewProject: () => void;
   onProjectClick: (projectId: string) => void;
-  onSaveRename: (key: string, newName: string) => void | Promise<void>;
   onContextMenu: (e: React.MouseEvent, type: 'project', id: string) => void;
 };
 
@@ -29,119 +26,40 @@ export function SidebarProjectsList({
   projects,
   loadingProjects,
   currentProjectId,
-  userRole,
   onOpenNewProject,
   onProjectClick,
-  onSaveRename,
   onContextMenu,
 }: SidebarProjectsListProps) {
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
   const selectedOptionRef = useRef<HTMLDivElement | null>(null);
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const skipBlurSaveRef = useRef(false);
-  const pendingProjectSelectionRef = useRef<number | null>(null);
 
   const currentProject = useMemo(
     () => projects.find((project) => project.id === currentProjectId),
     [currentProjectId, projects]
   );
 
-  const cancelPendingProjectSelection = useCallback(() => {
-    if (pendingProjectSelectionRef.current === null) return;
-    window.clearTimeout(pendingProjectSelectionRef.current);
-    pendingProjectSelectionRef.current = null;
-  }, []);
-
-  const startRename = useCallback(
-    (project: Project) => {
-      if (userRole !== 'admin') return;
-      cancelPendingProjectSelection();
-      setEditingProjectId(project.id);
-      setEditingValue(project.name);
-    },
-    [cancelPendingProjectSelection, userRole]
-  );
-
-  const exitRename = useCallback(() => {
-    skipBlurSaveRef.current = true;
-    setEditingProjectId(null);
-    snapSidebarHorizontalScroll(selectorRef.current);
-  }, []);
-
-  const saveRename = useCallback(
-    async (projectId: string) => {
-      if (isSaving) return;
-      const trimmed = editingValue.trim();
-      if (!trimmed) return;
-
-      setIsSaving(true);
-      try {
-        await Promise.resolve(onSaveRename(`project-${projectId}`, trimmed));
-        exitRename();
-      } catch {
-        focusRenameInputAtEnd(renameInputRef.current);
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [editingValue, exitRename, isSaving, onSaveRename]
-  );
-
-  useEffect(() => {
-    if (!editingProjectId) return;
-    focusRenameInputAtEnd(renameInputRef.current);
-  }, [editingProjectId]);
-
-  useEffect(() => {
-    if (!editingProjectId) return;
-
-    const commitFromOutside = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (renameInputRef.current?.contains(target)) return;
-      renameInputRef.current?.blur();
-    };
-
-    document.addEventListener('pointerdown', commitFromOutside, true);
-    return () => document.removeEventListener('pointerdown', commitFromOutside, true);
-  }, [editingProjectId]);
-
   useEffect(() => {
     if (!isSelectorOpen) return;
 
     const closeFromOutside = (event: PointerEvent) => {
       if (event.target instanceof Node && !selectorRef.current?.contains(event.target)) {
-        cancelPendingProjectSelection();
-        if (editingProjectId) {
-          renameInputRef.current?.blur();
-        } else {
-          setIsSelectorOpen(false);
-        }
+        setIsSelectorOpen(false);
       }
     };
     const closeFromKeyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        cancelPendingProjectSelection();
-        if (editingProjectId) {
-          exitRename();
-        } else {
-          setIsSelectorOpen(false);
-        }
+        setIsSelectorOpen(false);
       }
     };
 
     document.addEventListener('pointerdown', closeFromOutside);
     window.addEventListener('keydown', closeFromKeyboard);
     return () => {
-      cancelPendingProjectSelection();
       document.removeEventListener('pointerdown', closeFromOutside);
       window.removeEventListener('keydown', closeFromKeyboard);
     };
-  }, [cancelPendingProjectSelection, editingProjectId, exitRename, isSelectorOpen]);
+  }, [isSelectorOpen]);
 
   // Keep the active project visible inside the 3-row scroll window.
   useEffect(() => {
@@ -157,22 +75,6 @@ export function SidebarProjectsList({
     [onProjectClick]
   );
 
-  const queueProjectSelection = useCallback(
-    (projectId: string) => {
-      if (userRole !== 'admin') {
-        selectProject(projectId);
-        return;
-      }
-
-      cancelPendingProjectSelection();
-      pendingProjectSelectionRef.current = window.setTimeout(() => {
-        pendingProjectSelectionRef.current = null;
-        selectProject(projectId);
-      }, 220);
-    },
-    [cancelPendingProjectSelection, selectProject, userRole]
-  );
-
   return (
     <div className={styles.projectsSection} ref={selectorRef}>
       <button
@@ -183,7 +85,6 @@ export function SidebarProjectsList({
         aria-expanded={isSelectorOpen}
         data-testid="project-selector-trigger"
         onClick={() => {
-          cancelPendingProjectSelection();
           setIsSelectorOpen((open) => !open);
         }}
       >
@@ -200,7 +101,6 @@ export function SidebarProjectsList({
         <div className={styles.projectSelectorMenu} role="menu" aria-label="Projects">
           <div className={styles.projectSelectorOptions}>
             {projects.map((project) => {
-              const isEditing = editingProjectId === project.id;
               const isCurrentProject = currentProjectId === project.id;
               return (
                 <div
@@ -210,65 +110,21 @@ export function SidebarProjectsList({
                   role="menuitemradio"
                   aria-checked={isCurrentProject}
                   tabIndex={0}
-                  onClick={() => {
-                    if (!isEditing) queueProjectSelection(project.id);
-                  }}
+                  onClick={() => selectProject(project.id)}
                   onKeyDown={(event) => {
-                    if (isEditing || event.target instanceof HTMLInputElement) return;
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       selectProject(project.id);
                     }
                   }}
                   onContextMenu={(e) => {
-                    if (isEditing) {
-                      e.preventDefault();
-                      return;
-                    }
                     onContextMenu(e, 'project', project.id);
                   }}
                 >
-                  {isEditing ? (
-                    <input
-                      ref={renameInputRef}
-                      className={styles.projectSelectorRenameInput}
-                      value={editingValue}
-                      disabled={isSaving}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={() => {
-                        if (skipBlurSaveRef.current) {
-                          skipBlurSaveRef.current = false;
-                          return;
-                        }
-                        void saveRename(project.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void saveRename(project.id);
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          exitRename();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className={styles.projectSelectorOptionText}
-                      title={project.name}
-                      onDoubleClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        startRename(project);
-                      }}
-                    >
-                      {project.name}
-                    </span>
-                  )}
-                  {!isEditing && project.description && (
+                  <span className={styles.projectSelectorOptionText} title={project.name}>
+                    {project.name}
+                  </span>
+                  {project.description && (
                     <Tooltip
                       title={project.description}
                       placement="top"
@@ -283,7 +139,7 @@ export function SidebarProjectsList({
                     </Tooltip>
                   )}
                   <span className={styles.projectSelectorCheck} aria-hidden="true">
-                    {isCurrentProject && !isEditing && <CheckOutlined />}
+                    {isCurrentProject && <CheckOutlined />}
                   </span>
                 </div>
               );
@@ -295,7 +151,6 @@ export function SidebarProjectsList({
             className={styles.projectSelectorCreate}
             data-testid="project-selector-create"
             onClick={() => {
-              cancelPendingProjectSelection();
               setIsSelectorOpen(false);
               onOpenNewProject();
             }}

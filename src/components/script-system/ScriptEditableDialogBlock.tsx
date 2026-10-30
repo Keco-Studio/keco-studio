@@ -22,6 +22,8 @@ export type ScriptEditableDialogBlockProps = {
   onChangeSpeakerSide: (speaker: string, side: 'left' | 'right') => Promise<boolean>;
   onSaveBlock: (values: { action: string; dialogue: string }) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
+  saveRequestVersion?: number;
+  onSaveRequestComplete?: (saved: boolean) => void;
 };
 
 export function isDialogueSubmitShortcut(event: {
@@ -119,6 +121,8 @@ export function ScriptEditableDialogBlock({
   onChangeSpeakerSide,
   onSaveBlock,
   onDelete,
+  saveRequestVersion = 0,
+  onSaveRequestComplete,
 }: ScriptEditableDialogBlockProps) {
   const [hovered, setHovered] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -145,6 +149,7 @@ export function ScriptEditableDialogBlock({
   const actionInputRef = useRef<HTMLInputElement>(null);
   const dialogueInputRef = useRef<HTMLTextAreaElement>(null);
   const commitRef = useRef<Promise<boolean> | null>(null);
+  const handledSaveRequestRef = useRef(0);
   const {
     attributes,
     listeners,
@@ -191,6 +196,16 @@ export function ScriptEditableDialogBlock({
     if (saved) onFinishEdit();
     return saved;
   }, [commitDrafts, onDelete, onFinishEdit, reconciledDrafts]);
+
+  useEffect(() => {
+    if (
+      !isEditing
+      || saveRequestVersion <= 0
+      || saveRequestVersion <= handledSaveRequestRef.current
+    ) return;
+    handledSaveRequestRef.current = saveRequestVersion;
+    void finishEditing().then((saved) => onSaveRequestComplete?.(saved));
+  }, [finishEditing, isEditing, onSaveRequestComplete, saveRequestVersion]);
 
   const openSpeakerSideMenuAt = useCallback((x: number, y: number) => {
     setSpeakerPickerOpen(false);

@@ -28,6 +28,7 @@ export const GAME_ASSET_NAV_CATEGORIES: Array<{ key: GameAssetNavCategory; label
 ];
 
 export const GAME_ASSETS_TREE_KEY = 'game-assets';
+export const GAME_ASSETS_DISPLAY_NAME = 'Art Resource';
 
 export function gameAssetsCategoryTreeKey(category: GameAssetNavCategory): string {
   return `game-assets-cat-${category}`;

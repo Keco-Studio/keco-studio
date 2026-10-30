@@ -688,6 +688,7 @@ test.describe('Agent chat', () => {
     await launcher.click();
     await expect(launcher).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('agent-panel')).toBeVisible();
+    await rail.getByRole('button', { name: 'Design' }).click();
     await rail.getByRole('button', { name: 'Map' }).click();
     await expect(page).toHaveURL(/\/create-map/);
     await expect(page.getByTestId('agent-panel')).toHaveCount(0);
@@ -710,6 +711,7 @@ test.describe('Agent chat', () => {
     await expect(page.getByTestId('agent-panel')).toBeVisible();
     await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
 
+    await rail.getByRole('button', { name: 'Design' }).click();
     await rail.getByRole('button', { name: 'System' }).click();
     await expect(page).toHaveURL(/game-design-systems/);
   });

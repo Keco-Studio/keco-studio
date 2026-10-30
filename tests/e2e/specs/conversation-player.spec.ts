@@ -181,7 +181,7 @@ test.describe.serial('Conversation player PR regression', () => {
       { waitUntil: 'domcontentloaded' }
     );
     // Deterministic entry title is Opening; dialogue keeps the seeded line.
-    await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible({
+    await expect(page.getByRole('complementary', { name: 'Branch Structure' })).toBeVisible({
       timeout: 45_000,
     });
     await expect(page.getByTestId('script-branch-name')).toHaveText('\u5f00\u573a');

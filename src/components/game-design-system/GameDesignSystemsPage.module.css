@@ -1584,101 +1584,6 @@
   box-shadow: 0 0 0 2px rgba(32, 112, 216, 0.1);
 }
 
-.tagInput {
-  display: flex;
-  width: 100%;
-  min-height: 38px;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  border: 1px solid #d6dce3;
-  border-radius: 6px;
-  background: #fff;
-  padding: 4px;
-}
-
-.tagInput:focus-within {
-  border-color: #4d91e6;
-  box-shadow: 0 0 0 2px rgba(32, 112, 216, 0.1);
-}
-
-.selectedTag {
-  display: inline-flex;
-  min-width: 0;
-  min-height: 27px;
-  align-items: center;
-  gap: 3px;
-  border: 1px solid #b9d4f3;
-  border-radius: 4px;
-  background: #edf5ff;
-  padding: 2px 3px 2px 7px;
-  color: #155cb5;
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.selectedTag > span:first-child {
-  overflow-wrap: anywhere;
-}
-
-.tagRemoveButton,
-.tagAddButton {
-  display: inline-flex;
-  width: 25px;
-  height: 25px;
-  flex: 0 0 25px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #507096;
-  cursor: pointer;
-}
-
-.tagRemoveButton:hover,
-.tagAddButton:hover:not(:disabled) {
-  background: #dcecff;
-  color: #0f56ad;
-}
-
-.tagRemoveButton:focus-visible,
-.tagAddButton:focus-visible {
-  outline: 2px solid #4d91e6;
-  outline-offset: 1px;
-}
-
-.tagAddButton {
-  border: 1px solid #d6dce3;
-  background: #f7f9fb;
-}
-
-.tagAddButton:disabled {
-  color: #a8b1bc;
-  cursor: not-allowed;
-}
-
-.tagTextInput {
-  min-width: 110px;
-  height: 27px;
-  flex: 1 1 130px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  padding: 2px 5px;
-  color: #27313d;
-  font: inherit;
-  font-size: 12px;
-}
-
-.tagTextInput::placeholder {
-  color: #8b96a3;
-}
-
-.tagTextInput[readonly] {
-  cursor: default;
-}
-
 .tagMeta {
   display: flex;
   min-height: 15px;
@@ -1686,36 +1591,6 @@
   color: #84909d;
   font-size: 10px;
   line-height: 1.5;
-}
-
-.checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.check,
-.checkActive {
-  min-height: 31px;
-  border: 1px solid #d8dee5;
-  border-radius: 5px;
-  background: #fff;
-  padding: 6px 9px;
-  color: #5f6b78;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.checkActive {
-  border-color: #8bb9ed;
-  background: #edf5ff;
-  color: #155cb5;
-}
-
-.check:disabled {
-  color: #a8b1bc;
-  cursor: not-allowed;
 }
 
 .formActions {

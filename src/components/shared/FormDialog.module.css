@@ -37,8 +37,10 @@
 }
 
 .projectModal {
-  width: 616px;
-  height: 370px;
+  width: min(46rem, calc(100vw - 2rem));
+  max-width: none;
+  height: auto;
+  max-height: calc(100vh - 2rem);
   border-radius: 14px;
 }
 

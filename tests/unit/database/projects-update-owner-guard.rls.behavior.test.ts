@@ -1,8 +1,8 @@
 /**
  * Real-Postgres RLS behavior test for issue #153: projects_update_policy must
- * let admin/editor collaborators edit project metadata but must NOT let anyone
- * reassign owner_id via UPDATE (enforced by the projects_prevent_owner_reassignment
- * trigger). Complements the text-assertion guard in
+ * let admin/editor collaborators edit operational project state but must NOT
+ * let editors change Foundation fields or reassign owner_id via UPDATE.
+ * Complements the text-assertion guard in
  * projects-update-owner-guard-rls.test.ts by exercising the live policy.
  *
  * Gated by RLS_DB_TESTS=1 (CI only). See helpers/rlsTestClient.ts.
@@ -29,15 +29,31 @@ describeDb('projects_update_policy owner guard (issue #153, live RLS)', () => {
     if (fx) await teardownProjectFixture(fx);
   }, 30_000);
 
-  it('lets an editor collaborator update project metadata', async () => {
+  it('lets an editor collaborator update operational project state', async () => {
     const { error } = await fx.editor.client
       .from('projects')
-      .update({ name: `renamed-by-editor-${fx.suffix}` })
+      .update({ assets_workspace_enabled: true })
       .eq('id', fx.projectId);
     expect(error).toBeNull();
 
+    const { data } = await fx.svc
+      .from('projects')
+      .select('assets_workspace_enabled')
+      .eq('id', fx.projectId)
+      .single();
+    expect(data?.assets_workspace_enabled).toBe(true);
+  });
+
+  it('blocks an editor from updating project Foundation fields', async () => {
+    const attemptedName = `renamed-by-editor-${fx.suffix}`;
+    const { error } = await fx.editor.client
+      .from('projects')
+      .update({ name: attemptedName })
+      .eq('id', fx.projectId);
+    expect(error).not.toBeNull();
+
     const { data } = await fx.svc.from('projects').select('name').eq('id', fx.projectId).single();
-    expect(data?.name).toBe(`renamed-by-editor-${fx.suffix}`);
+    expect(data?.name).not.toBe(attemptedName);
   });
 
   it('blocks an editor from reassigning owner_id', async () => {

@@ -12,7 +12,10 @@ import assetsIcon from '@/assets/images/nav-icons/image.svg';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
-import { GAME_ASSETS_TREE_KEY } from '@/lib/services/gameAssetsService';
+import {
+  GAME_ASSETS_DISPLAY_NAME,
+  GAME_ASSETS_TREE_KEY,
+} from '@/lib/services/gameAssetsService';
 import {
   canDragSidebarNode,
   resolveSidebarDrop,
@@ -383,20 +386,20 @@ export function SidebarTreeView({
       );
     }
 
-    // Fixed Assets library: keep image icon; swap to chevron on row hover.
+    // Fixed art resource library: keep image icon; swap to chevron on row hover.
     if (key === GAME_ASSETS_TREE_KEY) {
       return (
         <div className={styles.folderSwitcherIcons}>
           <Image
             src={assetsIcon}
-            alt="Assets"
+            alt={GAME_ASSETS_DISPLAY_NAME}
             width={24}
             height={24}
             className={`icon-24 ${styles.folderSwitcherBase}`}
           />
           <Image
             src={expanded ? folderCollapseIcon : folderExpandIcon}
-            alt={expanded ? 'Collapse assets' : 'Expand assets'}
+            alt={expanded ? `Collapse ${GAME_ASSETS_DISPLAY_NAME}` : `Expand ${GAME_ASSETS_DISPLAY_NAME}`}
             width={14}
             height={8}
             className={styles.folderSwitcherHover}

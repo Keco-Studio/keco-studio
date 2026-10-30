@@ -21,6 +21,9 @@ export type FlowChartPanelProps = {
   graph: FlowGraph;
   selectedPlotNodeId: string;
   previewNodeIds?: string[];
+  title?: string;
+  referenceLabel?: string;
+  readOnly?: boolean;
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
@@ -225,6 +228,9 @@ export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
   previewNodeIds = [],
+  title = 'Flow chart',
+  referenceLabel,
+  readOnly = false,
   onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
@@ -290,11 +296,14 @@ export function FlowChartPanel({
   }, []);
 
   return (
-    <aside className={styles.flowPanel} aria-label="Flow chart">
+    <aside className={styles.flowPanel} aria-label={title}>
       <PanelHeader
         title={
           <span className={styles.flowTitleGroup}>
-            <span>Flow chart</span>
+            <span>{title}</span>
+            {referenceLabel ? (
+              <span className={styles.flowPreviewBadge}>Reference: {referenceLabel}</span>
+            ) : null}
             {previewNodes.size > 0 ? (
               <span className={styles.flowPreviewBadge}>Preview</span>
             ) : null}
@@ -440,11 +449,11 @@ export function FlowChartPanel({
                     data-flow-preview-node={preview || undefined}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     className={styles.flowNode}
-                    onClick={preview ? undefined : () => onSelectPlotNode(node.id)}
-                    role={preview ? undefined : 'button'}
-                    tabIndex={preview ? undefined : 0}
+                    onClick={preview || readOnly ? undefined : () => onSelectPlotNode(node.id)}
+                    role={preview || readOnly ? undefined : 'button'}
+                    tabIndex={preview || readOnly ? undefined : 0}
                     onKeyDown={(event) => {
-                      if (preview) return;
+                      if (preview || readOnly) return;
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onSelectPlotNode(node.id);

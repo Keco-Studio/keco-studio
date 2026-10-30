@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { cleanup, fireEvent, render as renderDom, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render as renderDom, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ScriptDialogueBlock } from '@/lib/script-system/scriptDialogueBlocks';
 
@@ -85,6 +85,46 @@ function renderBlock(overrides: Partial<ScriptDialogueBlock>, isEditing = false)
 }
 
 describe('ScriptEditableDialogBlock', () => {
+  it('commits the active draft once when the workspace requests a save', async () => {
+    const onSaveBlock = jest.fn(async (
+      _values: { action: string; dialogue: string },
+    ) => true);
+    const onSaveRequestComplete = jest.fn((_saved: boolean) => undefined);
+    const props = {
+      block,
+      characters: [],
+      isEditing: true,
+      onBeginEdit: jest.fn(),
+      onFinishEdit: jest.fn(),
+      onInsertCharacter: jest.fn(async () => true),
+      onChangeSpeaker: jest.fn(async () => true),
+      onChangeSpeakerSide: jest.fn(async () => true),
+      onSaveBlock,
+      onDelete: jest.fn(async () => true),
+      onSaveRequestComplete,
+    };
+    const view = renderDom(
+      <ScriptEditableDialogBlock {...props} saveRequestVersion={0} />,
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Dialogue' }), {
+      target: { value: 'Wait by the door.' },
+    });
+
+    view.rerender(<ScriptEditableDialogBlock {...props} saveRequestVersion={1} />);
+
+    await waitFor(() => {
+      expect(onSaveBlock).toHaveBeenCalledTimes(1);
+      expect(onSaveBlock).toHaveBeenCalledWith({
+        action: 'Raises the longsword',
+        dialogue: 'Wait by the door.',
+      });
+      expect(onSaveRequestComplete).toHaveBeenCalledWith(true);
+    });
+
+    view.rerender(<ScriptEditableDialogBlock {...props} saveRequestVersion={1} />);
+    expect(onSaveBlock).toHaveBeenCalledTimes(1);
+  });
+
   it('opens the character side menu on right-click and changes the speaker side', () => {
     const onChangeSpeakerSide = jest.fn(async (_speaker: string, _side: 'left' | 'right') => true);
     const props = {
