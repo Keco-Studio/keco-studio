@@ -47,9 +47,8 @@ export class ProjectPage {
     this.projectList = page.locator('[role="list"], [data-testid="project-list"]');
 
     // Project form inputs - using getByLabel for accessibility
-    this.projectNameInput = page.getByLabel(/project name/i).or(page.locator('#project-name'));
-    this.projectDescriptionInput = page.locator('#project-description')
-      .or(page.getByLabel(/add notes|project description/i));
+    this.projectNameInput = page.getByLabel(/project name/i);
+    this.projectDescriptionInput = page.getByLabel('Description');
     
     // Form action buttons
     this.submitProjectButton = page.getByRole('button', { name: /^(create|creating|submit)$/i });
@@ -131,11 +130,11 @@ export class ProjectPage {
 
     // Fill in project details and submit.
     // Re-query inputs/buttons each time to tolerate modal remounts in CI.
-    const fillVisibleInputWithRetry = async (selector: string, value: string) => {
+    const fillVisibleInputWithRetry = async (locator: Locator, value: string) => {
       let lastError: unknown = null;
       for (let i = 0; i < 3; i += 1) {
         try {
-          const input = this.page.locator(`${selector}:visible`).first();
+          const input = locator.filter({ visible: true }).first();
           await expect(input).toBeVisible({ timeout: 5000 });
           await input.click({ timeout: 3000 });
           await input.press('Control+a').catch(() => {});
@@ -150,17 +149,25 @@ export class ProjectPage {
     };
 
     this.lastCreatedProjectName = project.name;
-    await fillVisibleInputWithRetry('#project-name', project.name);
+    await fillVisibleInputWithRetry(this.projectNameInput, project.name);
 
     if (project.description) {
-      const descriptionInput = this.page.locator('#project-description:visible').first();
+      const descriptionInput = this.projectDescriptionInput.filter({ visible: true }).first();
       const hasDescriptionInput = await descriptionInput.isVisible({ timeout: 1500 }).catch(() => false);
       if (hasDescriptionInput) {
-        await fillVisibleInputWithRetry('#project-description', project.description);
+        await fillVisibleInputWithRetry(this.projectDescriptionInput, project.description);
       }
     }
 
-    const visibleProjectNameInput = this.page.locator('#project-name:visible').first();
+    const dialog = this.page.getByRole('dialog', { name: 'Create Project' });
+    for (const genre of project.genres ?? []) {
+      await dialog.getByRole('button', { name: genre, exact: true }).click();
+    }
+    for (const philosophy of project.designPhilosophies ?? []) {
+      await dialog.getByRole('button', { name: philosophy, exact: true }).click();
+    }
+
+    const visibleProjectNameInput = this.projectNameInput.filter({ visible: true }).first();
     const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');
     const modalSubmitButton = modal
       .getByRole('button', { name: /^(create|creating)$/i })
@@ -174,7 +181,7 @@ export class ProjectPage {
 
     // Success path: modal closes (no visible project-name input).
     await expect
-      .poll(async () => await this.page.locator('#project-name:visible').count(), { timeout: 10000 })
+      .poll(async () => await this.projectNameInput.filter({ visible: true }).count(), { timeout: 10000 })
       .toBe(0);
     
     // Wait for page to load
