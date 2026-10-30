@@ -3,17 +3,27 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { createProject, checkProjectNameExists } from '@/lib/services/projectService';
+import {
+  createProject,
+  checkProjectNameExists,
+  type Project,
+} from '@/lib/services/projectService';
 import { validateName } from '@/lib/utils/nameValidation';
+import {
+  DESIGN_PHILOSOPHY_PRESETS,
+  GAME_GENRE_PRESETS,
+  normalizeFoundationTags,
+  type ProjectFoundationDraft,
+} from '@/lib/projectFoundation';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
 import dialog from '@/components/shared/FormDialog.module.css';
+import { ProjectFoundationFields } from './ProjectFoundationFields';
+import styles from './NewProjectModal.module.css';
 
 export type CreatedProjectPayload = {
-  projectId: string;
+  project: Project;
   defaultFolderId: string;
-  name: string;
-  description: string | null;
 };
 
 type NewProjectModalProps = {
@@ -24,8 +34,12 @@ type NewProjectModalProps = {
 
 export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalProps) {
   const supabase = useSupabase();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [draft, setDraft] = useState<ProjectFoundationDraft>({
+    name: '',
+    genres: [],
+    designPhilosophies: [],
+    description: '',
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -36,7 +50,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   if (!mounted) return null;
 
   const handleSubmit = async () => {
-    const trimmed = name.trim();
+    const trimmed = draft.name.trim();
     if (!trimmed) {
       setError('Project name is required');
       return;
@@ -61,25 +75,27 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         return;
       }
 
-      const notes = description.trim() ? description.trim() : null;
-
       // If name doesn't exist, proceed with creation
-      const { project, defaultFolderId } = await createProject(supabase, {
+      const created = await createProject(supabase, {
         name: trimmed,
-        description: notes ?? undefined,
+        description: draft.description.trim(),
+        genres: normalizeFoundationTags(draft.genres, GAME_GENRE_PRESETS),
+        designPhilosophies: normalizeFoundationTags(
+          draft.designPhilosophies,
+          DESIGN_PHILOSOPHY_PRESETS,
+        ),
       });
-      onCreated({
-        projectId: project.id,
-        defaultFolderId,
-        name: project.name,
-        description: project.description,
+      onCreated(created);
+      setDraft({
+        name: '',
+        genres: [],
+        designPhilosophies: [],
+        description: '',
       });
-      setName('');
-      setDescription('');
       onClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Project creation error:', e);
-      setError(e?.message || 'Failed to create project');
+      setError(e instanceof Error ? e.message : 'Failed to create project');
     } finally {
       setSubmitting(false);
     }
@@ -102,42 +118,16 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
         <div className={dialog.divider}></div>
 
-        <div className={`${dialog.nameContainer} ${dialog.nameContainerNoIcon}`}>
-          <div className={`${dialog.nameInputContainer} ${dialog.nameInputContainerFull}`}>
-            <label htmlFor="project-name" className={dialog.nameLabel}>Project Name</label>
-          <input
-            id="project-name"
-            className={dialog.nameInput}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Enter project name"
+        <div className={styles.body}>
+          <ProjectFoundationFields
+            value={draft}
+            onChange={setDraft}
+            disabled={submitting}
           />
-          </div>
-        </div>
-
-        <div className={dialog.notesContainer}>
-          <label htmlFor="project-description" className={dialog.notesLabel}>
-            <span className={dialog.notesLabelText}>Add notes for this project</span>
-            <span className={dialog.notesLabelLimit}> (250 characters limit)</span>
-          </label>
-          <div className={dialog.textareaWrapper}>
-            <textarea
-              id="project-description"
-              name="project-description"
-              className={dialog.textarea}
-              value={description}
-              onChange={(e) => {
-                if (e.target.value.length <= 250) {
-                  setDescription(e.target.value);
-                }
-              }}
-              maxLength={250}
-            />
-          </div>
         </div>
 
         <div className={dialog.footer}>
-          {error && <div className={dialog.error}>{error}</div>}
+          {error && <div className={dialog.error} role="alert">{error}</div>}
           <button
             className={`${dialog.button} ${dialog.buttonFixed} ${dialog.primary}`}
             onClick={handleSubmit}

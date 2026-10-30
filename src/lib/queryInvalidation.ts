@@ -29,6 +29,18 @@ export function upsertProjectInListCache(
   });
 }
 
+export function patchProjectFoundationCaches(
+  queryClient: QueryClient,
+  project: Project
+): void {
+  upsertProjectInListCache(queryClient, project);
+  queryClient.setQueryData(queryKeys.project(project.id), project);
+  queryClient.setQueriesData(
+    { queryKey: ['project', project.id] },
+    (old: unknown) => old && !Array.isArray(old) ? { ...(old as object), ...project } : old,
+  );
+}
+
 export function removeProjectFromListCache(
   queryClient: QueryClient,
   projectId: string

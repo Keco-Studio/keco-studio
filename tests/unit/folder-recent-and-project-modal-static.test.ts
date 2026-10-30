@@ -66,13 +66,23 @@ describe('folder/recent cards and project modal visual contracts', () => {
     expect(documentCard).toMatch(/\.actionButton:active img\s*\{[^}]*filter:\s*brightness\(0\) invert\(1\);/s);
   });
 
-  it('matches the Create Project dialog size and disabled helper text color', () => {
+  it('keeps the expanded Create Project dialog responsive and scrollable', () => {
     const dialog = read('src/components/shared/FormDialog.module.css');
-    expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*616px;[^}]*height:\s*370px;/s);
+    expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*min\(46rem,\s*calc\(100vw - 2rem\)\);/s);
+    expect(dialog).toMatch(/\.projectModal\s*\{[^}]*max-height:\s*calc\(100vh - 2rem\);/s);
     expect(dialog).toMatch(/\.projectModal\s*\{[^}]*border-radius:\s*14px;/s);
-    expect(dialog).toMatch(/\.notesLabelLimit\s*\{[^}]*color:\s*var\(--text-disabled,\s*#0000003D\);/s);
 
     const modal = read('src/components/projects/NewProjectModal.tsx');
     expect(modal).toContain('dialog.projectModal');
+    expect(modal).toContain('styles.body');
+  });
+
+  it('keeps GDS tag limits while project Foundation fields omit maxLength', () => {
+    const gds = read('src/components/game-design-system/GameDesignSystemCreatePage.tsx');
+    expect(gds).toMatch(/id="gds-genres"[^>]*maxLength=\{80\}/);
+    expect(gds).toMatch(/id="gds-philosophies"[^>]*maxLength=\{120\}/);
+
+    const projectFields = read('src/components/projects/ProjectFoundationFields.tsx');
+    expect(projectFields).not.toContain('maxLength');
   });
 });

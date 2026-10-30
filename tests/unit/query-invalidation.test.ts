@@ -6,6 +6,7 @@ import {
   invalidateLibraryData,
   invalidateLibrarySchemaData,
   invalidateProjectData,
+  patchProjectFoundationCaches,
   projectsListCacheHasId,
   removeProjectFromListCache,
   sidebarAssetsKey,
@@ -87,6 +88,34 @@ describe('query invalidation helpers', () => {
 
     updateProjectsListCache(client as never, (old) => old);
     expect(setQueriesData).toHaveBeenCalledTimes(3);
+  });
+
+  it('patches project list, canonical detail, and compatible project detail caches', () => {
+    const setQueryData = jest.fn();
+    const setQueriesData = jest.fn();
+    const project = {
+      id: 'project-1',
+      owner_id: 'user-1',
+      name: 'Harbor Signal',
+      description: 'A cooperative mystery.',
+      genres: ['RPG'],
+      design_philosophies: ['Player Agency'],
+      created_at: '2026-10-30T10:00:00.000Z',
+      updated_at: '2026-10-30T10:00:00.000Z',
+    };
+
+    patchProjectFoundationCaches({ setQueryData, setQueriesData } as never, project);
+
+    expect(setQueryData).toHaveBeenCalledWith(queryKeys.project('project-1'), project);
+    expect(setQueriesData).toHaveBeenNthCalledWith(
+      2,
+      { queryKey: ['project', 'project-1'] },
+      expect.any(Function),
+    );
+    const merge = setQueriesData.mock.calls[1][1] as (old: unknown) => unknown;
+    expect(merge({ id: 'project-1', legacy: true })).toEqual({ ...project, legacy: true });
+    expect(merge([project])).toEqual([project]);
+    expect(merge(undefined)).toBeUndefined();
   });
 
   it('invalidates folder and folder/library collection keys', async () => {
