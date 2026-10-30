@@ -4,12 +4,10 @@ import { useState, useCallback } from 'react';
 
 /**
  * Centralizes visible and editing-id state for Sidebar modals
- * (new/edit project, library, folder, asset).
+ * (new project and edit library, folder, asset).
  */
 export function useSidebarModals() {
   const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
   const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
@@ -28,15 +26,6 @@ export function useSidebarModals() {
 
   const openNewProject = useCallback(() => setShowProjectModal(true), []);
   const closeProjectModal = useCallback(() => setShowProjectModal(false), []);
-  const openEditProject = useCallback((id: string) => {
-    setEditingProjectId(id);
-    setShowEditProjectModal(true);
-  }, []);
-  const closeEditProjectModal = useCallback(() => {
-    setShowEditProjectModal(false);
-    setEditingProjectId(null);
-  }, []);
-
   const openNewLibrary = useCallback(() => setShowLibraryModal(true), []);
   const closeLibraryModal = useCallback(() => setShowLibraryModal(false), []);
   const openEditLibrary = useCallback((id: string) => {
@@ -111,8 +100,6 @@ export function useSidebarModals() {
 
   return {
     showProjectModal,
-    showEditProjectModal,
-    editingProjectId,
     showLibraryModal,
     showEditLibraryModal,
     editingLibraryId,
@@ -127,8 +114,6 @@ export function useSidebarModals() {
     editingAssetId,
     openNewProject,
     closeProjectModal,
-    openEditProject,
-    closeEditProjectModal,
     openNewLibrary,
     closeLibraryModal,
     openEditLibrary,

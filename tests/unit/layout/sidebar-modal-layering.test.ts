@@ -20,4 +20,20 @@ describe('Sidebar modal layering', () => {
     expect(rule).toMatch(/background-color:\s*#fff;/);
     expect(rule).not.toMatch(/backdrop-filter\s*:/);
   });
+
+  it('does not mount or manage an Edit Project modal', () => {
+    const sidebar = readFileSync(
+      join(process.cwd(), 'src/components/layout/Sidebar.tsx'),
+      'utf8',
+    );
+    const modals = readFileSync(
+      join(process.cwd(), 'src/components/layout/hooks/useSidebarModals.ts'),
+      'utf8',
+    );
+
+    expect(sidebar).not.toContain('EditProjectModal');
+    expect(sidebar).not.toContain('showEditProjectModal');
+    expect(modals).not.toContain('openEditProject');
+    expect(modals).not.toContain('editingProjectId');
+  });
 });

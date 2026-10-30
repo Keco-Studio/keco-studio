@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RightOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminTabs } from '@/components/admin/AdminTabs';
-import { EditProjectModal } from '@/components/projects/EditProjectModal';
+import { ProjectFoundationFields } from '@/components/projects/ProjectFoundationFields';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -21,7 +21,14 @@ import {
   type AdminPrivacyPrefs,
 } from '@/lib/adminPrefs/storage';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
-import { invalidateProjectData } from '@/lib/queryInvalidation';
+import { patchProjectFoundationCaches } from '@/lib/queryInvalidation';
+import { updateProject, type Project } from '@/lib/services/projectService';
+import {
+  DESIGN_PHILOSOPHY_PRESETS,
+  GAME_GENRE_PRESETS,
+  normalizeFoundationTags,
+  type ProjectFoundationDraft,
+} from '@/lib/projectFoundation';
 import styles from '@/components/admin/AdminPage.module.css';
 
 type AdminSettingsPageProps = {
@@ -45,16 +52,18 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('name, description')
+        .select('id, owner_id, name, description, genres, design_philosophies, created_at, updated_at')
         .eq('id', projectId)
         .single();
       if (error) throw error;
-      return data as { name: string; description: string | null };
+      return data as Project;
     },
     staleTime: 30_000,
   });
 
-  const [editOpen, setEditOpen] = useState(false);
+  const [projectDraft, setProjectDraft] = useState<ProjectFoundationDraft | null>(null);
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const [prefModal, setPrefModal] = useState<PrefModal>(null);
   const [billing, setBilling] = useState<AdminBillingPrefs | null>(null);
   const [notifications, setNotifications] = useState<AdminNotificationPrefs | null>(null);
@@ -70,21 +79,60 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     setPrivacy(readPrivacyPrefs(userId));
   }, [projectId, userId]);
 
-  const openProfileEditor = useCallback(() => {
-    if (!canEditProfile) {
-      showErrorToast('Only project admins can edit profile settings');
-      return;
-    }
-    setEditOpen(true);
-  }, [canEditProfile]);
+  useEffect(() => {
+    if (!projectQuery.data) return;
+    setProjectDraft({
+      name: projectQuery.data.name,
+      description: projectQuery.data.description ?? '',
+      genres: projectQuery.data.genres ?? [],
+      designPhilosophies: projectQuery.data.design_philosophies ?? [],
+    });
+    setProjectSaveError(null);
+  }, [projectQuery.data]);
 
   const paymentEnabled = billing?.paymentEnabled ?? true;
 
-  const descriptionPreview = useMemo(() => {
-    const text = projectQuery.data?.description?.trim();
-    if (!text) return 'No description';
-    return text.length > 48 ? `${text.slice(0, 48)}...` : text;
-  }, [projectQuery.data?.description]);
+  const normalizedProjectDraft = useMemo(() => projectDraft ? {
+    name: projectDraft.name.trim(),
+    description: projectDraft.description.trim(),
+    genres: normalizeFoundationTags(projectDraft.genres, GAME_GENRE_PRESETS),
+    designPhilosophies: normalizeFoundationTags(
+      projectDraft.designPhilosophies,
+      DESIGN_PHILOSOPHY_PRESETS,
+    ),
+  } : null, [projectDraft]);
+
+  const projectDirty = Boolean(projectQuery.data && normalizedProjectDraft && (
+    normalizedProjectDraft.name !== projectQuery.data.name
+    || normalizedProjectDraft.description !== (projectQuery.data.description ?? '')
+    || JSON.stringify(normalizedProjectDraft.genres) !== JSON.stringify(projectQuery.data.genres ?? [])
+    || JSON.stringify(normalizedProjectDraft.designPhilosophies) !== JSON.stringify(projectQuery.data.design_philosophies ?? [])
+  ));
+
+  const saveProjectInformation = async () => {
+    if (!canEditProfile || !projectQuery.data || !normalizedProjectDraft || !projectDirty) return;
+    setSavingProject(true);
+    setProjectSaveError(null);
+    try {
+      const updated = await updateProject(supabase, projectId, {
+        ...normalizedProjectDraft,
+        expectedUpdatedAt: projectQuery.data.updated_at,
+      });
+      patchProjectFoundationCaches(queryClient, updated);
+      setProjectDraft({
+        name: updated.name,
+        description: updated.description ?? '',
+        genres: updated.genres ?? [],
+        designPhilosophies: updated.design_philosophies ?? [],
+      });
+      showSuccessToast('Project information saved');
+      await projectQuery.refetch();
+    } catch (error: unknown) {
+      setProjectSaveError(error instanceof Error ? error.message : 'Failed to save project information');
+    } finally {
+      setSavingProject(false);
+    }
+  };
 
   const togglePayment = () => {
     if (!userId || !billing) return;
@@ -153,22 +201,31 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
 
       <section className={styles.section}>
         <h2 className={styles.sectionLabel}>Profile</h2>
-        <div className={styles.rows}>
-          <button type="button" className={styles.row} onClick={openProfileEditor}>
-            <div className={styles.rowText}>
-              <span className={styles.rowTitle}>Display name</span>
-              <span className={styles.rowSubtitle}>{projectQuery.data?.name ?? '—'}</span>
-            </div>
-            <span className={styles.rowAction}><RightOutlined /></span>
-          </button>
-          <button type="button" className={styles.row} onClick={openProfileEditor}>
-            <div className={styles.rowText}>
-              <span className={styles.rowTitle}>Description</span>
-              <span className={styles.rowSubtitle}>{descriptionPreview}</span>
-            </div>
-            <span className={styles.rowAction}><RightOutlined /></span>
-          </button>
-        </div>
+        {projectDraft ? (
+          <form className={styles.projectProfileForm} onSubmit={(event) => {
+            event.preventDefault();
+            void saveProjectInformation();
+          }}>
+            <ProjectFoundationFields
+              value={projectDraft}
+              onChange={setProjectDraft}
+              disabled={savingProject}
+              readOnly={!canEditProfile}
+            />
+            {projectSaveError ? <div className={styles.projectFormError} role="alert">{projectSaveError}</div> : null}
+            {canEditProfile ? (
+              <div className={styles.projectFormActions}>
+                <button
+                  type="submit"
+                  className={styles.modalPrimary}
+                  disabled={!projectDirty || savingProject}
+                >
+                  {savingProject ? 'Saving...' : 'Save project information'}
+                </button>
+              </div>
+            ) : null}
+          </form>
+        ) : <div className={styles.empty}>Project information unavailable.</div>}
       </section>
 
       <section className={styles.section}>
@@ -234,20 +291,6 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
           </button>
         </div>
       </section>
-
-      <EditProjectModal
-        open={editOpen}
-        projectId={projectId}
-        onClose={() => setEditOpen(false)}
-        onUpdated={() => {
-          void projectQuery.refetch();
-          void invalidateProjectData(queryClient, {
-            projectId,
-            userProjectList: true,
-            refetchActiveProjects: true,
-          });
-        }}
-      />
 
       {prefModal && (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setPrefModal(null)}>

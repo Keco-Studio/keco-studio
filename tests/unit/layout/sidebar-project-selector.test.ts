@@ -25,27 +25,16 @@ describe('sidebar project selector', () => {
     expect(css).toMatch(/\.projectSelectorCreate\s*\{/);
   });
 
-  it('commits rename on outside click and snaps sidebar scroll back immediately', () => {
+  it('selects projects immediately and has no inline rename path', () => {
     expect(source).toContain("onContextMenu(e, 'project', project.id)");
-    expect(source).toContain('startRename(project)');
-    expect(source).toContain("document.addEventListener('pointerdown'");
+    expect(source).toContain('selectProject(project.id)');
     expect(source).toContain("window.addEventListener('keydown'");
     expect(source).toContain("event.key === 'Escape'");
-    expect(source).toContain('exitRename');
-    expect(source).toContain('focusRenameInputAtEnd');
-    expect(source).toContain('snapSidebarHorizontalScroll');
-    expect(source).toContain('renameInputRef.current?.blur()');
-    expect(source).toMatch(/if \(!trimmed\) return;/);
-    expect(source).toContain('exitRename();');
-    expect(source).toMatch(/catch \{[\s\S]*focusRenameInputAtEnd\(renameInputRef\.current\)/);
-  });
-
-  it('does not let an administrator single-click close the menu before rename double-click', () => {
-    expect(source).toContain('pendingProjectSelectionRef');
-    expect(source).toContain('cancelPendingProjectSelection');
-    expect(source).toContain('queueProjectSelection(project.id)');
-    expect(source).toContain('window.setTimeout');
-    expect(source).toContain('window.clearTimeout');
+    expect(source).not.toContain('startRename');
+    expect(source).not.toContain('projectSelectorRenameInput');
+    expect(source).not.toContain('onDoubleClick');
+    expect(source).not.toContain('pendingProjectSelectionRef');
+    expect(source).not.toContain('onSaveRename');
   });
 
   it('scrolls the selected project into the compact 3-row window when opened', () => {

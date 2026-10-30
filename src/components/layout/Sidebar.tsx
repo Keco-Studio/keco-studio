@@ -19,7 +19,6 @@ import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
 import { normalizeSearchString } from "@/lib/utils/normalizeSearchString";
 import { NewProjectModal, type CreatedProjectPayload } from "@/components/projects/NewProjectModal";
-import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
@@ -83,7 +82,6 @@ import {
   invalidateLibraryData,
   invalidateProjectData,
   removeProjectFromListCache,
-  updateProjectsListCache,
   patchProjectFoundationCaches,
 } from '@/lib/queryInvalidation';
 import {
@@ -189,8 +187,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const modals = useSidebarModals();
   const {
     showProjectModal,
-    showEditProjectModal,
-    editingProjectId,
     showLibraryModal,
     showEditLibraryModal,
     editingLibraryId,
@@ -205,8 +201,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     editingAssetId,
     openNewProject,
     closeProjectModal,
-    openEditProject,
-    closeEditProjectModal,
     openNewLibrary,
     closeLibraryModal,
     openEditLibrary,
@@ -319,21 +313,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
 
       try {
-        if (key.startsWith('project-')) {
-          const id = key.replace('project-', '');
-          updateProjectsListCache(queryClient, (old) => {
-            if (!old) return old;
-            return old.map((project) => (project.id === id ? { ...project, name: trimmed } : project));
-          });
-          await updateName.mutateAsync({
-            id,
-            name: trimmed,
-            entityType: 'project',
-          });
-          showSuccessToast('Project name updated');
-          return;
-        }
-
         const foldersLibrariesKey = currentIds.projectId
           ? (['folders-libraries', currentIds.projectId] as const)
           : null;
@@ -1152,7 +1131,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     contextMenu,
     closeContextMenu,
     router,
-    openEditProject,
     openEditLibrary,
     openEditDocument,
     openDuplicateLibrary,
@@ -1506,10 +1484,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           currentProjectId={currentIds.projectId}
           currentLibraryId={currentIds.libraryId}
           currentFolderId={currentIds.folderId}
-          userRole={userRole}
           onOpenNewProject={openNewProject}
           onProjectClick={handleProjectClick}
-          onSaveRename={handleSaveRename}
           onContextMenu={handleContextMenu}
         />
 
@@ -1579,21 +1555,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onClose={closeProjectModal}
         onCreated={handleProjectCreated}
       />
-
-      {editingProjectId && (
-        <EditProjectModal
-          open={showEditProjectModal}
-          projectId={editingProjectId}
-          onClose={closeEditProjectModal}
-          onUpdated={() => {
-            void invalidateProjectData(queryClient, {
-              projectId: editingProjectId,
-              userProjectList: true,
-              refetchActiveProjects: true,
-            });
-          }}
-        />
-      )}
 
       <NewLibraryModal
         open={showLibraryModal}

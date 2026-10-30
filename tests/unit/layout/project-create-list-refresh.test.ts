@@ -15,9 +15,12 @@ describe('project create list refresh', () => {
     expect(sidebar).toContain('patchProjectFoundationCaches');
     expect(sidebar).toContain('queryKeys.projectFolders(project.id)');
     expect(sidebar).toContain("['folders-libraries', project.id]");
-    expect(sidebar).toContain('updateProjectsListCache');
     expect(sidebar).toContain('removeProjectFromListCache');
     expect(sidebar).not.toContain("setQueryData<Project[]>(['projects']");
+
+    const invalidation = read('src/lib/queryInvalidation.ts');
+    expect(invalidation).toContain('updateProjectsListCache');
+    expect(invalidation).toContain('patchProjectFoundationCaches');
 
     const page = read('src/app/(dashboard)/projects/page.tsx');
     expect(page).toContain('patchProjectFoundationCaches');
