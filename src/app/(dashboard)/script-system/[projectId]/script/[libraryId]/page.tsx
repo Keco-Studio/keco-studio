@@ -274,6 +274,7 @@ export default function ScriptLibraryPage() {
     <ScriptSplitView
       key={openingKey}
       libraryId={libraryId}
+      libraryName={library.name}
       rows={assetRows}
       scriptColumns={scriptColumns}
       flowRows={flowRows}

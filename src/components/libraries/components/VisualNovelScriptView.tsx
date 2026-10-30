@@ -66,6 +66,8 @@ export type ScriptDialogueEditingProps = {
   ) => Promise<boolean>;
   onDeleteBlock: (blockId: string) => Promise<boolean>;
   onReorderBlock: (fromIndex: number, toIndex: number) => Promise<boolean>;
+  saveRequestVersion?: number;
+  onSaveRequestComplete?: (saved: boolean) => void;
 };
 
 interface VisualNovelScriptViewProps {
@@ -415,6 +417,8 @@ export function VisualNovelScriptView({
             onChangeSpeakerSide={editing.onChangeSpeakerSide}
             onSaveBlock={(values) => editing.onSaveBlock(block.id, values)}
             onDelete={() => editing.onDeleteBlock(block.id)}
+            saveRequestVersion={editing.saveRequestVersion}
+            onSaveRequestComplete={editing.onSaveRequestComplete}
           />
         );
       }

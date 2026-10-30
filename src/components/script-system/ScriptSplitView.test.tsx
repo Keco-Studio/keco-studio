@@ -1,5 +1,8 @@
-import { describe, expect, it, jest } from '@jest/globals';
+/** @jest-environment jsdom */
+
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 
 jest.mock('./ScriptSplitView.module.css', () => ({}));
@@ -31,6 +34,8 @@ import {
   resolveOptionTargetPlotNodeId,
   ScriptSplitView,
 } from './ScriptSplitView';
+
+afterEach(cleanup);
 
 const rows: AssetRow[] = [
   { id: 'r1', libraryId: 'lib', name: 'background', propertyValues: { type: '4', content: 'Plot background' } },
@@ -106,7 +111,7 @@ describe('ScriptSplitView plot selection', () => {
 
     expect(markup).toContain('FIRST_PLOT_CONTENT');
     expect(markup).not.toContain('SECOND_PLOT_CONTENT');
-    expect(markup.match(/role="button"/g)).toHaveLength(2);
+    expect(markup.match(/data-flow-node-id=/g)).toHaveLength(2);
     expect(markup).toContain('Plot background');
     expect(markup).toContain('Opening dialogue');
     expect(markup).toContain('data-testid="script-branch-name"');
@@ -258,5 +263,52 @@ describe('ScriptSplitView plot selection', () => {
 
     expect(markup).toContain('Continue onward');
     expect(markup).not.toContain('No script data');
+  });
+
+  it('renders the approved three-region Script workspace chrome', () => {
+    const markup = renderToStaticMarkup(
+      <ScriptSplitView
+        libraryId="lib"
+        libraryName="深夜客房"
+        rows={rows}
+        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
+        flowRows={[]}
+        persistedGraph={{
+          nodes: [
+            { id: 'Start', label: '客房', rowIndex: 0, rowIndexes: [0, 1] },
+            { id: 'Ending', label: '走廊尽头', rowIndex: 2, rowIndexes: [2, 3] },
+          ],
+          edges: [{ from: 'Start', to: 'Ending' }],
+        }}
+      />,
+    );
+
+    expect(markup).toContain('剧情脚本');
+    expect(markup).toContain('深夜客房');
+    expect(markup).toContain('剧情结构');
+    expect(markup).toContain('模板');
+    expect(markup).toContain('保存为模板');
+    expect(markup).toContain('结构检查');
+    expect(markup).toContain('分支结构');
+    expect(markup).not.toContain('生成动画');
+  });
+
+  it('reports an already-saved state when no dialogue draft is active', () => {
+    render(
+      <ScriptSplitView
+        libraryId="lib"
+        libraryName="深夜客房"
+        rows={rows}
+        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
+        flowRows={[]}
+        persistedGraph={{
+          nodes: [{ id: 'Start', label: '客房', rowIndex: 0, rowIndexes: [0, 1] }],
+          edges: [],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存脚本' }));
+    expect(screen.getByText('所有更改已保存').getAttribute('role')).toBe('status');
   });
 });

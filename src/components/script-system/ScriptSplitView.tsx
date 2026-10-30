@@ -35,13 +35,30 @@ import {
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
+import {
+  deriveScriptWorkspaceStructure,
+  validateScriptWorkspaceStructure,
+} from '@/lib/script-system/scriptWorkspaceStructure';
+import {
+  BUILT_IN_SCRIPT_TEMPLATES,
+  deleteScriptStructureTemplate,
+  readScriptStructureTemplates,
+  saveScriptStructureTemplate,
+  type ScriptStructureTemplate,
+} from '@/lib/script-system/scriptStructureTemplates';
+import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
+import { ScriptStructurePanel } from './ScriptStructurePanel';
+import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
+import { ScriptStructureCheckModal } from './ScriptStructureCheckModal';
+import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
 
 export type ScriptSplitViewProps = {
   projectId?: string;
   libraryId: string;
+  libraryName?: string;
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
@@ -107,6 +124,7 @@ function sameRowIds(left: readonly string[], right: readonly string[]): boolean 
 
 export function ScriptSplitView({
   libraryId,
+  libraryName = '未命名脚本',
   projectId,
   rows,
   scriptColumns,
@@ -139,7 +157,6 @@ export function ScriptSplitView({
     setGraphState({ libraryId, graph, rowIds });
   }
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
-  const displayedGraph = graphPreview?.graph ?? graph;
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
     nodeId: graph.nodes[0]?.id ?? '',
@@ -158,8 +175,29 @@ export function ScriptSplitView({
   const [ratio, setRatio] = useState(() => readSplitRatio());
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [templateMode, setTemplateMode] = useState<'browse' | 'save' | null>(null);
+  const [personalTemplates, setPersonalTemplates] = useState<ScriptStructureTemplate[]>(() => (
+    typeof window === 'undefined' ? [] : readScriptStructureTemplates(window.localStorage)
+  ));
+  const [referenceTemplateId, setReferenceTemplateId] = useState<string | null>(null);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [saveRequestVersion, setSaveRequestVersion] = useState(0);
+  const [saveRequestPending, setSaveRequestPending] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
+
+  const structure = useMemo(() => deriveScriptWorkspaceStructure(graph), [graph]);
+  const validation = useMemo(() => validateScriptWorkspaceStructure(graph), [graph]);
+  const templates = useMemo(
+    () => [...BUILT_IN_SCRIPT_TEMPLATES, ...personalTemplates],
+    [personalTemplates],
+  );
+  const referenceTemplate = useMemo(
+    () => templates.find((template) => template.id === referenceTemplateId) ?? null,
+    [referenceTemplateId, templates],
+  );
+  const displayedGraph = referenceTemplate?.graph ?? graphPreview?.graph ?? graph;
 
   const selectedRows = useMemo(() => {
     const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
@@ -195,6 +233,17 @@ export function ScriptSplitView({
     sourceToken,
   });
 
+  const completeSaveRequest = useCallback((saved: boolean) => {
+    setSaveRequestPending(false);
+    if (saved) {
+      setSaveStatus('所有更改已保存');
+      showSuccessToast('Script 已保存');
+      return;
+    }
+    setSaveStatus('保存失败');
+    showErrorToast('Script 保存失败');
+  }, []);
+
   const editingProps = dialogueEditor.enabled
     ? {
         characters: dialogueEditor.characters,
@@ -224,6 +273,8 @@ export function ScriptSplitView({
         onReorderBlock: (fromIndex: number, toIndex: number) => (
           dialogueEditor.reorderBlock(fromIndex, toIndex)
         ),
+        saveRequestVersion,
+        onSaveRequestComplete: completeSaveRequest,
       }
     : undefined;
 
@@ -302,6 +353,16 @@ export function ScriptSplitView({
     setDragging(true);
   }, []);
 
+  const selectPlotNode = useCallback((nodeId: string) => {
+    const node = graph.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    setPlotSelection({
+      libraryId,
+      nodeId,
+      anchorRowId: node.rowIndexes.map((index) => rows[index]?.id).find(Boolean) ?? null,
+    });
+  }, [graph.nodes, libraryId, rows]);
+
   const selectOptionTarget = useCallback((targetLabel: string) => {
     const nodeId = resolveOptionTargetPlotNodeId(
       targetLabel,
@@ -309,76 +370,142 @@ export function ScriptSplitView({
       scriptColumns.labelKey,
       graph,
     );
-    if (nodeId) {
-      const node = graph.nodes.find((item) => item.id === nodeId);
-      setPlotSelection({
-        libraryId,
-        nodeId,
-        anchorRowId: node?.rowIndexes.map((index) => rows[index]?.id).find(Boolean) ?? null,
-      });
+    if (nodeId) selectPlotNode(nodeId);
+  }, [graph, rows, scriptColumns.labelKey, selectPlotNode]);
+
+  const requestSave = useCallback(() => {
+    if (dialogueEditor.isBusy || saveRequestPending) return;
+    if (!dialogueEditor.editingBlockId) {
+      setSaveStatus('所有更改已保存');
+      return;
     }
-  }, [graph, libraryId, rows, scriptColumns.labelKey]);
+    setSaveStatus('正在保存…');
+    setSaveRequestPending(true);
+    setSaveRequestVersion((version) => version + 1);
+  }, [dialogueEditor.editingBlockId, dialogueEditor.isBusy, saveRequestPending]);
+
+  const saveTemplate = useCallback(async (name: string, description: string) => {
+    try {
+      const saved = saveScriptStructureTemplate(window.localStorage, {
+        name,
+        description,
+        graph,
+      });
+      setPersonalTemplates((current) => [...current, saved]);
+      setTemplateMode(null);
+      showSuccessToast('结构模板已保存');
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : '结构模板保存失败');
+    }
+  }, [graph]);
+
+  const deleteTemplate = useCallback((templateId: string) => {
+    try {
+      deleteScriptStructureTemplate(window.localStorage, templateId);
+      setPersonalTemplates((current) => current.filter((template) => template.id !== templateId));
+      setReferenceTemplateId((current) => current === templateId ? null : current);
+      showSuccessToast('结构模板已删除');
+    } catch {
+      showErrorToast('结构模板删除失败');
+    }
+  }, []);
 
   return (
     <div className={styles.root}>
-      <div
-        ref={bodyRef}
-        className={`${styles.body} ${dragging ? styles.dragging : ''}`}
-      >
-        <div
-          className={styles.leftPane}
-          style={
-            collapsed
-              ? { flex: '1 1 auto' }
-              : { flex: `${ratio} 1 0%` }
-          }
-        >
-          <div className={styles.leftBody}>
-              <VisualNovelScriptView
-                rows={selectedRows}
-                scriptColumns={scriptColumns}
-                mode="plot-node"
-                branchName={selectedBranchName || undefined}
-                branchKey={plotSelection.anchorRowId ?? selectedPlotNodeId}
-                onSelectOptionTarget={selectOptionTarget}
-                editing={editingProps}
-              />
-          </div>
+      <ScriptWorkspaceToolbar
+        libraryName={libraryName}
+        issueCount={validation.issues.length}
+        isSaving={dialogueEditor.isBusy || saveRequestPending}
+        saveStatus={saveStatus}
+        onOpenTemplates={() => setTemplateMode('browse')}
+        onSaveAsTemplate={() => setTemplateMode('save')}
+        onOpenChecks={() => setCheckOpen(true)}
+        onSave={requestSave}
+      />
+      {referenceTemplate ? (
+        <div className={styles.referenceBanner} role="status">
+          <span>正在参考“{referenceTemplate.name}”的结构，当前 Script 不会被改写。</span>
+          <button type="button" onClick={() => setReferenceTemplateId(null)}>退出参考</button>
         </div>
-
-        {!collapsed ? (
-          <>
-            <div
-              className={styles.divider}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize script panes"
-              onMouseDown={startDrag}
-            />
-            <div
-              className={styles.rightPane}
-              style={{ flex: `${1 - ratio} 1 0%` }}
-            >
-              <FlowChartPanel
-                graph={displayedGraph}
-                selectedPlotNodeId={selectedPlotNodeId}
-                previewNodeIds={graphPreview?.graph.createdNodeIds}
-                onSelectPlotNode={(nodeId) => {
-                  const node = graph.nodes.find((item) => item.id === nodeId);
-                  setPlotSelection({
-                    libraryId,
-                    nodeId,
-                    anchorRowId: node?.rowIndexes
-                      .map((index) => rows[index]?.id)
-                      .find(Boolean) ?? null,
-                  });
-                }}
-                onClose={() => setCollapsed(true)}
-              />
+      ) : null}
+      <div className={styles.workspaceBody}>
+        <ScriptStructurePanel
+          structure={structure}
+          selectedNodeId={selectedPlotNodeId}
+          onSelectNode={selectPlotNode}
+        />
+        <div
+          ref={bodyRef}
+          className={`${styles.body} ${dragging ? styles.dragging : ''}`}
+        >
+          <div
+            className={styles.leftPane}
+            style={
+              collapsed
+                ? { flex: '1 1 auto' }
+                : { flex: `${ratio} 1 0%` }
+            }
+          >
+            <div className={styles.leftBody}>
+                <VisualNovelScriptView
+                  rows={selectedRows}
+                  scriptColumns={scriptColumns}
+                  mode="plot-node"
+                  branchName={selectedBranchName || undefined}
+                  branchKey={plotSelection.anchorRowId ?? selectedPlotNodeId}
+                  onSelectOptionTarget={selectOptionTarget}
+                  editing={editingProps}
+                />
             </div>
-          </>
-        ) : null}
+          </div>
+
+          {!collapsed ? (
+            <>
+              <div
+                className={styles.divider}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize script panes"
+                onMouseDown={startDrag}
+              />
+              <div
+                className={styles.rightPane}
+                style={{ flex: `${1 - ratio} 1 0%` }}
+              >
+                <FlowChartPanel
+                  graph={displayedGraph}
+                  title="分支结构"
+                  referenceLabel={referenceTemplate?.name}
+                  readOnly={Boolean(referenceTemplate)}
+                  selectedPlotNodeId={referenceTemplate ? '' : selectedPlotNodeId}
+                  previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}
+                  onSelectPlotNode={selectPlotNode}
+                  onClose={() => setCollapsed(true)}
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
       </div>
+      <ScriptStructureCheckModal
+        open={checkOpen}
+        validation={validation}
+        onClose={() => setCheckOpen(false)}
+        onSelectNode={selectPlotNode}
+      />
+      <ScriptTemplateModal
+        open={templateMode !== null}
+        mode={templateMode ?? 'browse'}
+        templates={templates}
+        activeReferenceId={referenceTemplateId}
+        onClose={() => setTemplateMode(null)}
+        onUseReference={(templateId) => {
+          setReferenceTemplateId(templateId);
+          setTemplateMode(null);
+        }}
+        onDeleteTemplate={deleteTemplate}
+        onSaveTemplate={saveTemplate}
+      />
     </div>
   );
 }
