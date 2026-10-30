@@ -293,7 +293,8 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).not.toContain('aria-label="剧情结构"');
     expect(markup).toContain('模板');
     expect(markup).toContain('保存为模板');
-    expect(markup).toContain('结构检查');
+    expect(markup).not.toContain('结构检查');
+    expect(markup).not.toContain('aria-label="保存脚本"');
     expect(markup).toContain('分支结构');
     expect(markup).not.toContain('生成动画');
   });
@@ -326,22 +327,4 @@ describe('ScriptSplitView plot selection', () => {
     expect(screen.queryByText('FIRST_PLOT_CONTENT')).toBeNull();
   });
 
-  it('reports an already-saved state when no dialogue draft is active', () => {
-    render(
-      <ScriptSplitView
-        libraryId="lib"
-        libraryName="深夜客房"
-        rows={rows}
-        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
-        flowRows={[]}
-        persistedGraph={{
-          nodes: [{ id: 'Start', label: '客房', rowIndex: 0, rowIndexes: [0, 1] }],
-          edges: [],
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '保存脚本' }));
-    expect(screen.getByText('所有更改已保存').getAttribute('role')).toBe('status');
-  });
 });

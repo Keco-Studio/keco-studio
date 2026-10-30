@@ -4,9 +4,7 @@ import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ScriptStructureTemplate } from '@/lib/script-system/scriptStructureTemplates';
-import type { ScriptStructureValidation } from '@/lib/script-system/scriptWorkspaceStructure';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
-import { ScriptStructureCheckModal } from './ScriptStructureCheckModal';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 
 beforeAll(() => {
@@ -43,18 +41,14 @@ const template: ScriptStructureTemplate = {
 };
 
 describe('ScriptWorkspaceToolbar', () => {
-  it('exposes all approved actions without an animation action', () => {
+  it('exposes only the approved template actions', () => {
     const callbacks = {
       onOpenTemplates: jest.fn(),
       onSaveAsTemplate: jest.fn(),
-      onOpenChecks: jest.fn(),
-      onSave: jest.fn(),
     };
     render(
       <ScriptWorkspaceToolbar
         libraryName="深夜客房"
-        issueCount={2}
-        isSaving={false}
         {...callbacks}
       />,
     );
@@ -63,42 +57,12 @@ describe('ScriptWorkspaceToolbar', () => {
     expect(screen.getByText('深夜客房')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '模板' }));
     fireEvent.click(screen.getByRole('button', { name: '保存为模板' }));
-    fireEvent.click(screen.getByRole('button', { name: '结构检查，2 个问题' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存脚本' }));
 
     expect(callbacks.onOpenTemplates).toHaveBeenCalledTimes(1);
     expect(callbacks.onSaveAsTemplate).toHaveBeenCalledTimes(1);
-    expect(callbacks.onOpenChecks).toHaveBeenCalledTimes(1);
-    expect(callbacks.onSave).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /结构检查/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '保存脚本' })).toBeNull();
     expect(screen.queryByText('生成动画')).toBeNull();
-  });
-});
-
-describe('ScriptStructureCheckModal', () => {
-  it('lets an evidence-bearing issue navigate to its node', () => {
-    const onSelectNode = jest.fn();
-    const validation: ScriptStructureValidation = {
-      issues: [{
-        id: 'unreachable-orphan',
-        code: 'unreachable-node',
-        severity: 'warning',
-        message: '“遗漏场景”无法从入口到达',
-        nodeId: 'orphan',
-      }],
-      errorCount: 0,
-      warningCount: 1,
-    };
-    render(
-      <ScriptStructureCheckModal
-        open
-        validation={validation}
-        onClose={jest.fn()}
-        onSelectNode={onSelectNode}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /遗漏场景/ }));
-    expect(onSelectNode).toHaveBeenCalledWith('orphan');
   });
 });
 

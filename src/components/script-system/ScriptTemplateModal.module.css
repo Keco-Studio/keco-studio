@@ -70,18 +70,7 @@
 .primaryButton { padding: 0 16px; border: 1px solid #0b99ff; background: #0b99ff; color: #fff; }
 .primaryButton:disabled { opacity: .65; }
 
-.checkSummary { margin-bottom: 12px; color: #334155; font-size: 13px; font-weight: 600; }
 .healthyState { padding: 20px; border-radius: 8px; background: #f8fafc; color: #64748b; font-size: 13px; text-align: center; }
-.issueList { display: flex; flex-direction: column; gap: 8px; max-height: 440px; margin: 0; padding: 0; overflow: auto; list-style: none; }
-.issueItem { margin: 0; }
-.issueButton,
-.issueStatic { display: flex; width: 100%; align-items: center; gap: 9px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #334155; font: inherit; font-size: 12px; text-align: left; }
-.issueButton { cursor: pointer; }
-.issueButton:hover { border-color: #94a3b8; background: #f8fafc; }
-.severity { flex: 0 0 auto; padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: 700; }
-.error { background: #fee2e2; color: #991b1b; }
-.warning { background: #fef3c7; color: #92400e; }
-.locate { margin-left: auto; color: #0788e5; font-size: 10px; }
 
 @media (max-width: 640px) {
   .templateGrid { grid-template-columns: 1fr; }

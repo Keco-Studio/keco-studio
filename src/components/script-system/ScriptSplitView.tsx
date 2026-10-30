@@ -35,7 +35,6 @@ import {
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
-import { validateScriptWorkspaceStructure } from '@/lib/script-system/scriptWorkspaceStructure';
 import {
   BUILT_IN_SCRIPT_TEMPLATES,
   deleteScriptStructureTemplate,
@@ -47,7 +46,6 @@ import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
-import { ScriptStructureCheckModal } from './ScriptStructureCheckModal';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
 
@@ -118,6 +116,91 @@ function sameRowIds(left: readonly string[], right: readonly string[]): boolean 
     && left.every((rowId, index) => rowId === right[index]);
 }
 
+function resolveReferenceScriptNodeId(
+  referenceGraph: FlowGraph,
+  scriptGraph: FlowGraph,
+  referenceNodeId: string,
+): string {
+  if (scriptGraph.nodes.some((node) => node.id === referenceNodeId)) {
+    return referenceNodeId;
+  }
+
+  const referenceNodeIndex = referenceGraph.nodes.findIndex(
+    (node) => node.id === referenceNodeId,
+  );
+  if (referenceNodeIndex < 0) return scriptGraph.nodes[0]?.id ?? '';
+
+  const referenceIncoming = referenceGraph.edges.filter(
+    (edge) => edge.to === referenceNodeId,
+  );
+  const referenceOutgoing = referenceGraph.edges.filter(
+    (edge) => edge.from === referenceNodeId,
+  );
+  const referenceOptionEdge = referenceIncoming.find(
+    (edge) => edge.optionIndex !== undefined,
+  );
+
+  const referenceChoiceIds = referenceGraph.nodes
+    .filter((node) => referenceGraph.edges.some(
+      (edge) => edge.from === node.id && edge.optionIndex !== undefined,
+    ))
+    .map((node) => node.id);
+  const scriptChoiceIds = scriptGraph.nodes
+    .filter((node) => scriptGraph.edges.some(
+      (edge) => edge.from === node.id && edge.optionIndex !== undefined,
+    ))
+    .map((node) => node.id);
+
+  if (referenceOptionEdge) {
+    const choiceIndex = Math.max(0, referenceChoiceIds.indexOf(referenceOptionEdge.from));
+    const scriptChoiceId = scriptChoiceIds[Math.min(choiceIndex, scriptChoiceIds.length - 1)];
+    if (scriptChoiceId) {
+      const scriptOptions = scriptGraph.edges.filter(
+        (edge) => edge.from === scriptChoiceId && edge.optionIndex !== undefined,
+      );
+      const matched = scriptOptions.find(
+        (edge) => edge.optionIndex === referenceOptionEdge.optionIndex,
+      ) ?? scriptOptions[referenceOptionEdge.optionIndex ?? 0];
+      if (matched) return matched.to;
+    }
+  }
+
+  if (referenceOutgoing.some((edge) => edge.optionIndex !== undefined)) {
+    const choiceIndex = Math.max(0, referenceChoiceIds.indexOf(referenceNodeId));
+    const matched = scriptChoiceIds[Math.min(choiceIndex, scriptChoiceIds.length - 1)];
+    if (matched) return matched;
+  }
+
+  if (referenceIncoming.length > 1) {
+    const referenceMergeIds = referenceGraph.nodes
+      .filter((node) => referenceGraph.edges.filter((edge) => edge.to === node.id).length > 1)
+      .map((node) => node.id);
+    const scriptMergeIds = scriptGraph.nodes
+      .filter((node) => scriptGraph.edges.filter((edge) => edge.to === node.id).length > 1)
+      .map((node) => node.id);
+    const mergeIndex = Math.max(0, referenceMergeIds.indexOf(referenceNodeId));
+    const matched = scriptMergeIds[Math.min(mergeIndex, scriptMergeIds.length - 1)];
+    if (matched) return matched;
+  }
+
+  if (referenceNodeIndex === 0) return scriptGraph.nodes[0]?.id ?? '';
+
+  if (referenceOutgoing.length === 0) {
+    const scriptEnding = [...scriptGraph.nodes].reverse().find(
+      (node) => !scriptGraph.edges.some((edge) => edge.from === node.id),
+    );
+    if (scriptEnding) return scriptEnding.id;
+  }
+
+  const scaledIndex = referenceGraph.nodes.length <= 1
+    ? 0
+    : Math.round(
+      referenceNodeIndex * Math.max(0, scriptGraph.nodes.length - 1)
+      / (referenceGraph.nodes.length - 1),
+    );
+  return scriptGraph.nodes[scaledIndex]?.id ?? scriptGraph.nodes[0]?.id ?? '';
+}
+
 export function ScriptSplitView({
   libraryId,
   libraryName = '未命名脚本',
@@ -180,14 +263,9 @@ export function ScriptSplitView({
     templateId: '',
     nodeId: '',
   });
-  const [checkOpen, setCheckOpen] = useState(false);
-  const [saveRequestVersion, setSaveRequestVersion] = useState(0);
-  const [saveRequestPending, setSaveRequestPending] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
 
-  const validation = useMemo(() => validateScriptWorkspaceStructure(graph), [graph]);
   const templates = useMemo(
     () => [...BUILT_IN_SCRIPT_TEMPLATES, ...personalTemplates],
     [personalTemplates],
@@ -203,20 +281,22 @@ export function ScriptSplitView({
         ? referenceSelection.nodeId
         : referenceTemplate.graph.nodes[0]?.id ?? ''
     : '';
-  const selectedGraph = referenceTemplate?.graph ?? graph;
   const displayedSelectedNodeId = referenceTemplate ? referenceNodeId : selectedPlotNodeId;
+  const contentNodeId = referenceTemplate
+    ? resolveReferenceScriptNodeId(referenceTemplate.graph, graph, referenceNodeId)
+    : selectedPlotNodeId;
 
   const selectedRows = useMemo(() => {
-    const selected = selectedGraph.nodes.find((node) => node.id === displayedSelectedNodeId);
+    const selected = graph.nodes.find((node) => node.id === contentNodeId);
     return selected?.rowIndexes
       .map((index) => rows[index])
       .filter((row): row is AssetRow => Boolean(row)) ?? [];
-  }, [displayedSelectedNodeId, rows, selectedGraph.nodes]);
+  }, [contentNodeId, graph.nodes, rows]);
 
   const selectedBranchName = useMemo(() => {
-    const selected = selectedGraph.nodes.find((node) => node.id === displayedSelectedNodeId);
+    const selected = graph.nodes.find((node) => node.id === contentNodeId);
     return selected?.label?.trim() || '';
-  }, [displayedSelectedNodeId, selectedGraph.nodes]);
+  }, [contentNodeId, graph.nodes]);
 
   const dialogueFields = useMemo(() => {
     if (!scriptColumns.typeKey || !scriptColumns.nameKey || !scriptColumns.contentKey) {
@@ -239,17 +319,6 @@ export function ScriptSplitView({
     sourceDocumentId,
     sourceToken,
   });
-
-  const completeSaveRequest = useCallback((saved: boolean) => {
-    setSaveRequestPending(false);
-    if (saved) {
-      setSaveStatus('所有更改已保存');
-      showSuccessToast('Script 已保存');
-      return;
-    }
-    setSaveStatus('保存失败');
-    showErrorToast('Script 保存失败');
-  }, []);
 
   const editingProps = dialogueEditor.enabled
     ? {
@@ -280,8 +349,6 @@ export function ScriptSplitView({
         onReorderBlock: (fromIndex: number, toIndex: number) => (
           dialogueEditor.reorderBlock(fromIndex, toIndex)
         ),
-        saveRequestVersion,
-        onSaveRequestComplete: completeSaveRequest,
       }
     : undefined;
 
@@ -389,17 +456,6 @@ export function ScriptSplitView({
     if (nodeId) selectPlotNode(nodeId);
   }, [graph, rows, scriptColumns.labelKey, selectPlotNode]);
 
-  const requestSave = useCallback(() => {
-    if (dialogueEditor.isBusy || saveRequestPending) return;
-    if (!dialogueEditor.editingBlockId) {
-      setSaveStatus('所有更改已保存');
-      return;
-    }
-    setSaveStatus('正在保存…');
-    setSaveRequestPending(true);
-    setSaveRequestVersion((version) => version + 1);
-  }, [dialogueEditor.editingBlockId, dialogueEditor.isBusy, saveRequestPending]);
-
   const saveTemplate = useCallback(async (name: string, description: string) => {
     try {
       const saved = saveScriptStructureTemplate(window.localStorage, {
@@ -430,13 +486,8 @@ export function ScriptSplitView({
     <div className={styles.root}>
       <ScriptWorkspaceToolbar
         libraryName={libraryName}
-        issueCount={validation.issues.length}
-        isSaving={dialogueEditor.isBusy || saveRequestPending}
-        saveStatus={saveStatus}
         onOpenTemplates={() => setTemplateMode('browse')}
         onSaveAsTemplate={() => setTemplateMode('save')}
-        onOpenChecks={() => setCheckOpen(true)}
-        onSave={requestSave}
       />
       {referenceTemplate ? (
         <div className={styles.referenceBanner} role="status">
@@ -497,12 +548,6 @@ export function ScriptSplitView({
             </>
           ) : null}
       </div>
-      <ScriptStructureCheckModal
-        open={checkOpen}
-        validation={validation}
-        onClose={() => setCheckOpen(false)}
-        onSelectNode={selectPlotNode}
-      />
       <ScriptTemplateModal
         open={templateMode !== null}
         mode={templateMode ?? 'browse'}
