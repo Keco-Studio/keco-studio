@@ -13,6 +13,10 @@ function toastError(page: Page, text: string | RegExp) {
   return page.locator('body > div').filter({ hasText: text }).last();
 }
 
+function projectSettingsError(page: Page, text: string | RegExp) {
+  return page.getByRole('alert').filter({ hasText: text }).first();
+}
+
 async function openProjectSettings(
   page: Page,
   projectPage: ProjectPage,
@@ -101,7 +105,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.getByRole('alert');
+        const errorMessage = projectSettingsError(page, /project name is required/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('Project name is required');
       });
@@ -216,7 +220,7 @@ test.describe('Name Validation Tests', () => {
         await expect(saveButton).toBeVisible();
         await saveButton.click();
         
-        let errorMessage = page.getByRole('alert');
+        let errorMessage = projectSettingsError(page, /no emojis/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
         
@@ -225,7 +229,7 @@ test.describe('Name Validation Tests', () => {
         await projectNameInput.fill('Test <script>');
         
         await saveButton.click();
-        errorMessage = page.getByRole('alert');
+        errorMessage = projectSettingsError(page, /no emojis/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
         
@@ -234,7 +238,7 @@ test.describe('Name Validation Tests', () => {
         await projectNameInput.fill('Test !@#$%');
         
         await saveButton.click();
-        errorMessage = page.getByRole('alert');
+        errorMessage = projectSettingsError(page, /no emojis/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
       });
@@ -345,14 +349,14 @@ test.describe('Name Validation Tests', () => {
         await projectNameInput.clear();
         await projectNameInput.fill('https://example.com');
         await saveButton.click();
-        let errorMessage = page.getByRole('alert');
+        let errorMessage = projectSettingsError(page, urlErrorText);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText(urlErrorText);
 
         await projectNameInput.clear();
         await projectNameInput.fill('http://test.com');
         await saveButton.click();
-        errorMessage = page.getByRole('alert');
+        errorMessage = projectSettingsError(page, urlErrorText);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText(urlErrorText);
       });
@@ -462,7 +466,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.getByRole('alert');
+        const errorMessage = projectSettingsError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });

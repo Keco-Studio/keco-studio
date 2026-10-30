@@ -233,11 +233,14 @@ export class LibraryPage {
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Submit the form using the generic submit button
-    // Use force: true because React may re-render the button during form state changes
-    await expect(this.submitButton).toBeVisible({ timeout: 5000 });
-    await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
-    await this.submitButton.click({ force: true });
+    // Scope submission to the current named dialog. A generic dialog button locator can
+    // re-resolve to a hidden portal while the controlled form is rendering.
+    const newLibraryDialog = this.page.getByRole('dialog', { name: 'Create Library' });
+    const createButton = newLibraryDialog.getByRole('button', { name: 'Create', exact: true });
+    await expect(this.libraryNameInput).toHaveValue(library.name);
+    await expect(createButton).toBeVisible({ timeout: 5000 });
+    await expect(createButton).toBeEnabled({ timeout: 5000 });
+    await createButton.click();
 
     // Wait for modal to close
     await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
