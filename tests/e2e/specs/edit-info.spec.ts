@@ -87,7 +87,8 @@ test.describe('Edit Info Feature Tests', () => {
     await page.getByRole('button', { name: 'Readable Systems' }).click();
     await page.getByRole('button', { name: 'Save project information' }).click();
     await expect(page.getByTestId('project-selector-trigger')).toContainText(renamedProject);
-    await expect(page.getByRole('button', { name: renamedProject })).toBeVisible();
+    await page.getByTestId('project-selector-trigger').click();
+    await expect(page.getByRole('menuitemradio').filter({ hasText: renamedProject }).first()).toBeVisible();
   });
 
   test('Library Info - Right-click library and inline rename', async ({ page }) => {

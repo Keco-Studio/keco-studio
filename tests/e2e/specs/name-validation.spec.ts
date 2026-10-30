@@ -9,12 +9,23 @@ import { libraries } from '../fixures/libraries';
 import { folders } from '../fixures/folders';
 import { users } from '../fixures/users';
 
-function formDialogError(page: Page, text: string | RegExp) {
-  return page.locator('[class*="FormDialog"][class*="error"]').filter({ hasText: text }).first();
-}
-
 function toastError(page: Page, text: string | RegExp) {
   return page.locator('body > div').filter({ hasText: text }).last();
+}
+
+async function openProjectSettings(
+  page: Page,
+  projectPage: ProjectPage,
+  projectName: string,
+): Promise<void> {
+  await projectPage.rightClickSidebarProject(projectName);
+  const contextMenu = page.locator('[class*="contextMenu"]');
+  await expect(contextMenu).toBeVisible({ timeout: 5000 });
+  const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
+  await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
+  await projectInfoButton.click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByLabel('Project name')).toBeVisible({ timeout: 15000 });
 }
 
 /**
@@ -59,7 +70,7 @@ test.describe('Name Validation Tests', () => {
   });
 
   test.describe('Empty Name Validation', () => {
-    test('Project - Empty name validation in rename modal', async ({ page }) => {
+    test('Project - Empty name validation in Settings', async ({ page }) => {
       test.setTimeout(120000);
 
       // Generate unique project data
@@ -72,37 +83,25 @@ test.describe('Name Validation Tests', () => {
         await libraryPage.waitForPageLoad();
       });
 
-      // Open Project Info modal
-      await test.step('Open Project Info modal', async () => {
-        const sidebar = page.locator('aside');
-        await projectPage.rightClickSidebarProject(testProject.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
-        await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
-        await projectInfoButton.click();
-        
-        const projectNameInput = page.locator('#project-name');
-        await expect(projectNameInput).toBeVisible({ timeout: 5000 });
+      await test.step('Open Project Settings', async () => {
+        await openProjectSettings(page, projectPage, testProject.name);
       });
 
       // Test empty name validation
       await test.step('Test empty name validation', async () => {
-        const projectNameInput = page.locator('#project-name');
+        const projectNameInput = page.getByLabel('Project name');
         
         // Clear all characters
         await projectNameInput.clear();
         await projectNameInput.fill('');
         
         // Click save button
-        const saveButton = page.getByRole('button', { name: /^save$/i });
+        const saveButton = page.getByRole('button', { name: 'Save project information' });
         await expect(saveButton).toBeVisible();
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /project name is required/i });
+        const errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('Project name is required');
       });
@@ -201,35 +200,23 @@ test.describe('Name Validation Tests', () => {
         await libraryPage.waitForPageLoad();
       });
 
-      // Open Project Info modal
-      await test.step('Open Project Info modal', async () => {
-        const sidebar = page.locator('aside');
-        await projectPage.rightClickSidebarProject(testProject.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
-        await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
-        await projectInfoButton.click();
-        
-        const projectNameInput = page.locator('#project-name');
-        await expect(projectNameInput).toBeVisible({ timeout: 5000 });
+      await test.step('Open Project Settings', async () => {
+        await openProjectSettings(page, projectPage, testProject.name);
       });
 
       // Test special characters validation
       await test.step('Test special characters validation', async () => {
-        const projectNameInput = page.locator('#project-name');
+        const projectNameInput = page.getByLabel('Project name');
         
         // Test with emoji
         await projectNameInput.clear();
         await projectNameInput.fill('Test 😊');
         
-        const saveButton = page.getByRole('button', { name: /^save$/i });
+        const saveButton = page.getByRole('button', { name: 'Save project information' });
         await expect(saveButton).toBeVisible();
         await saveButton.click();
         
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        let errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
         
@@ -238,7 +225,7 @@ test.describe('Name Validation Tests', () => {
         await projectNameInput.fill('Test <script>');
         
         await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
         
@@ -247,7 +234,7 @@ test.describe('Name Validation Tests', () => {
         await projectNameInput.fill('Test !@#$%');
         
         await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
       });
@@ -346,33 +333,26 @@ test.describe('Name Validation Tests', () => {
         await libraryPage.waitForPageLoad();
       });
 
-      await test.step('Open Project Info modal', async () => {
-        const sidebar = page.locator('aside');
-        await projectPage.rightClickSidebarProject(testProject.name);
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
-        await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
-        await projectInfoButton.click();
-        await expect(page.locator('#project-name')).toBeVisible({ timeout: 5000 });
+      await test.step('Open Project Settings', async () => {
+        await openProjectSettings(page, projectPage, testProject.name);
       });
 
       await test.step('Test URL validation', async () => {
-        const projectNameInput = page.locator('#project-name');
-        const saveButton = page.getByRole('button', { name: /^save$/i });
+        const projectNameInput = page.getByLabel('Project name');
+        const saveButton = page.getByRole('button', { name: 'Save project information' });
         await expect(saveButton).toBeVisible();
 
         await projectNameInput.clear();
         await projectNameInput.fill('https://example.com');
         await saveButton.click();
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        let errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText(urlErrorText);
 
         await projectNameInput.clear();
         await projectNameInput.fill('http://test.com');
         await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText(urlErrorText);
       });
@@ -465,36 +445,24 @@ test.describe('Name Validation Tests', () => {
         await libraryPage.waitForPageLoad();
       });
 
-      // Open Project Info modal for second project
-      await test.step('Open Project Info modal for second project', async () => {
-        const sidebar = page.locator('aside');
-        await projectPage.rightClickSidebarProject(testProject2.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
-        await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
-        await projectInfoButton.click();
-        
-        const projectNameInput = page.locator('#project-name');
-        await expect(projectNameInput).toBeVisible({ timeout: 5000 });
+      await test.step('Open Project Settings for second project', async () => {
+        await openProjectSettings(page, projectPage, testProject2.name);
       });
 
       // Test duplicate name validation
       await test.step('Test duplicate name validation', async () => {
-        const projectNameInput = page.locator('#project-name');
+        const projectNameInput = page.getByLabel('Project name');
         
         // Change name to match first project
         await projectNameInput.clear();
         await projectNameInput.fill(testProject1.name);
         
-        const saveButton = page.getByRole('button', { name: /^save$/i });
+        const saveButton = page.getByRole('button', { name: 'Save project information' });
         await expect(saveButton).toBeVisible();
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = formDialogError(page, /already exists/i);
+        const errorMessage = page.getByRole('alert');
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });

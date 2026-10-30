@@ -272,7 +272,7 @@ test.describe('Column operations and double-click rename', () => {
     expect(currentValue.length).toBeLessThanOrEqual(250);
   });
 
-  test('Double-click rename works for project, library, and folder', async ({ page }) => {
+  test('Double-click rename works for library and folder', async ({ page }) => {
     test.setTimeout(180000);
 
     await loginAsSeedEmpty(page);
@@ -293,30 +293,6 @@ test.describe('Column operations and double-click rename', () => {
 
     await libraryPage.createFolderUnderProject(folder);
     await libraryPage.expectFolderCreated();
-
-    // Project rename by double click in the compact project selector.
-    const newProjectName = `${project.name} edited`;
-    const projectTrigger = page.getByTestId('project-selector-trigger');
-    await expect(projectTrigger).toBeVisible({ timeout: 15000 });
-    await projectTrigger.click();
-    const projectTitle = page
-      .getByRole('menuitemradio')
-      .locator(`[title="${project.name}"]`)
-      .first();
-    await expect(projectTitle).toBeVisible({ timeout: 15000 });
-    await projectTitle.dblclick({ force: true });
-
-    const projectRenameInput = page
-      .locator(
-        'aside input[class*="projectSelectorRenameInput"], aside input[class*="renameInput"]'
-      )
-      .first();
-    await expect(projectRenameInput).toBeVisible({ timeout: 10000 });
-    await projectRenameInput.fill(newProjectName);
-    await projectRenameInput.press('Enter');
-    // Trigger label is the user-visible rename confirmation; avoid toggle race on the menu.
-    await expect(projectTrigger).toContainText(newProjectName, { timeout: 15000 });
-    await page.keyboard.press('Escape').catch(() => {});
 
     // Library rename by double click.
     const newLibraryName = `${library.name} edited`;
