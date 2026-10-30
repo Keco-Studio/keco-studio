@@ -711,6 +711,7 @@ test.describe('Agent chat', () => {
     await expect(page.getByTestId('agent-panel')).toBeVisible();
     await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
 
+    await rail.getByRole('button', { name: 'Design' }).click();
     await rail.getByRole('button', { name: 'System' }).click();
     await expect(page).toHaveURL(/game-design-systems/);
   });
