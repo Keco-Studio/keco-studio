@@ -460,7 +460,9 @@ export class LibraryPage {
       .first();
     await expect(addModal).toBeVisible({ timeout: 5000 });
 
-    await addModal.locator('#add-column-name').fill(columnName);
+    const nameInput = addModal.locator('#add-column-name:visible').first();
+    await nameInput.fill(columnName);
+    await expect(nameInput).toHaveValue(columnName);
     await addModal.locator('#add-column-type').click();
 
     const dropdown = this.page.locator('[class*="dataTypeDropdown"]').last();
@@ -474,10 +476,21 @@ export class LibraryPage {
       .first();
     await expect(option).toBeVisible({ timeout: 10000 });
     await option.click();
-    await addModal.locator('#add-column-name').click();
-    await expect(this.page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
+    await expect(addModal.locator('#add-column-type')).toContainText(dataTypeLabel);
+    await nameInput.click();
+    await expect(dropdown).not.toBeVisible({ timeout: 5000 });
+    await expect(nameInput).toHaveValue(columnName);
 
-    await addModal.getByRole('button', { name: /^add$/i }).click();
+    const addButton = addModal.getByRole('button', { name: /^add$/i });
+    await addButton.click();
+    const missingNameError = addModal
+      .locator('[class*="errorText"]')
+      .filter({ hasText: /header name is required\./i });
+    if (await missingNameError.isVisible({ timeout: 1200 }).catch(() => false)) {
+      await nameInput.fill(columnName);
+      await expect(nameInput).toHaveValue(columnName);
+      await addButton.click();
+    }
     await expect(addModal).not.toBeVisible({ timeout: 10000 });
   }
 

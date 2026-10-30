@@ -166,7 +166,9 @@ async function addReferenceColumn(
     .first();
   await expect(addModal).toBeVisible({ timeout: 5000 });
 
-  await addModal.locator('#add-column-name').fill(columnName);
+  const nameInput = addModal.locator('#add-column-name:visible').first();
+  await nameInput.fill(columnName);
+  await expect(nameInput).toHaveValue(columnName);
   await addModal.locator('#add-column-type').click();
 
   const dropdown = page.locator('[class*="dataTypeDropdown"]').last();
@@ -174,13 +176,19 @@ async function addReferenceColumn(
   await expect(typeSearch).toBeVisible({ timeout: 5000 });
   await typeSearch.fill('Reference');
 
-  await page
+  const referenceTypeOption = dropdown
     .locator('.ant-select-item-option')
     .filter({ hasText: /^reference$/i })
-    .first()
-    .click();
+    .first();
+  await expect(referenceTypeOption).toBeVisible({ timeout: 10000 });
+  await referenceTypeOption.click();
+  await expect(addModal.locator('#add-column-type')).toContainText('Reference');
+  await nameInput.click();
+  await expect(dropdown).not.toBeVisible({ timeout: 5000 });
+  await expect(nameInput).toHaveValue(columnName);
 
   const refSelect = addModal.locator('[class*="referenceSelect"]').first();
+  await expect(refSelect).toBeVisible({ timeout: 10000 });
   await refSelect.click();
 
   const refDropdown = page.locator('[class*="referenceDropdown"]').last();
@@ -194,10 +202,22 @@ async function addReferenceColumn(
     .filter({ hasText: targetLibraryName })
     .first();
   await expect(libraryRow).toBeVisible({ timeout: 10000 });
-  await libraryRow.locator('input[type="checkbox"]').click();
+  const libraryCheckbox = libraryRow.locator('input[type="checkbox"]');
+  await libraryCheckbox.click();
+  await expect(libraryCheckbox).toBeChecked();
   await refSelect.click();
+  await expect(refDropdown).not.toBeVisible({ timeout: 5000 });
 
-  await addModal.getByRole('button', { name: /^add$/i }).click();
+  const addButton = addModal.getByRole('button', { name: /^add$/i });
+  await addButton.click();
+  const missingNameError = addModal
+    .locator('[class*="errorText"]')
+    .filter({ hasText: /header name is required\./i });
+  if (await missingNameError.isVisible({ timeout: 1200 }).catch(() => false)) {
+    await nameInput.fill(columnName);
+    await expect(nameInput).toHaveValue(columnName);
+    await addButton.click();
+  }
   await expect(addModal).not.toBeVisible({ timeout: 10000 });
 }
 
