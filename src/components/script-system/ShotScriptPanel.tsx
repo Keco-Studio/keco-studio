@@ -10,6 +10,7 @@ import {
   type Shot,
   type Storyboard,
 } from '@/lib/script-system/shotScript';
+import { GenerationQueue, type QueueRow } from '@/lib/script-system/generationQueue';
 import { CharacterCards } from './CharacterCards';
 import { castDefinitions, castIsReady } from '@/lib/script-system/shotCast';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
@@ -62,37 +63,20 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
   const [run, restart] = useState(0);
   const [brief, setBrief] = useState('');
   const latest = useRef(board);
-  const jobs = useRef(new Map<string, Promise<void>>());
-  const waiting = useRef<Array<() => void>>([]);
-  const running = useRef(0);
-  const [pending, setPending] = useState<string[]>([]);
+  const [queueRows, setQueueRows] = useState<QueueRow[]>([]);
+  const [queue] = useState(() => new GenerationQueue(setQueueRows));
+  const pending = queueRows.map(row => row.key);
   const [failures, setFailures] = useState<Record<string, string>>({});
   const [batch, setBatch] = useState(false);
   const batchActive = useRef(false);
   const navigation = useRef({active,choice,index});
   navigation.current = {active,choice,index};
-  function schedule(key: string, task: () => Promise<void>, dependency?: Promise<void>) {
-    const existing = jobs.current.get(key);
+  function schedule(key: string, task: (signal: AbortSignal) => Promise<void>, dependency?: Promise<void>) {
+    const existing = queue.get(key);
     if (existing) return existing;
-    const promise = Promise.resolve(dependency).then(async () => {
-      if (running.current >= 3) await new Promise<void>(resolve => waiting.current.push(resolve));
-      else running.current++;
-      try { await task(); }
-      finally {
-        const next = waiting.current.shift();
-        if (next) next();
-        else running.current--;
-      }
-    }).catch(e => {
-      setFailures(old => ({...old, [key]: (e as Error).message}));
-      throw e;
-    }).finally(() => {
-      jobs.current.delete(key);
-      setPending([...jobs.current.keys()]);
-    });
-    jobs.current.set(key, promise);
     setFailures(old => { const copy = {...old}; delete copy[key]; return copy; });
-    setPending([...jobs.current.keys()]);
+    const promise = queue.add(key, task, dependency);
+    void promise.catch(e => setFailures(old => ({...old, [key]: (e as Error).message})));
     return promise;
   }
   type Draft = {board:Storyboard;active:string;choice:string;index:number};
@@ -120,19 +104,15 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     }
   }
   const revision = useRef(0);
-  const requests = useRef(new AbortController());
-  useEffect(() => {
-    requests.current = new AbortController();
-    return () => {
-      revision.current++;
-      requests.current.abort();
-    };
-  }, []);
-  async function requestGeneration(artworkShotId?: string, source = board, prepareCast = false, characterName?: string, profilesOnly = false) {
+  useEffect(() => () => {
+    revision.current++;
+    queue.cancelAll();
+  }, [queue]);
+  async function requestGeneration(signal: AbortSignal, artworkShotId?: string, source = board, prepareCast = false, characterName?: string, profilesOnly = false) {
     const referenceId = artworkShotId && shotContinuity(source).context(artworkShotId).referenceId;
     const shots = source.shots.map(({ artwork: _image, backdrop, ...shot }) => shot.id === referenceId && backdrop ? { ...shot, backdrop } : shot);
     const response = await fetch('/api/script-shot-generation', {
-      method: 'POST', signal: requests.current.signal,
+      method: 'POST', signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true, characterName, profilesOnly: profilesOnly || undefined } : {}), ...(artworkShotId ? { artworkShotId } : {}) }),
     });
@@ -141,6 +121,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
         'The AI service is unavailable. Open the signed-in Conversation to generate shots.',
       );
     const result = await response.json();
+    signal.throwIfAborted();
     if (!response.ok) throw Error(result.error || 'Generation failed');
     return result;
   }
@@ -149,9 +130,9 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     const epoch = revision.current;
     const key = characterName ? 'Character: ' + characterName : 'Character profiles';
     try {
-      await schedule(key, async () => {
+      await schedule(key, async signal => {
         if (epoch !== revision.current) throw Error('The draft changed. Generate again.');
-        const result = await requestGeneration(undefined, source, true, characterName, profilesOnly);
+        const result = await requestGeneration(signal, undefined, source, true, characterName, profilesOnly);
         if (result.warning) throw Error(result.warning);
         const current = latest.current;
         let sprites: Storyboard['castSprites'] = result.castSprites;
@@ -172,19 +153,19 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     } catch (e) { tell((e as Error).message); }
   }
   function renderShot(id: string, dependency?: Promise<void>) {
-    if (!dependency && jobs.current.size) {
+    if (!dependency && pending.length) {
       const continuity = shotContinuity(latest.current);
       for (let parent = continuity.parentId(id); parent; parent = continuity.parentId(parent)) {
-        dependency = jobs.current.get('Shot: ' + parent);
+        dependency = queue.get('Shot: ' + parent);
         if (dependency) break;
       }
     }
     const epoch = revision.current;
-    return schedule('Shot: ' + id, async () => {
+    return schedule('Shot: ' + id, async signal => {
       const source = latest.current;
       const target = source.shots.find(s => s.id === id);
       if (!target || epoch !== revision.current) throw Error('The shot draft changed.');
-      const result = await requestGeneration(id, source);
+      const result = await requestGeneration(signal, id, source);
       const current = latest.current;
       const now = current.shots.find(s => s.id === id);
       if (epoch !== revision.current || !now || now.line !== target.line || now.scene !== target.scene ||
@@ -204,9 +185,9 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       } else {
         const source = latest.current;
         const epoch = revision.current;
-        await schedule('Shot directions', async () => {
+        await schedule('Shot directions', async signal => {
           if (epoch !== revision.current) throw Error('The draft changed. Generate directions again.');
-          const result = await requestGeneration(undefined, source);
+          const result = await requestGeneration(signal, undefined, source);
           const current = latest.current;
           const content = (shots: Shot[]) => JSON.stringify(shots.map(({artwork, backdrop, visibleCast, ...shot}) => shot));
           if (epoch !== revision.current || content(current.shots) !== content(source.shots)) throw Error('Your shots changed. Generate directions again.');
@@ -230,7 +211,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     try {
       for (const shot of continuity.order) {
         const parent = tasks.get(continuity.parentId(shot.id) ?? '');
-        const task = regenerate || !shot.artwork || jobs.current.has('Shot: ' + shot.id)
+        const task = regenerate || !shot.artwork || queue.get('Shot: ' + shot.id)
           ? renderShot(shot.id, parent)
           : Promise.resolve(parent);
         tasks.set(shot.id, task);
@@ -313,9 +294,21 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     }
   }
   const castReady = castIsReady(board);
+  function jobTitle(key: string) {
+    if (!key.startsWith('Shot: ')) return key;
+    const i = board.shots.findIndex(s => s.id === key.slice(5));
+    return i < 0 ? 'Removed shot' : 'Shot ' + (i + 1) + ' · ' + board.shots[i].scene;
+  }
   const activity = <div aria-live="polite">
     {pending.length > 0 && <span>{pending.length} generation {pending.length === 1 ? 'task' : 'tasks'} in progress</span>}
-    {Object.entries(failures).map(([key, reason]) => <p key={key}>{key.startsWith('Shot: ') ? 'Shot ' + (board.shots.findIndex(s => s.id === key.slice(5)) + 1) : key}: {reason}</p>)}
+    {queueRows.length > 0 && <section aria-label="Generation queue">
+      <h4>Generation queue</h4>
+      <ol className={styles.queue}>{queueRows.map(row => <li key={row.key}>
+        <strong>{jobTitle(row.key)}</strong><span>{row.state}</span>
+        <button aria-label={'Cancel ' + jobTitle(row.key)} onClick={() => queue.cancel(row.key)}>Cancel</button>
+      </li>)}</ol>
+    </section>}
+    {Object.entries(failures).map(([key, reason]) => <p key={key}>{jobTitle(key)}: {reason}</p>)}
   </div>;
   if (charactersOpen) return (
     <section className={styles.panel} aria-label="Characters">
