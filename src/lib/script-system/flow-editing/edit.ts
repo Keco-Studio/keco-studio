@@ -4,6 +4,7 @@ export type FlowTarget = { kind: 'row'; rowId: string } | { kind: 'end' } | { ki
 export type FlowEdit =
   | { type: 'outlet'; rowId: string; target: FlowTarget }
   | { type: 'option'; rowId: string; optionIndex: number; text: string; commands?: string; target: Exclude<FlowTarget, { kind: 'sequence' }> }
+  | { type: 'disconnect-option'; rowId: string; optionIndex: number }
   | { type: 'delete-option'; rowId: string; optionIndex: number };
 
 export function applyFlowEdit(source: readonly FlowRow[], edit: FlowEdit, allocateId: () => string): FlowRow[] {
@@ -13,6 +14,11 @@ export function applyFlowEdit(source: readonly FlowRow[], edit: FlowEdit, alloca
   const row = rows.find(r => r.id === edit.rowId);
   if (!row) throw new Error('Unknown source row');
   if ('optionIndex' in edit && (!Number.isSafeInteger(edit.optionIndex) || edit.optionIndex < 0)) throw new Error('Invalid option index');
+  if (edit.type === 'disconnect-option') {
+    if (!flowText(row.values[`Option${edit.optionIndex}`]).trim()) throw new Error('Option not found');
+    row.values[`Option${edit.optionIndex}_Next`] = '';
+    return rows;
+  }
   if (edit.type === 'delete-option') {
     if (!flowText(row.values[`Option${edit.optionIndex}`]).trim()) throw new Error('Option not found');
     for (const suffix of ['', '_Next', '_Commands']) row.values[`Option${edit.optionIndex}${suffix}`] = '';

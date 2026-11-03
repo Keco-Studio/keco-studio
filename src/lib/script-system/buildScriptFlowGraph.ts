@@ -136,6 +136,7 @@ export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowG
     for (const rowIndex of node.rowIndexes) {
       const row = rows[rowIndex] ?? {};
       for (let optionIndex = 0; optionIndex < OPTION_SLOT_COUNT; optionIndex += 1) {
+        if (row[`Option${optionIndex}`]?.trim()) hasExplicitEdge = true;
         const target = resolveNextTarget(row[`Option${optionIndex}_Next`] ?? '');
         const to = target ? plotByLabel.get(target) : undefined;
         if (!to) continue;

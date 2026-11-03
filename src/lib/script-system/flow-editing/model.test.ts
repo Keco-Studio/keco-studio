@@ -28,6 +28,17 @@ describe('authoritative Script flow', () => {
     expect(next[0].values.Option1_Next).toBe(`Jump ${next[2].values.Label}`);
     expect(JSON.stringify(rows)).toBe(before);
   });
+  it('disconnects just the selected choice and keeps its output available to reconnect', () => {
+    const rows = [row('a', { Option1: 'Open', Option1_Next: 'Jump B', Option1_Commands: 'Score +1', Option2: 'Wait', Option2_Next: 'Jump B' }), row('b', { Label: 'B' })];
+    const next = applyFlowEdit(rows, { type: 'disconnect-option', rowId: 'a', optionIndex: 1 }, () => { throw Error('Unexpected new node'); });
+    expect(next[0].values).toEqual({ ...rows[0].values, Option1_Next: '' });
+    const result = analyzeFlow(next);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.outlets[0].targetRowId).toBeUndefined();
+    expect(result.outlets[1].targetRowId).toBe('b');
+    const reconnected = applyFlowEdit(next, { type: 'option', rowId: 'a', optionIndex: 1, text: 'Open', target: { kind: 'row', rowId: 'b' } }, () => 'unused');
+    expect(analyzeFlow(reconnected)).toEqual(analyzeFlow(rows));
+  });
   it('ends an option using an independent terminal row without removing its button', () => {
     const next = applyFlowEdit([row('a'), row('b')], { type: 'option', rowId: 'a', optionIndex: 3, text: 'Leave', target: { kind: 'end' } }, () => 'terminal');
     expect(next[0].values.Option3).toBe('Leave');

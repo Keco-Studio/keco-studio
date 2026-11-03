@@ -57,7 +57,7 @@ export function analyzeFlow(rows: readonly FlowRow[]): { outlets: FlowOutlet[]; 
       report(row.id, 'Commands', 'AMBIGUOUS_CONTROL', 'Multiple control intentions; resolve in Script before editing flow.');
     }
     const choices = options.map(i => ({ rowId: row.id, kind: 'option' as const, optionIndex: i,
-      text: flowText(row.values[`Option${i}`]), ...resolve(row.id, `Option${i}_Next`, row.values[`Option${i}_Next`]) }));
+      text: flowText(row.values[`Option${i}`]), ...(flowText(row.values[`Option${i}_Next`]).trim() ? resolve(row.id, `Option${i}_Next`, row.values[`Option${i}_Next`]) : {}) }));
     for (const i of optionIndexes(row)) {
       if (!options.includes(i) && (flowText(row.values[`Option${i}_Next`]).trim() || flowText(row.values[`Option${i}_Commands`]).trim())) {
         report(row.id, `Option${i}`, 'EMPTY_OPTION', 'Option data has no visible button text.');

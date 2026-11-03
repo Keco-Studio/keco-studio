@@ -68,7 +68,8 @@ export function captureScriptReuseSnapshot(input: ScriptReuseSource, inputSelect
       throw new Error('Ambiguous control flow');
     }
     for (const optionIndex of options) {
-      add(row.localId, resolve(String(row.values[`Option${optionIndex}_Next`] ?? '')), 'option', optionIndex);
+      const next = String(row.values[`Option${optionIndex}_Next`] ?? '').trim();
+      if (next) add(row.localId, resolve(next), 'option', optionIndex);
     }
     if (options.length || end) continue;
     if (jumps.length) add(row.localId, resolve(jumps[0]), 'jump');

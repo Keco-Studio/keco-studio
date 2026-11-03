@@ -312,7 +312,9 @@ export function InlineFlowChart({
     const edit: FlowEdit =
       pin.optionIndex === undefined
         ? { type: 'outlet', rowId: pin.rowId, target }
-        : {
+        : target.kind === 'end'
+          ? { type: 'disconnect-option', rowId: pin.rowId, optionIndex: pin.optionIndex }
+          : {
             type: 'option',
             rowId: pin.rowId,
             optionIndex: pin.optionIndex,
