@@ -10,6 +10,7 @@ import {
   type Shot,
   type Storyboard,
 } from '@/lib/script-system/shotScript';
+import { CharacterCards } from './CharacterCards';
 import { castIsReady } from '@/lib/script-system/shotCast';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
 import type { FlowRow } from '@/lib/script-system/flow-editing/model';
@@ -63,20 +64,36 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
   const [generating, setGenerating] = useState(false);
   type Draft = {board:Storyboard;active:string;choice:string;index:number};
   const history=useRef<{past:Draft[];future:Draft[]}>({past:[],future:[]});
+  function saveCast(board: Storyboard) {
+    localStorage.setItem(castKey, JSON.stringify({ characterGuide: board.characterGuide, castSprites: board.castSprites }));
+  }
+  function invalidateCastShots(sprites: Storyboard['castSprites']) {
+    const changed = new Set([...(board.castSprites ?? []), ...(sprites ?? [])]
+      .filter(c => !(board.castSprites ?? []).some(old => old.name === c.name && old.image === c.image)
+        || !(sprites ?? []).some(next => next.name === c.name && next.image === c.image)).map(c => c.name));
+    return board.shots.map(s => {
+      if (!changed.size || s.visibleCast && !s.visibleCast.some(name => changed.has(name))) return s;
+      const { artwork, visibleCast, ...rest } = s;
+      return rest;
+    });
+  }
   function travel(redo:boolean){
     const from=redo?history.current.future:history.current.past;
     const previous=from.pop();if(!previous)return;
     (redo?history.current.past:history.current.future).push({board,active,choice,index});
     revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'Redone':'Undone');
+    if (previous.board.characterGuide !== board.characterGuide || previous.board.castSprites !== board.castSprites) {
+      try { saveCast(previous.board); } catch { tell('Browser storage is full. This change is only available in this session.'); }
+    }
   }
   const revision = useRef(0);
-  async function requestGeneration(artworkShotId?: string, source = board, prepareCast = false) {
+  async function requestGeneration(artworkShotId?: string, source = board, prepareCast = false, characterName?: string, profilesOnly = false) {
     const referenceId = artworkShotId && shotContinuity(source).context(artworkShotId).referenceId;
     const shots = source.shots.map(({ artwork: _image, backdrop, ...shot }) => shot.id === referenceId && backdrop ? { ...shot, backdrop } : shot);
     const response = await fetch('/api/script-shot-generation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true } : {}), ...(artworkShotId ? { artworkShotId } : {}) }),
+      body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true, characterName, profilesOnly: profilesOnly || undefined } : {}), ...(artworkShotId ? { artworkShotId } : {}) }),
     });
     if (!response.headers.get('content-type')?.includes('application/json'))
       throw Error(
@@ -86,20 +103,19 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     if (!response.ok) throw Error(result.error || 'Generation failed');
     return result;
   }
-  async function prepareCast() {
+  async function prepareCast(characterName?: string, profilesOnly = false) {
     const started = revision.current;
     setGenerating(true);
-    tell('Preparing character designs…');
+    tell(profilesOnly ? 'Drafting character profiles…' : 'Generating reference art for ' + characterName + '…');
     try {
-      const result = await requestGeneration(undefined, board, true);
+      const result = await requestGeneration(undefined, board, true, characterName, profilesOnly);
       if (started !== revision.current) { tell('The draft changed. Prepare the updated character designs.'); return; }
       const cast = { characterGuide: result.characterGuide, castSprites: result.castSprites };
-      const changed = JSON.stringify(board.castSprites) !== JSON.stringify(cast.castSprites);
-      const next = checkBoard({ ...board, ...cast, shots: changed && board.castSprites ? board.shots.map(({ artwork, ...s }) => s) : board.shots });
+      const next = checkBoard({ ...board, ...cast, shots: invalidateCastShots(cast.castSprites) });
       update(next);
       try { localStorage.setItem(castKey, JSON.stringify(cast)); }
       catch { tell('Designs are available for this session. Browser storage is full.'); return; }
-      tell(result.warning || 'Character designs saved. Open Shot Script to stage the scene.');
+      tell(result.warning || (profilesOnly ? 'Profiles ready. Review each character before generating reference art.' : 'Reference art saved for ' + characterName + '.'));
     } catch (e) { tell((e as Error).message); } finally { setGenerating(false); }
   }
   async function directShots(artwork = false) {
@@ -113,8 +129,8 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
         return;
       }
       const next = artwork
-        ? checkBoard({ ...board, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork, backdrop: result.backdrop } : s) })
-        : checkBoard({ ...result.board, castSprites: board.castSprites, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork, backdrop: board.shots[i].backdrop })) });
+        ? checkBoard({ ...board, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork, backdrop: result.backdrop, visibleCast: result.visibleCast } : s) })
+        : checkBoard({ ...result.board, castSprites: board.castSprites, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork, backdrop: board.shots[i].backdrop, visibleCast: board.shots[i].visibleCast })) });
       update(next);
       tell(artwork ? 'Scene artwork is ready.' : 'Shot directions updated. Illustrate a shot to add its scene image.');
     } catch (e) {
@@ -134,7 +150,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
         tell('Illustrating shot ' + (i + 1) + ' of ' + board.shots.length + '…');
         const result = await requestGeneration(shot.id, next);
         if (revision.current !== started) throw Error('The draft changed. Generate again from the updated shots.');
-        next = checkBoard({ ...next, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork, backdrop: result.backdrop } : s) });
+        next = checkBoard({ ...next, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork, backdrop: result.backdrop, visibleCast: result.visibleCast } : s) });
         illustrated++;
       }
       if (next !== board) update(next);
@@ -219,22 +235,18 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     <section className={styles.panel} aria-label="Characters">
       <h3>Characters</h3>
       <p>Define the cast for this Conversation. Each scene reuses the same character artwork.</p>
-      <label>Character guide
-        <textarea rows={6} maxLength={4000} value={board.characterGuide ?? ''}
-          placeholder="Name — appearance, clothing and signature item. Leave blank to draft the cast from the script."
-          onChange={e => update({ ...board, characterGuide: e.target.value })} />
-      </label>
+      <CharacterCards board={board} busy={generating} generate={name => prepareCast(name)}
+        draft={() => prepareCast(undefined, true)} save={guide => {
+          const cast = {characterGuide: guide, castSprites: (board.castSprites ?? []).filter(sprite =>
+            guide.split('\n').some(line => line.trim() === sprite.appearance))};
+          localStorage.setItem(castKey, JSON.stringify(cast));
+          update({...board, ...cast, shots: invalidateCastShots(cast.castSprites)});
+          tell('Character profiles saved.');
+        }} />
       <div className={styles.bar}>
-        <button disabled={generating || castReady} onClick={prepareCast}>{generating ? 'Preparing designs…' : 'Prepare character designs'}</button>
         <button disabled={!castReady || generating} onClick={() => onSwitch?.('shots')}>Continue to Shot Script</button>
       </div>
       <span role="status">{message}</span>
-      <div className={styles.castCards} aria-label="Character designs">
-        {board.castSprites?.map(sprite => <figure key={sprite.name}>
-          <img src={sprite.image} alt={sprite.name} />
-          <figcaption><strong>{sprite.name}</strong><p>{sprite.appearance.replace(sprite.name, '').replace(/^[\s:：—-]+/, '')}</p></figcaption>
-        </figure>)}
-      </div>
     </section>
   );
   return (

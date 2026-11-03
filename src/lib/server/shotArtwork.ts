@@ -32,11 +32,11 @@ const error = (status: number, message: string) => Response.json({ error: messag
 const llmOptions = (signal: AbortSignal) => ({ signal, maxCompletionTokens: 1000,
   ...(new URL(process.env.LLM_API_URL || 'https://api.deepseek.com').hostname === 'api.deepseek.com' ? { thinking: 'disabled' as const } : {}) });
 
-export async function prepareCharacters(input: unknown, brief: string, signal: AbortSignal) {
+export async function prepareCharacters(input: unknown, brief: string, signal: AbortSignal, characterName?: string, profilesOnly = false) {
   let board;
   try { board = checkBoard(input); } catch { return error(400, 'Invalid shot script.'); }
   const token = process.env.PIXELLAB_API_KEY;
-  if (!token) return error(503, 'Configure PixelLab to create character designs.');
+
   let guide = board.characterGuide?.trim();
   if (!guide) {
     try {
@@ -51,13 +51,20 @@ export async function prepareCharacters(input: unknown, brief: string, signal: A
   try { definitions = castDefinitions(guide); } catch { return error(400, 'Use one unique Name — Appearance per line, or None for an empty cast.'); }
   if (definitions.length > 64) return error(400, 'Use up to 64 characters.');
   const sprites = (board.castSprites ?? []).filter(s => definitions.some(d => d.appearance === s.appearance && d.name === s.name));
+  if (profilesOnly) return Response.json({ characterGuide: guide, castSprites: sprites });
+  if (!token) return error(503, 'Configure PixelLab to create character designs.');
+  if (characterName && !definitions.some(d => d.name === characterName)) return error(400, 'Unknown character.');
   for (const d of definitions) {
-    if (sprites.some(s => s.name === d.name)) continue;
+    if (characterName && characterName !== d.name) continue;
+    if (!characterName && sprites.some(s => s.name === d.name)) continue;
     try {
       const image = await pixelImage(token, signal, 'Single isolated transparent full-body pixel-art sprite, neutral standing pose, feet visible, no environment. ' + d.appearance, true);
+      const existing = sprites.findIndex(s => s.name === d.name);
+      if (existing >= 0) sprites.splice(existing, 1);
       sprites.push({ ...d, image });
-    } catch {
-      return Response.json({ characterGuide: guide, castSprites: sprites, warning: 'Could not prepare ' + d.name + '. Retry to complete the missing designs.' });
+    } catch (e) {
+      const reason = e instanceof Error && /^PixelLab returned HTTP \d+$/.test(e.message) ? e.message : 'No usable image was received from PixelLab';
+      return Response.json({ characterGuide: guide, castSprites: sprites, warning: reason + ' for ' + d.name + '. Retry Generate reference.' });
     }
   }
   return Response.json({ characterGuide: guide, castSprites: sprites });
@@ -98,7 +105,7 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
     }
     const backdrop = await pixelImage(token, signal, 'Empty cinematic pixel art environment, no people. ' + plan.background, false, reference?.backdrop);
     const composite = await sharp(bytes(backdrop)).resize(192, 112).composite(layers).png().toBuffer();
-    return Response.json({ characterGuide: guide, castSprites: sprites, backdrop, artwork: 'data:image/png;base64,' + composite.toString('base64') });
+    return Response.json({ characterGuide: guide, castSprites: sprites, visibleCast: cast, backdrop, artwork: 'data:image/png;base64,' + composite.toString('base64') });
   } catch {
     return error(502, 'Could not render the shot with its saved characters. Try again.');
   }
