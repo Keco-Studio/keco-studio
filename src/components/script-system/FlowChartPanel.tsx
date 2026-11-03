@@ -26,6 +26,7 @@ export type FlowChartPanelProps = {
   title?: string;
   referenceLabel?: string;
   readOnly?: boolean;
+  onNodeMenu?: (id: string, x: number, y: number) => void;
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
@@ -238,7 +239,7 @@ export function FlowChartPanel({
   title = 'Flow chart',
   referenceLabel,
   readOnly = false,
-  onSelectPlotNode,
+  onNodeMenu, onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -457,11 +458,18 @@ export function FlowChartPanel({
                     data-flow-preview-node={preview || undefined}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     className={styles.flowNode}
+                    onContextMenu={!onNodeMenu || preview || readOnly ? undefined : e => { e.preventDefault(); onNodeMenu(node.id, e.clientX, e.clientY); }}
                     onClick={preview || readOnly ? undefined : () => onSelectPlotNode(node.id)}
                     role={preview || readOnly ? undefined : 'button'}
                     tabIndex={preview || readOnly ? undefined : 0}
                     onKeyDown={(event) => {
                       if (preview || readOnly) return;
+                      if (onNodeMenu && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+                        event.preventDefault();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        onNodeMenu(node.id, bounds.left, bounds.bottom);
+                        return;
+                      }
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onSelectPlotNode(node.id);

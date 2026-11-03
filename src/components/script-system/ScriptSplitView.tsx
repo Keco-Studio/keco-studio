@@ -555,6 +555,8 @@ export function ScriptSplitView({
                 {projectId && supabase && !referenceTemplate && !graphPreview ? <InlineFlowChart
                   key={`${projectId}:${libraryId}`}
                   projectId={projectId} libraryId={libraryId} rowIds={rowIds}
+                  characters={dialogueEditor.characters.map(c=>c.name)}
+                  onInsertDialogue={dialogueEditor.enabled ? speaker=>dialogueEditor.insertAfterBlock(null,speaker) : undefined}
                   beforeOpen={beforeFlowOpen} onSaved={dialogueEditor.refreshAfterFlow}
                   graph={displayedGraph} title="Branch Structure" selectedPlotNodeId={displayedSelectedNodeId}
                   onSelectPlotNode={selectDisplayedPlotNode} onClose={() => setCollapsed(true)}

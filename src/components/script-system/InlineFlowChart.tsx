@@ -22,6 +22,8 @@ type Snapshot = {
   diagnostics: FlowDiagnostic[];
 };
 type Props = FlowChartPanelProps & {
+  characters?: string[];
+  onInsertDialogue?: (speaker: string) => Promise<boolean>;
   projectId: string;
   libraryId: string;
   rowIds: string[];
@@ -33,6 +35,8 @@ const key = (pin: FlowOutlet) =>
 const name = (pin: FlowOutlet) => pin.text || 'Continue';
 
 export function InlineFlowChart({
+  characters = [],
+  onInsertDialogue,
   projectId,
   libraryId,
   rowIds,
@@ -45,7 +49,21 @@ export function InlineFlowChart({
   const [armed, setArmed] = useState<FlowOutlet>();
   const [selected, setSelected] = useState<FlowOutlet>();
   const [targets, setTargets] = useState<string[]>([]);
-  const [properties, setProperties] = useState(false);
+  const [properties, setProperties] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(
+    null,
+  );
+  const [adding, setAdding] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    menuRef.current?.querySelector('button')?.focus();
+    const dismiss = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(null);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [menu]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
@@ -58,9 +76,10 @@ export function InlineFlowChart({
     if (!response.ok) throw new Error('Could not load flow connections.');
     setData(await response.json());
   }, [endpoint]);
+  const rowSignature = rowIds.join('|');
   useEffect(() => {
     void load().catch((e) => setMessage(e.message));
-  }, [load]);
+  }, [load, rowSignature]);
   const cancel = () => {
     setArmed(undefined);
     setSelected(undefined);
@@ -143,9 +162,7 @@ export function InlineFlowChart({
     }
   }
   const editable = data?.canEdit && !data.diagnostics.length;
-  const currentNode = chart.graph.nodes.find(
-    (n) => n.id === chart.selectedPlotNodeId,
-  );
+  const currentNode = chart.graph.nodes.find((n) => n.id === properties);
   return (
     <div
       className={styles.inlineChart}
@@ -159,6 +176,8 @@ export function InlineFlowChart({
         if (e.key === 'Escape') {
           e.preventDefault();
           cancel();
+          setMenu(null);
+          setProperties(null);
           setMessage('');
         } else if (selected && (e.key === 'Delete' || e.key === 'Backspace')) {
           e.preventDefault();
@@ -168,6 +187,21 @@ export function InlineFlowChart({
     >
       <FlowChartPanel
         {...chart}
+        onNodeMenu={
+          editable
+            ? (id, x, y) => {
+                cancel();
+                setProperties(null);
+                setAdding(false);
+                chart.onSelectPlotNode(id);
+                setMenu({
+                  id,
+                  x: Math.max(0, Math.min(x, window.innerWidth - 224)),
+                  y: Math.max(0, Math.min(y, window.innerHeight - 190)),
+                });
+              }
+            : undefined
+        }
         tools={
           <div className={styles.wireTools}>
             <span role="status">
@@ -204,30 +238,71 @@ export function InlineFlowChart({
                 ) || id}
               </button>
             ))}
-            {editable && currentNode && (
-              <details>
-                <summary>Node properties</summary>
-                <button onClick={() => setProperties((v) => !v)}>
-                  Options and commands
+            {menu && (
+              <div
+                ref={menuRef}
+                role="menu"
+                aria-label="节点操作"
+                className={styles.nodeMenu}
+                style={{ left: menu.x, top: menu.y }}
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProperties(menu.id);
+                    setMenu(null);
+                  }}
+                >
+                  节点属性
                 </button>
-                {properties && (
-                  <ScriptFlowEditor
-                    projectId={projectId}
-                    libraryId={libraryId}
-                    selectedRowIds={currentNode.rowIndexes.map(
-                      (i) => rowIds[i],
-                    )}
-                    beforeOpen={beforeOpen}
-                    onSaved={async () => {
-                      await onSaved();
-                      await load();
-                      setProperties(false);
-                    }}
-                    inlineProperties
-                    onDismiss={() => setProperties(false)}
-                  />
+                {onInsertDialogue && (
+                  <button role="menuitem" onClick={() => setAdding((v) => !v)}>
+                    在此后添加对白…
+                  </button>
                 )}
-              </details>
+                {adding &&
+                  characters.map((speaker) => (
+                    <button
+                      role="menuitem"
+                      key={speaker}
+                      onClick={async () => {
+                        setMenu(null);
+                        try {
+                          if (
+                            (await beforeOpen()) &&
+                            (await onInsertDialogue?.(speaker))
+                          ) {
+                            await load();
+                            setMessage('已添加对白');
+                          } else setMessage('未能插入对白');
+                        } catch (e) {
+                          setMessage((e as Error).message);
+                        }
+                      }}
+                    >
+                      {speaker}
+                    </button>
+                  ))}
+                {adding && !characters.length && (
+                  <span>请先在剧本中添加角色。</span>
+                )}
+              </div>
+            )}
+            {editable && currentNode && (
+              <ScriptFlowEditor
+                key={currentNode.id}
+                projectId={projectId}
+                libraryId={libraryId}
+                selectedRowIds={currentNode.rowIndexes.map((i) => rowIds[i])}
+                beforeOpen={beforeOpen}
+                inlineProperties
+                onSaved={async () => {
+                  await onSaved();
+                  await load();
+                  setProperties(null);
+                }}
+                onDismiss={() => setProperties(null)}
+              />
             )}
             {data?.diagnostics.map((d, i) => (
               <span key={i} role="alert">

@@ -18,3 +18,7 @@
 .socket:hover,.socket:focus { stroke:#007aff; stroke-width:3; }
 .wire { cursor:pointer; }
 .wire:hover path:first-child,.wire:focus path:first-child { stroke:#007aff; }
+
+.nodeMenu { position:fixed; z-index:100; display:grid; min-width:160px; max-height:180px; overflow:auto; padding:4px; background:white; color:#24364a; border:1px solid #d8dfe6; border-radius:6px; box-shadow:0 4px 16px #18243528; }
+.nodeMenu button { border:0; background:transparent; color:inherit; text-align:left; padding:6px 10px; cursor:pointer; }
+.nodeMenu button:hover,.nodeMenu button:focus-visible { background:#eaf3ff; }
