@@ -18,6 +18,8 @@ import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
+  renderWiring?: (positions: Map<string, { x: number; y: number; layer: number }>) => React.ReactNode;
+  tools?: React.ReactNode;
   graph: FlowGraph;
   selectedPlotNodeId: string;
   previewNodeIds?: string[];
@@ -231,6 +233,7 @@ function mergeBranchRoute(
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
+  renderWiring, tools,
   previewNodeIds = [],
   title = 'Flow chart',
   referenceLabel,
@@ -317,6 +320,7 @@ export function FlowChartPanel({
         closeLabel="Close flow chart"
         hideClose={!onClose}
       />
+      {tools}
       <div
         ref={bodyRef}
         className={styles.flowBody}
@@ -352,7 +356,7 @@ export function FlowChartPanel({
                 role="img"
                 aria-label="Script flow chart"
               >
-              {graph.edges.map((edge, index) => {
+              {!renderWiring && graph.edges.map((edge, index) => {
                 if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
                 const from = layout.positions.get(edge.from);
                 const to = layout.positions.get(edge.to);
@@ -393,7 +397,7 @@ export function FlowChartPanel({
                   </g>
                 );
               })}
-              {[...ordinaryMergeEdges].map(([targetId, edges]) => {
+              {!renderWiring && [...ordinaryMergeEdges].map(([targetId, edges]) => {
                 const target = layout.positions.get(targetId);
                 if (!target) return null;
                 const junction = {
@@ -487,6 +491,7 @@ export function FlowChartPanel({
                   </g>
                 );
               })}
+              {renderWiring?.(layout.positions)}
               </svg>
             </div>
           </div>

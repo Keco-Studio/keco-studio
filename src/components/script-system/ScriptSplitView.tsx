@@ -45,7 +45,7 @@ import {
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
-import { ScriptFlowEditor } from './ScriptFlowEditor';
+import { InlineFlowChart } from './InlineFlowChart';
 import { projectFlowGraph } from '@/lib/script-system/flow-editing/projection';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
@@ -552,15 +552,13 @@ export function ScriptSplitView({
                 className={styles.rightPane}
                 style={{ flex: `${1 - ratio} 1 0%` }}
               >
-                {projectId && supabase && !referenceTemplate && !graphPreview ? <ScriptFlowEditor
+                {projectId && supabase && !referenceTemplate && !graphPreview ? <InlineFlowChart
                   key={`${projectId}:${libraryId}`}
-                  projectId={projectId}
-                  libraryId={libraryId}
-                  selectedRowIds={selectedRows.map(row => row.id)}
-                  beforeOpen={beforeFlowOpen}
-                  onSaved={dialogueEditor.refreshAfterFlow}
-                /> : null}
-                <FlowChartPanel
+                  projectId={projectId} libraryId={libraryId} rowIds={rowIds}
+                  beforeOpen={beforeFlowOpen} onSaved={dialogueEditor.refreshAfterFlow}
+                  graph={displayedGraph} title="Branch Structure" selectedPlotNodeId={displayedSelectedNodeId}
+                  onSelectPlotNode={selectDisplayedPlotNode} onClose={() => setCollapsed(true)}
+                /> : <FlowChartPanel
                   graph={displayedGraph}
                   title="Branch Structure"
                   referenceLabel={referenceTemplate?.name}
@@ -568,7 +566,7 @@ export function ScriptSplitView({
                   previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}
                   onSelectPlotNode={selectDisplayedPlotNode}
                   onClose={() => setCollapsed(true)}
-                />
+                />}
               </div>
             </>
           ) : null}

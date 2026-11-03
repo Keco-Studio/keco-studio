@@ -1,13 +1,12 @@
 'use client';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { applyFlowEdit, type FlowEdit } from '@/lib/script-system/flow-editing/edit';
 import { analyzeFlow, flowText, optionIndexes, type FlowDiagnostic, type FlowRow } from '@/lib/script-system/flow-editing/model';
-import { FlowPinBoard } from './FlowPinBoard';
 import styles from './ScriptFlowEditor.module.css';
 
 type Snapshot = { rows: FlowRow[]; fingerprint: string; canEdit: boolean; diagnostics: FlowDiagnostic[] };
-type Props = { projectId: string; libraryId: string; selectedRowIds: string[]; beforeOpen: () => Promise<boolean>; onSaved: () => void | Promise<void> };
-export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeOpen, onSaved }: Props) {
+type Props = { inlineProperties?: boolean; onDismiss?: () => void; projectId: string; libraryId: string; selectedRowIds: string[]; beforeOpen: () => Promise<boolean>; onSaved: () => void | Promise<void> };
+export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeOpen, onSaved, inlineProperties, onDismiss }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -44,6 +43,8 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); inFlight.current = false; }
   };
+  const start = useRef(open);
+  useEffect(() => { if (inlineProperties) void start.current(); }, [inlineProperties]);
   const preview = useMemo(() => {
     if (!snapshot) return null;
     try {
@@ -70,7 +71,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, requestId: retry.current.requestId }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? 'Unable to save flow');
-      await onSaved(); setSnapshot(null);
+      await onSaved(); setSnapshot(null); onDismiss?.();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); inFlight.current = false; }
   };
@@ -78,14 +79,12 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
   const indexes = source ? optionIndexes(source).filter(i => flowText(source.values[`Option${i}`]).trim()) : [];
   const newIndex = indexes.length ? Math.max(...indexes) + 1 : 0;
   return <section className={styles.editor} aria-label="Flow structure editor">
-    {!snapshot ? <button type="button" disabled={busy} onClick={() => void open()}>{busy ? 'Loading flow…' : 'Edit flow'}</button> : <>
-      <h3>Edit branch structure</h3>
+    {!snapshot ? <button type="button" disabled={busy} onClick={() => void open()}>{busy ? 'Loading flow…' : (inlineProperties ? 'Load properties' : 'Edit flow')}</button> : <>
+      <h3>Branch properties</h3>
       {!snapshot.canEdit ? <p>Read-only access</p> : null}
       {snapshot.diagnostics.map((d, i) => <p role="alert" key={`${d.rowId}-${d.field}-${i}`}>Row {snapshot.rows.findIndex(r => r.id === d.rowId) + 1} · {d.field}: {d.message}</p>)}
-      <FlowPinBoard rows={snapshot.rows} source={rowId} outlet={outlet} destination={destination} disabled={busy || !snapshot.canEdit}
-        onOutlet={(id, slot) => select(snapshot, id, slot)} onTarget={id => { setDestination(id); setRemove(false); }} />
       <fieldset disabled={busy || !snapshot.canEdit}>
-        <label>Source row<select aria-label="Source row" value={rowId} onChange={e => select(snapshot, e.target.value)}>{snapshot.rows.map((r, i) => r.id === rowId && <option key={r.id} value={r.id}>{i + 1}. {flowText(r.values.Name)} {flowText(r.values.Content).slice(0, 100) || '[End]'}</option>)}</select></label>
+        <label>Source row<select aria-label="Source row" value={rowId} onChange={e => select(snapshot, e.target.value)}>{snapshot.rows.map((r, i) => selectedRowIds.includes(r.id) && <option key={r.id} value={r.id}>{i + 1}. {flowText(r.values.Name)} {flowText(r.values.Content).slice(0, 100) || '[End]'}</option>)}</select></label>
         {source?.values.If ? <p>Condition: {flowText(source.values.If)} (preserved; preview does not evaluate it)</p> : null}
         <label>Outlet<select aria-label="Outlet" value={outlet} onChange={e => select(snapshot, rowId, e.target.value)}>
           {!indexes.length && <option value="ordinary">Continue / Jump / End</option>}
@@ -96,7 +95,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
         <label>Destination<select aria-label="Destination" value={destination} onChange={e => { setDestination(e.target.value); setRemove(false); }}>
           {outlet === 'ordinary' && <option value="sequence">Next row (physical order)</option>}
           <option value="end">End</option>
-          {snapshot.rows.map((r, i) => r.id === destination && <option key={r.id} value={r.id}>{i + 1}. {flowText(r.values.Label)} {flowText(r.values.Content).slice(0, 80) || '[End]'}</option>)}
+          {snapshot.rows.map((r, i) => (r.id === destination || selectedRowIds.includes(r.id)) && <option key={r.id} value={r.id}>{i + 1}. {flowText(r.values.Label)} {flowText(r.values.Content).slice(0, 80) || '[End]'}</option>)}
         </select></label>
         {outlet !== 'ordinary' && indexes.includes(Number(outlet)) && <button type="button" onClick={() => setRemove(true)}>Delete this option</button>}
       </fieldset>
@@ -108,7 +107,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
       }), null, 2)}</pre></details>}
       <div className={styles.actions}>
         {snapshot.canEdit && <button type="button" disabled={busy || Boolean(preview?.error) || !preview?.changed.length || snapshot.diagnostics.length > 0} onClick={() => void save()}>{busy ? 'Saving…' : 'Save flow'}</button>}
-        <button type="button" disabled={busy} onClick={() => { setSnapshot(null); setError(''); }}>Cancel</button>
+        <button type="button" disabled={busy} onClick={() => { setSnapshot(null); setError(''); onDismiss?.(); }}>Cancel</button>
       </div>
     </>}
     {error && <p role="alert">{error}</p>}
