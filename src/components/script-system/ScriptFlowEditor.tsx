@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { applyFlowEdit, type FlowEdit } from '@/lib/script-system/flow-editing/edit';
 import { analyzeFlow, flowText, optionIndexes, type FlowDiagnostic, type FlowRow } from '@/lib/script-system/flow-editing/model';
+import { ScriptReadingView } from './ScriptReadingView';
 import styles from './ScriptFlowEditor.module.css';
 
 type Snapshot = { rows: FlowRow[]; fingerprint: string; canEdit: boolean; diagnostics: FlowDiagnostic[] };
@@ -58,7 +59,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
       }
       const rows = applyFlowEdit(snapshot.rows, edit, () => 'preview-terminal');
       const changed = rows.filter(r => JSON.stringify(r.values) !== JSON.stringify(snapshot.rows.find(old => old.id === r.id)?.values));
-      return { edit, changed, error: '' };
+      return { edit, rows, changed, error: '' };
     } catch (e) { return { edit: null, changed: [], error: (e as Error).message }; }
   }, [snapshot, rowId, outlet, remove, destination, text, commands]);
   const save = async () => {
@@ -100,11 +101,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
         {outlet !== 'ordinary' && indexes.includes(Number(outlet)) && <button type="button" onClick={() => setRemove(true)}>Delete this option</button>}
       </fieldset>
       {remove ? <p>This option button and its commands will be removed.</p> : null}
-      {preview?.error ? <p role="alert">{preview.error}</p> : <details open><summary>Script changes ({preview?.changed.length ?? 0} rows)</summary><pre>{JSON.stringify(preview?.changed.map(r => {
-        const index = snapshot.rows.findIndex(old => old.id === r.id);
-        const old = snapshot.rows[index]?.values ?? {};
-        return { row: index < 0 ? 'New ending' : index + 1, fields: Object.fromEntries(Object.entries(r.values).filter(([key, value]) => JSON.stringify(old[key]) !== JSON.stringify(value))) };
-      }), null, 2)}</pre></details>}
+      {preview?.error ? <p role="alert">{preview.error}</p> : <details open><summary>Script changes ({preview?.changed.length ?? 0} rows)</summary>{preview?.rows && <ScriptReadingView rows={preview.rows} visibleIds={new Set(preview.changed.map(r => r.id))} />}</details>}
       <div className={styles.actions}>
         {snapshot.canEdit && <button type="button" disabled={busy || Boolean(preview?.error) || !preview?.changed.length || snapshot.diagnostics.length > 0} onClick={() => void save()}>{busy ? 'Saving…' : 'Save flow'}</button>}
         <button type="button" disabled={busy} onClick={() => { setSnapshot(null); setError(''); onDismiss?.(); }}>Cancel</button>
