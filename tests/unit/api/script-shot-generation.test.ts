@@ -84,3 +84,27 @@ test('drafts text without images, then redraws only the requested character', as
     else process.env.PIXELLAB_API_KEY=original;
   }
 });
+
+test('retries a busy background service and identifies an unreadable cast reference before requesting a background', async () => {
+  const original = process.env.PIXELLAB_API_KEY;
+  process.env.PIXELLAB_API_KEY = 'test';
+  try {
+    const png = await (await import('sharp')).default({create:{width:192,height:112,channels:4,background:'blue'}}).png().toBuffer();
+    const provider = (outboundFetch as jest.Mock).mockReset()
+      .mockResolvedValueOnce(new Response(null, {status:503}))
+      .mockResolvedValueOnce(Response.json({image:{base64:png.toString('base64')}}));
+    jest.mocked(completeLlm).mockResolvedValue(JSON.stringify({background:'Bus shelter',characters:[]}));
+    const response = await run(true, {artworkShotId:'start',board:{...example,characterGuide:'None',castSprites:[]}});
+    expect(await response.json()).toMatchObject({visibleCast:[], artwork:expect.stringMatching(/^data:image/)});
+    expect(provider).toHaveBeenCalledTimes(2);
+    jest.mocked(completeLlm).mockResolvedValue(JSON.stringify({background:'Bus shelter',characters:['Lin']}));
+    const invalid = await run(true, {artworkShotId:'start',board:{...example,characterGuide:'Lin — blue coat',
+      castSprites:[{name:'Lin',appearance:'Lin — blue coat',image:'data:image/png;base64,iVBORw0KGgo='}]}});
+    expect(invalid.status).toBe(422);
+    expect((await invalid.json()).error).toContain('Lin');
+    expect(provider).toHaveBeenCalledTimes(2);
+  } finally {
+    if (original===undefined) delete process.env.PIXELLAB_API_KEY;
+    else process.env.PIXELLAB_API_KEY=original;
+  }
+});

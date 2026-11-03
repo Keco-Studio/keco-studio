@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { checkBoard } from '@/lib/script-system/shotScript';
 import { characterGuidePrompt, characterGuideInput, shotStagingPrompt, shotStagingInput } from '@/lib/script-system/shotPrompts';
@@ -14,14 +15,32 @@ const stagePlan = z.object({
 const bytes = (image: string) => Buffer.from(image.split(',')[1], 'base64');
 
 async function pixelImage(token: string, signal: AbortSignal, description: string, portrait: boolean, reference?: string) {
-  const res = await outboundFetch('https://api.pixellab.ai/v1/generate-image-pixflux', {
+  const body = JSON.stringify({ description, image_size: portrait ? { width: 48, height: 80 } : { width: 192, height: 112 },
+    no_background: portrait,
+    ...(reference ? { init_image: { type: 'base64', base64: reference.split(',')[1] }, init_image_strength: 65 } : {}) });
+  const request = () => outboundFetch('https://api.pixellab.ai/v1/generate-image-pixflux', {
     method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description, image_size: portrait ? { width: 48, height: 80 } : { width: 192, height: 112 },
-      no_background: portrait,
-      ...(reference ? { init_image: { type: 'base64', base64: reference.split(',')[1] }, init_image_strength: 65 } : {}) }),
-    signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
+    body, signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
   });
-  if (!res.ok) throw Error('PixelLab returned HTTP ' + res.status);
+  let res;
+  try {
+    res = await request();
+  } catch (error) {
+    const cause = (error as {cause?: {code?: string}})?.cause?.code;
+    if (signal.aborted || !['UND_ERR_CONNECT_TIMEOUT', 'ECONNREFUSED', 'ETIMEDOUT'].includes(cause ?? '')) throw error;
+    // Connection failed before PixelLab accepted the request.
+    await delay(500, undefined, { signal });
+    res = await request();
+  }
+  if (res.status === 503 && !res.headers.get('retry-after')) {
+    await res.body?.cancel();
+    await delay(1000, undefined, { signal });
+    res = await request();
+  }
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw Error('PixelLab returned HTTP ' + res.status);
+  }
   const data = await res.json() as { image?: { base64?: string } };
   const png = data.image?.base64?.replace(/^data:image\/png;base64,/, '');
   if (!png?.startsWith('iVBORw0KGgo') || png.length > 1499900) throw Error('Invalid PixelLab image');
@@ -93,20 +112,33 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
   } catch {
     return error(502, 'Could not plan the visible cast. Check the character guide and try again.');
   }
-  try {
-    const cast = [...new Set(plan.characters)];
-    const layers: sharp.OverlayOptions[] = [];
-    const width = Math.min(48, Math.floor(184 / Math.max(1, cast.length)));
-    for (const [i, name] of cast.entries()) {
-      const sprite = sprites.find(s => s.name === name)!;
-      const height = Math.round(width * 80 / 48);
-      layers.push({ input: await sharp(bytes(sprite.image)).resize(width, height, { kernel: 'nearest' }).png().toBuffer(),
-        top: 106 - height, left: Math.round(192 * (i + 0.5) / cast.length - width / 2) });
+  const cast = [...new Set(plan.characters)];
+  const layers: sharp.OverlayOptions[] = [];
+  const width = Math.min(48, Math.floor(184 / Math.max(1, cast.length)));
+  const height = Math.round(width * 80 / 48);
+  for (const [i, name] of cast.entries()) {
+    const sprite = sprites.find(s => s.name === name)!;
+    try {
+      const input = await sharp(bytes(sprite.image)).resize(width, height, { kernel: 'nearest' }).png().toBuffer();
+      layers.push({ input, top: 106 - height, left: Math.round(192 * (i + 0.5) / cast.length - width / 2) });
+    } catch {
+      return error(422, 'The reference image for ' + name + ' could not be read. Open Characters and regenerate its reference.');
     }
-    const backdrop = await pixelImage(token, signal, 'Empty cinematic pixel art environment, no people. ' + plan.background, false, reference?.backdrop);
+  }
+  let backdrop;
+  try {
+    backdrop = await pixelImage(token, signal, 'Empty cinematic pixel art environment, no people. ' + plan.background, false, reference?.backdrop);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : '';
+    const detail = /^PixelLab returned HTTP \d+$/.test(message) ? message
+      : message === 'Invalid PixelLab image' ? 'PixelLab returned an invalid background image'
+      : 'The background request to PixelLab did not complete';
+    return error(502, detail + '. Your character references are saved. Retry scene artwork.');
+  }
+  try {
     const composite = await sharp(bytes(backdrop)).resize(192, 112).composite(layers).png().toBuffer();
     return Response.json({ characterGuide: guide, castSprites: sprites, visibleCast: cast, backdrop, artwork: 'data:image/png;base64,' + composite.toString('base64') });
   } catch {
-    return error(502, 'Could not render the shot with its saved characters. Try again.');
+    return error(502, 'The generated background could not be combined with the character layers. Generate the scene artwork again.');
   }
 }
