@@ -45,6 +45,7 @@ import {
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
+import { ShotScriptPanel } from './ShotScriptPanel';
 import { InlineFlowChart } from './InlineFlowChart';
 import { projectFlowGraph } from '@/lib/script-system/flow-editing/projection';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
@@ -258,7 +259,11 @@ export function ScriptSplitView({
     graph,
   });
   const [ratio, setRatio] = useState(() => readSplitRatio());
-  const [sourceOpen, setSourceOpen] = useState(false);
+  const [view,setView]=useState<'dialogue'|'document'|'shots'>('dialogue');
+  const sourceOpen=view==='document';
+  const [shotsVisited,setShotsVisited]=useState(false);
+  const shotRows=useMemo(()=>rows.map((r,i)=>({id:r.id,values:flowRows[i]??{}})),[rows,flowRows]);
+  const shotScenes=useMemo(()=>new Map(graph.nodes.flatMap(n=>n.rowIndexes.map(i=>[rows[i]?.id,n.label] as const))),[graph,rows]);
   const [sourceVisited, setSourceVisited] = useState(false);
   const [switchingView, setSwitchingView] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -530,20 +535,28 @@ export function ScriptSplitView({
             }
           >
             {projectId && sourceDocumentId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
-              <button type="button" aria-pressed={!sourceOpen} onClick={()=>setSourceOpen(false)}>对白</button>
+              <button type="button" aria-pressed={view==='dialogue'} onClick={()=>setView('dialogue')}>对白</button>
               <button type="button" aria-pressed={sourceOpen} disabled={switchingView} onClick={async()=>{
                 if (sourceOpen) return;
                 setSwitchingView(true);
-                try { if (await beforeFlowOpen()) { setSourceVisited(true); setSourceOpen(true); } }
+                try { if (await beforeFlowOpen()) { setSourceVisited(true); setView('document'); } }
                 finally { setSwitchingView(false); }
               }}>源 Document</button>
+              <button type="button" aria-pressed={view==='shots'} disabled={switchingView} onClick={async()=>{
+                if(view==='shots')return;
+                setSwitchingView(true);
+                try { if(await beforeFlowOpen()){setShotsVisited(true);setView('shots');} }finally{setSwitchingView(false);}
+              }}>镜头脚本</button>
+            </div>}
+            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots'}>
+              <ShotScriptPanel key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
             </div>}
             {sourceVisited && projectId && sourceDocumentId && <div className={styles.leftBody} hidden={!sourceOpen}>
               <Suspense fallback={<p>正在打开源文档…</p>}>
                 <SourceDocumentEditor key={sourceDocumentId} projectId={projectId} documentId={sourceDocumentId} flushLayout />
               </Suspense>
             </div>}
-            <div className={styles.leftBody} hidden={sourceOpen}>
+            <div className={styles.leftBody} hidden={view!=='dialogue'}>
                 <VisualNovelScriptView
                   rows={selectedRows}
                   scriptColumns={scriptColumns}
