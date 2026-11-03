@@ -7,6 +7,7 @@ Use the author's descriptions and director notes first. Supply missing visual tr
 Separate permanent identity from temporary poses, expressions and current prop ownership. Never define a character by one shot's action. Exclude narration and plot events. Return None if the story has no visible characters.`;
 
 export const shotStagingPrompt = `Plan a layered pixel-art shot. Return JSON with "background" (English location description without people) and "characters" (an ordered array of exact original cast-guide names visible from left to right, no duplicates).
+Also return a boolean "reuseBackdrop". Set it true only when a previous background is available and the current shot can use exactly that empty set: same location, framing, lighting and visible props. Ordinary dialogue or a change of speaker alone does not require a new background. A new location, changed prop state, a cut to a different angle, or instructions to redraw the setting require false.
 Use only events on the selected branch. Set props and doors to their current state. Retain the setting, architecture and lighting in the same location, but establish a new setting on a location change.
 The background is an EMPTY set for separate character layers: no people, silhouettes, reflections of people, or captions. Leave space for characters.
 Only list characters physically present. Omit a narrator, offscreen speakers and people who already left. Keep screen order consistent with the preceding beat unless the action requires a change. Do not redesign costumes.`;
@@ -24,6 +25,8 @@ export function shotStagingInput(board: Storyboard, shot: Shot, brief: string, g
     story: board.name,
     branchHistory: beats,
     referenceScene: reference?.scene,
+    referenceLine: reference?.line.slice(0, 600),
+    hasReferenceBackdrop: Boolean(reference?.backdrop),
     currentFrame: { scene: shot.scene, speaker: shot.speaker, line: shot.line.slice(0, 3500) },
     directorNotes: brief,
     characterGuide: guide,

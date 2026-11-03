@@ -10,6 +10,7 @@ import { outboundFetch } from '@/lib/agent/outbound-http';
 
 const stagePlan = z.object({
   background: z.string().trim().min(1).max(5000),
+  reuseBackdrop: z.boolean().optional(),
   characters: z.array(z.string().trim().min(1).max(100)).max(12),
 });
 const bytes = (image: string) => Buffer.from(image.split(',')[1], 'base64');
@@ -89,7 +90,7 @@ export async function prepareCharacters(input: unknown, brief: string, signal: A
   return Response.json({ characterGuide: guide, castSprites: sprites });
 }
 
-export async function generateShotArtwork(input: unknown, id: string, brief: string, signal: AbortSignal) {
+export async function generateShotArtwork(input: unknown, id: string, brief: string, signal: AbortSignal, redrawBackground = false) {
   let board;
   try { board = checkBoard(input); } catch { return error(400, 'Invalid shot script.'); }
   const shot = board.shots.find(s => s.id === id);
@@ -101,6 +102,7 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
   if (!castIsReady(board)) return error(409, 'Prepare your character designs in Characters first.');
   const guide = board.characterGuide!;
   const sprites = board.castSprites!;
+  const started = performance.now();
   let plan: z.infer<typeof stagePlan>;
   try {
     const raw = await completeLlm([
@@ -112,6 +114,7 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
   } catch {
     return error(502, 'Could not plan the visible cast. Check the character guide and try again.');
   }
+  const planDone = performance.now();
   const cast = [...new Set(plan.characters)];
   const layers: sharp.OverlayOptions[] = [];
   const width = Math.min(48, Math.floor(184 / Math.max(1, cast.length)));
@@ -125,9 +128,11 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
       return error(422, 'The reference image for ' + name + ' could not be read. Open Characters and regenerate its reference.');
     }
   }
+  const spritesDone = performance.now();
+  const reusableBackdrop = !redrawBackground && plan.reuseBackdrop && reference?.backdrop;
   let backdrop;
   try {
-    backdrop = await pixelImage(token, signal, 'Empty cinematic pixel art environment, no people. ' + plan.background, false, reference?.backdrop);
+    backdrop = reusableBackdrop || await pixelImage(token, signal, 'Empty cinematic pixel art environment, no people. ' + plan.background, false, reference?.backdrop);
   } catch (e) {
     const message = e instanceof Error ? e.message : '';
     const detail = /^PixelLab returned HTTP \d+$/.test(message) ? message
@@ -135,9 +140,17 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
       : 'The background request to PixelLab did not complete';
     return error(502, detail + '. Your character references are saved. Retry scene artwork.');
   }
+  const backgroundDone = performance.now();
   try {
     const composite = await sharp(bytes(backdrop)).resize(192, 112).composite(layers).png().toBuffer();
-    return Response.json({ characterGuide: guide, castSprites: sprites, visibleCast: cast, backdrop, artwork: 'data:image/png;base64,' + composite.toString('base64') });
+    const timing = [
+      ['plan', planDone - started], ['sprites', spritesDone - planDone],
+      ['background', backgroundDone - spritesDone], ['compose', performance.now() - backgroundDone],
+    ].map(([stage, ms]) => stage + ';dur=' + Math.round(Number(ms))).join(', ');
+    return Response.json({ characterGuide: guide, castSprites: sprites, visibleCast: cast, backdrop,
+      artwork: 'data:image/png;base64,' + composite.toString('base64') }, {
+      headers: { 'Server-Timing': timing, 'X-Backdrop-Source': reusableBackdrop ? 'previous-shot' : 'generated' },
+    });
   } catch {
     return error(502, 'The generated background could not be combined with the character layers. Generate the scene artwork again.');
   }

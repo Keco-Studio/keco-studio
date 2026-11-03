@@ -14,6 +14,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
         characterName: z.string().trim().min(1).max(100).optional(),
         profilesOnly: z.literal(true).optional(),
         prepareCast: z.literal(true).optional(),
+        redrawBackground: z.literal(true).optional(),
         artworkShotId: z.string().min(1).optional(),
         brief: z.string().max(1000),
       })
@@ -32,7 +33,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
   if (error || !library)
     return Response.json({ error: 'You do not have access to this Script.' }, { status: 403 });
   if (input.prepareCast) return prepareCharacters(input.board, input.brief, request.signal, input.characterName, input.profilesOnly);
-  if (input.artworkShotId) return generateShotArtwork(input.board, input.artworkShotId, input.brief, request.signal);
+  if (input.artworkShotId) return generateShotArtwork(input.board, input.artworkShotId, input.brief, request.signal, input.redrawBackground);
   return generateShotResponse(
     { board: input.board, brief: input.brief },
     request.signal,

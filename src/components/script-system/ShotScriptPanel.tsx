@@ -111,10 +111,11 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
   async function requestGeneration(signal: AbortSignal, artworkShotId?: string, source = board, prepareCast = false, characterName?: string, profilesOnly = false) {
     const referenceId = artworkShotId && shotContinuity(source).context(artworkShotId).referenceId;
     const shots = source.shots.map(({ artwork: _image, backdrop, ...shot }) => shot.id === referenceId && backdrop ? { ...shot, backdrop } : shot);
+    const redrawBackground = artworkShotId && Boolean(source.shots.find(s => s.id === artworkShotId)?.artwork);
     const response = await fetch('/api/script-shot-generation', {
       method: 'POST', signal,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true, characterName, profilesOnly: profilesOnly || undefined } : {}), ...(artworkShotId ? { artworkShotId } : {}) }),
+      body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true, characterName, profilesOnly: profilesOnly || undefined } : {}), ...(artworkShotId ? { artworkShotId, redrawBackground: redrawBackground || undefined } : {}) }),
     });
     if (!response.headers.get('content-type')?.includes('application/json'))
       throw Error(

@@ -108,3 +108,25 @@ test('retries a busy background service and identifies an unreadable cast refere
     else process.env.PIXELLAB_API_KEY=original;
   }
 });
+
+test('reuses the branch background for a dialogue beat, while an explicit redraw calls PixelLab', async () => {
+  const original = process.env.PIXELLAB_API_KEY;
+  process.env.PIXELLAB_API_KEY = 'test';
+  try {
+    const png = await (await import('sharp')).default({create:{width:192,height:112,channels:4,background:'blue'}}).png().toBuffer();
+    const backdrop = 'data:image/png;base64,' + png.toString('base64');
+    const board = {...example, characterGuide:'None', castSprites:[], shots:example.shots.map((shot,i) => i ? shot : {...shot, backdrop})};
+    const provider = (outboundFetch as jest.Mock).mockReset().mockResolvedValue(Response.json({image:{base64:png.toString('base64')}}));
+    jest.mocked(completeLlm).mockResolvedValue(JSON.stringify({background:'Same room',characters:[],reuseBackdrop:true}));
+    const reused = await run(true,{artworkShotId:'door',board});
+    expect(reused.headers.get('x-backdrop-source')).toBe('previous-shot');
+    expect((await reused.json()).backdrop).toBe(backdrop);
+    expect(provider).not.toHaveBeenCalled();
+    const redraw = await run(true,{artworkShotId:'door',board,redrawBackground:true});
+    expect(redraw.headers.get('x-backdrop-source')).toBe('generated');
+    expect(provider).toHaveBeenCalledTimes(1);
+  } finally {
+    if (original===undefined) delete process.env.PIXELLAB_API_KEY;
+    else process.env.PIXELLAB_API_KEY=original;
+  }
+});
