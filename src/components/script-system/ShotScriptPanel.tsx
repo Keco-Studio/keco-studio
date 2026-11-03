@@ -10,6 +10,7 @@ import {
   type Shot,
   type Storyboard,
 } from '@/lib/script-system/shotScript';
+import { castIsReady } from '@/lib/script-system/shotCast';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
 import type { FlowRow } from '@/lib/script-system/flow-editing/model';
 import styles from './ShotScriptPanel.module.css';
@@ -19,16 +20,23 @@ const effectLabels: Record<Shot['tags'][number], string> = {'淡入':'Fade in','
 
 type Template = { id: string; board: Storyboard };
 type Props = {
+  charactersOpen?: boolean;
+  onSwitch?: (view: 'characters' | 'shots') => void;
   projectId: string;
   libraryId: string;
   rows: FlowRow[];
   scenes: Map<string, string>;
 };
-export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
+export function ShotScriptPanel({ projectId, libraryId, rows, scenes, charactersOpen, onSwitch }: Props) {
   const storeKey = 'keco.shots.templates.v1:' + projectId;
+  const castKey = 'keco.script.cast:' + projectId + ':' + libraryId;
   const [initial] = useState(() => {
     try {
-      return { board: fromScript(rows, 'Current Script shots', scenes), message: '' };
+      const current = fromScript(rows, 'Current Script shots', scenes);
+      try {
+        const saved = JSON.parse(localStorage.getItem(castKey) || '{}');
+        return { board: checkBoard({ ...current, characterGuide: saved.characterGuide, castSprites: saved.castSprites }), message: '' };
+      } catch { return { board: current, message: '' }; }
     } catch (e) {
       return {
         board: structuredClone(example),
@@ -62,13 +70,13 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'Redone':'Undone');
   }
   const revision = useRef(0);
-  async function requestGeneration(artworkShotId?: string, source = board) {
+  async function requestGeneration(artworkShotId?: string, source = board, prepareCast = false) {
     const referenceId = artworkShotId && shotContinuity(source).context(artworkShotId).referenceId;
-    const shots = source.shots.map(({ artwork, ...shot }) => shot.id === referenceId ? { ...shot, artwork } : shot);
+    const shots = source.shots.map(({ artwork: _image, backdrop, ...shot }) => shot.id === referenceId && backdrop ? { ...shot, backdrop } : shot);
     const response = await fetch('/api/script-shot-generation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, libraryId, board: { ...source, shots }, brief, ...(artworkShotId ? { artworkShotId } : {}) }),
+      body: JSON.stringify({ projectId, libraryId, board: { ...source, castSprites: artworkShotId || prepareCast ? source.castSprites : undefined, shots }, brief, ...(prepareCast ? { prepareCast: true } : {}), ...(artworkShotId ? { artworkShotId } : {}) }),
     });
     if (!response.headers.get('content-type')?.includes('application/json'))
       throw Error(
@@ -77,6 +85,22 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Generation failed');
     return result;
+  }
+  async function prepareCast() {
+    const started = revision.current;
+    setGenerating(true);
+    tell('Preparing character designs…');
+    try {
+      const result = await requestGeneration(undefined, board, true);
+      if (started !== revision.current) { tell('The draft changed. Prepare the updated character designs.'); return; }
+      const cast = { characterGuide: result.characterGuide, castSprites: result.castSprites };
+      const changed = JSON.stringify(board.castSprites) !== JSON.stringify(cast.castSprites);
+      const next = checkBoard({ ...board, ...cast, shots: changed && board.castSprites ? board.shots.map(({ artwork, ...s }) => s) : board.shots });
+      update(next);
+      try { localStorage.setItem(castKey, JSON.stringify(cast)); }
+      catch { tell('Designs are available for this session. Browser storage is full.'); return; }
+      tell(result.warning || 'Character designs saved. Open Shot Script to stage the scene.');
+    } catch (e) { tell((e as Error).message); } finally { setGenerating(false); }
   }
   async function directShots(artwork = false) {
     const started = revision.current;
@@ -89,8 +113,8 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         return;
       }
       const next = artwork
-        ? checkBoard({ ...board, characterGuide: result.characterGuide, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork } : s) })
-        : checkBoard({ ...result.board, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork })) });
+        ? checkBoard({ ...board, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork, backdrop: result.backdrop } : s) })
+        : checkBoard({ ...result.board, castSprites: board.castSprites, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork, backdrop: board.shots[i].backdrop })) });
       update(next);
       tell(artwork ? 'Scene artwork is ready.' : 'Shot directions updated. Illustrate a shot to add its scene image.');
     } catch (e) {
@@ -102,7 +126,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   async function illustrateScene(regenerate = false) {
     const started = revision.current;
     setGenerating(true);
-    let next: Storyboard = regenerate ? { ...board, shots: board.shots.map(({ artwork: _previous, ...shot }) => shot) } : board;
+    let next: Storyboard = regenerate ? { ...board, shots: board.shots.map(({ artwork: _previous, backdrop: _background, ...shot }) => shot) } : board;
     let illustrated = 0;
     try {
       for (const [i, shot] of shotContinuity(next).order.entries()) {
@@ -110,7 +134,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         tell('Illustrating shot ' + (i + 1) + ' of ' + board.shots.length + '…');
         const result = await requestGeneration(shot.id, next);
         if (revision.current !== started) throw Error('The draft changed. Generate again from the updated shots.');
-        next = checkBoard({ ...next, characterGuide: result.characterGuide, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork } : s) });
+        next = checkBoard({ ...next, characterGuide: result.characterGuide, castSprites: result.castSprites, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork, backdrop: result.backdrop } : s) });
         illustrated++;
       }
       if (next !== board) update(next);
@@ -190,6 +214,29 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       tell('Check the name, branch targets, choice labels and durations before generating again.');
     }
   }
+  const castReady = castIsReady(board);
+  if (charactersOpen) return (
+    <section className={styles.panel} aria-label="Characters">
+      <h3>Characters</h3>
+      <p>Define the cast for this Conversation. Each scene reuses the same character artwork.</p>
+      <label>Character guide
+        <textarea rows={6} maxLength={4000} value={board.characterGuide ?? ''}
+          placeholder="Name — appearance, clothing and signature item. Leave blank to draft the cast from the script."
+          onChange={e => update({ ...board, characterGuide: e.target.value })} />
+      </label>
+      <div className={styles.bar}>
+        <button disabled={generating || castReady} onClick={prepareCast}>{generating ? 'Preparing designs…' : 'Prepare character designs'}</button>
+        <button disabled={!castReady || generating} onClick={() => onSwitch?.('shots')}>Continue to Shot Script</button>
+      </div>
+      <span role="status">{message}</span>
+      <div className={styles.castCards} aria-label="Character designs">
+        {board.castSprites?.map(sprite => <figure key={sprite.name}>
+          <img src={sprite.image} alt={sprite.name} />
+          <figcaption><strong>{sprite.name}</strong><p>{sprite.appearance.replace(sprite.name, '').replace(/^[\s:：—-]+/, '')}</p></figcaption>
+        </figure>)}
+      </div>
+    </section>
+  );
   return (
     <section className={styles.panel} aria-label="Shot Script" tabIndex={0} onKeyDown={e=>{
         if((e.ctrlKey||e.metaKey) && !e.altKey && e.key.toLowerCase()==='z' && !(e.target as Element).closest('textarea,input:not([type=checkbox]):not([type=number]),[contenteditable=true]')){
@@ -197,6 +244,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         }
       }}>
       <h3>Shot Script</h3>
+      <div className={styles.bar}><span>{castReady ? 'Character designs ready.' : 'Prepare the cast before illustrating new shots.'}</span><button onClick={() => onSwitch?.('characters')}>Open Characters</button></div>
       {movie && <iframe ref={preview} key={libraryId + run} title="Scene animation" sandbox="allow-scripts" srcDoc={movie} />}
 
       <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>Undo</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>Redo</button></div>
@@ -417,20 +465,15 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
           Add branch
         </button>
       </fieldset>
-      <label>Character guide
-        <textarea value={board.characterGuide ?? ''} maxLength={4000}
-          placeholder="One character per line: name, silhouette, hair, clothing and signature prop. Leave blank to generate a guide."
-          onChange={e => update({ ...board, characterGuide: e.target.value })} />
-      </label>
       <div className={styles.bar}>
-        <button disabled={generating} onClick={() => directShots(true)}>{shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
+        <button disabled={generating || !castReady} onClick={() => directShots(true)}>{shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
         <span>Illustrates the selected shot.</span>
       </div>
       {shot.artwork && <img className={styles.artwork} src={shot.artwork} alt={shot.scene} />}
       <div className={styles.bar}>
         <button onClick={save}>Save template</button>
-        <button disabled={generating} onClick={() => illustrateScene()}>{board.shots.some(s => !s.artwork) ? 'Illustrate scene with PixelLab and play' : 'Play illustrated scene'}</button>
-        {board.shots.some(s => s.artwork) && <button disabled={generating} onClick={() => illustrateScene(true)}>Re-illustrate entire scene</button>}
+        <button disabled={generating || (!castReady && board.shots.some(s => !s.artwork))} onClick={() => illustrateScene()}>{board.shots.some(s => !s.artwork) ? 'Illustrate scene with PixelLab and play' : 'Play illustrated scene'}</button>
+        {board.shots.some(s => s.artwork) && <button disabled={generating || !castReady} onClick={() => illustrateScene(true)}>Re-illustrate entire scene</button>}
         <button onClick={exportAnimation}>Export animation as HTML</button>
       </div>
       <span role="status">{message}</span>

@@ -3,10 +3,12 @@ import { analyzeFlow, flowText, type FlowRow } from './flow-editing/model';
 
 export const movements = ['静止', '推进', '拉远', '左摇', '右摇'] as const;
 export const effects = ['淡入', '人物入场', '震动', '暗场'] as const;
+const png = z.string().max(1500000).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/);
 const shot = z.object({
   id: z.string().min(1),
   scene: z.string(),
-  artwork: z.string().max(1500000).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/).optional(),
+  artwork: png.optional(),
+  backdrop: png.optional(),
   speaker: z.string(),
   line: z.string(),
   seconds: z.number().min(0.2).max(60),
@@ -19,6 +21,7 @@ const shot = z.object({
 export type Shot = z.infer<typeof shot>;
 export const storyboard = z.object({
   version: z.literal(1),
+  castSprites: z.array(z.object({ name: z.string().min(1).max(100), appearance: z.string().max(4000), image: png })).max(64).optional(),
   characterGuide: z.string().max(4000).optional(),
   name: z.string().trim().min(1).max(100),
   shots: z.array(shot).min(1).max(5000),

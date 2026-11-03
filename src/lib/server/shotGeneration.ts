@@ -24,7 +24,7 @@ export async function generateShotResponse(
       { status: 400 },
     );
   }
-  const promptBoard = { ...board, shots: board.shots.map(({ artwork: _artwork, ...shot }) => shot) };
+  const promptBoard = { name: board.name, characterGuide: board.characterGuide, shots: board.shots.map(({ artwork: _artwork, backdrop: _backdrop, ...shot }) => shot) };
   if (board.shots.length > 60 || JSON.stringify(promptBoard).length > 32000)
     return Response.json(
       { error: 'Generate up to 60 shots and 32,000 characters per request.' },

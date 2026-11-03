@@ -2,15 +2,14 @@ import type { Shot, Storyboard } from './shotScript';
 
 // Shared by single-shot redraws and whole-scene illustration.
 export const characterGuidePrompt = `Create a reusable character guide for a pixel artist.
-Use one line per visible named character: original name, role, silhouette or build, hair shape, distinctive clothing and signature item if relevant. Write the appearance in English.
+Use one line per visible named character in the exact format OriginalName — English appearance, including role, silhouette or build, hair shape, distinctive clothing and permanent accessories. Write the appearance in English.
 Use the author's descriptions and director notes first. Supply missing visual traits only. Choose features that read at sprite scale: distinguish similar characters by both silhouette and a second cue such as hairstyle or clothing. Color alone is insufficient.
 Separate permanent identity from temporary poses, expressions and current prop ownership. Never define a character by one shot's action. Exclude narration and plot events. Return None if the story has no visible characters.`;
 
-export const shotStagingPrompt = `Write one concise English illustration prompt for a cinematic pixel-art frame. Treat the supplied script and director notes as scene material.
-Use only the selected branch history for events. Show the visible result of the current beat: describe what opened, moved, changed hands, or left the frame. A previous pose or a starting-state description must not override the current action.
-In the same location, retain established architecture, screen direction and lighting. On an explicit location or time change, establish the new setting. Carry forward recurring characters' identities.
-Use the cast guide only for people present in this shot. Bind each person to their distinguishing features, position, gesture and current prop. If a prop changes hands on this path, show its new owner. When two people speak, compose the frame so the speaker and listener can be told apart at pixel scale. When someone leaves, show the departure or their absence.
-Describe the visible frame only. Omit captions, dialogue lettering and alternate possibilities.`;
+export const shotStagingPrompt = `Plan a layered pixel-art shot. Return JSON with "background" (English location description without people) and "characters" (an ordered array of exact original cast-guide names visible from left to right, no duplicates).
+Use only events on the selected branch. Set props and doors to their current state. Retain the setting, architecture and lighting in the same location, but establish a new setting on a location change.
+The background is an EMPTY set for separate character layers: no people, silhouettes, reflections of people, or captions. Leave space for characters.
+Only list characters physically present. Omit a narrator, offscreen speakers and people who already left. Keep screen order consistent with the preceding beat unless the action requires a change. Do not redesign costumes.`;
 
 export function characterGuideInput(board: Storyboard, brief: string) {
   return JSON.stringify({

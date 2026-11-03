@@ -259,7 +259,7 @@ export function ScriptSplitView({
     graph,
   });
   const [ratio, setRatio] = useState(() => readSplitRatio());
-  const [view,setView]=useState<'dialogue'|'document'|'shots'>('dialogue');
+  const [view,setView]=useState<'dialogue'|'document'|'characters'|'shots'>('dialogue');
   const sourceOpen=view==='document';
   const [shotsVisited,setShotsVisited]=useState(false);
   const shotRows=useMemo(()=>rows.map((r,i)=>({id:r.id,values:flowRows[i]??{}})),[rows,flowRows]);
@@ -542,14 +542,14 @@ export function ScriptSplitView({
                 try { if (await beforeFlowOpen()) { setSourceVisited(true); setView('document'); } }
                 finally { setSwitchingView(false); }
               }}>Source Document</button>
-              <button type="button" aria-pressed={view==='shots'} disabled={switchingView} onClick={async()=>{
-                if(view==='shots')return;
+              {(['characters', 'shots'] as const).map(tab => <button key={tab} type="button" aria-pressed={view===tab} disabled={switchingView} onClick={async()=>{
+                if(view===tab)return;
                 setSwitchingView(true);
-                try { if(await beforeFlowOpen()){setShotsVisited(true);setView('shots');} }finally{setSwitchingView(false);}
-              }}>Shot Script</button>
+                try { if(await beforeFlowOpen()){setShotsVisited(true);setView(tab);} }finally{setSwitchingView(false);}
+              }}>{tab==='characters'?'Characters':'Shot Script'}</button>)}
             </div>}
-            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots'}>
-              <ShotScriptPanel key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
+            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots' && view!=='characters'}>
+              <ShotScriptPanel charactersOpen={view==='characters'} onSwitch={setView} key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
             </div>}
             {sourceVisited && projectId && sourceDocumentId && <div className={styles.leftBody} hidden={!sourceOpen}>
               <Suspense fallback={<p>Opening source document…</p>}>

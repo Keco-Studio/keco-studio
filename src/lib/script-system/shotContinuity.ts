@@ -28,7 +28,7 @@ export function shotContinuity(board: Storyboard) {
     let referenceId: string | undefined;
     for (let edge = parents.get(id); edge; edge = parents.get(edge.id)) {
       const parent = byId.get(edge.id)!;
-      if (!referenceId && parent.artwork) referenceId = parent.id;
+      if (!referenceId && (parent.backdrop || parent.artwork)) referenceId = parent.id;
       if (beats.length < 4) beats.unshift([parent.scene, parent.speaker, parent.line.slice(0, 200), edge.choice].filter(Boolean).join(' / '));
     }
     return { beats, referenceId };
