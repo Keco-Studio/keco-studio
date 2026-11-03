@@ -231,3 +231,7 @@
   font-size: 13px;
   line-height: 1.5;
 }
+
+.viewSwitch { display:flex; gap:12px; padding:0 20px; border-bottom:1px solid var(--script-line-200); }
+.viewSwitch button { background:transparent; border:0; border-bottom:2px solid transparent; padding:8px 2px; color:var(--script-ink-500); cursor:pointer; }
+.viewSwitch button[aria-pressed=true] { color:var(--script-ink-900); border-bottom-color:var(--script-blue); }

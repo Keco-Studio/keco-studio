@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useCallback,
+  lazy, Suspense, useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -50,6 +50,8 @@ import { projectFlowGraph } from '@/lib/script-system/flow-editing/projection';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
+
+const SourceDocumentEditor = lazy(() => import('@/components/documents/DocumentEditor').then(({ DocumentEditor }) => ({ default: DocumentEditor })));
 
 export type ScriptSplitViewProps = {
   projectId?: string;
@@ -256,6 +258,9 @@ export function ScriptSplitView({
     graph,
   });
   const [ratio, setRatio] = useState(() => readSplitRatio());
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceVisited, setSourceVisited] = useState(false);
+  const [switchingView, setSwitchingView] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [templateMode, setTemplateMode] = useState<'browse' | 'save' | null>(null);
@@ -524,7 +529,21 @@ export function ScriptSplitView({
                 : { flex: `${ratio} 1 0%` }
             }
           >
-            <div className={styles.leftBody}>
+            {projectId && sourceDocumentId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
+              <button type="button" aria-pressed={!sourceOpen} onClick={()=>setSourceOpen(false)}>对白</button>
+              <button type="button" aria-pressed={sourceOpen} disabled={switchingView} onClick={async()=>{
+                if (sourceOpen) return;
+                setSwitchingView(true);
+                try { if (await beforeFlowOpen()) { setSourceVisited(true); setSourceOpen(true); } }
+                finally { setSwitchingView(false); }
+              }}>源 Document</button>
+            </div>}
+            {sourceVisited && projectId && sourceDocumentId && <div className={styles.leftBody} hidden={!sourceOpen}>
+              <Suspense fallback={<p>正在打开源文档…</p>}>
+                <SourceDocumentEditor key={sourceDocumentId} projectId={projectId} documentId={sourceDocumentId} flushLayout />
+              </Suspense>
+            </div>}
+            <div className={styles.leftBody} hidden={sourceOpen}>
                 <VisualNovelScriptView
                   rows={selectedRows}
                   scriptColumns={scriptColumns}
