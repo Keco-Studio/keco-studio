@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   checkBoard,
   effects,
@@ -46,6 +46,37 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   const [active, setActive] = useState('');
   const [movie, setMovie] = useState('');
   const [run, restart] = useState(0);
+  const [brief, setBrief] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const revision = useRef(0);
+  async function directShots() {
+    const started = revision.current;
+    setGenerating(true);
+    tell('AI 正在为当前镜头编排运镜、时长和动画标签…');
+    try {
+      const response = await fetch('/api/script-shot-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, libraryId, board, brief }),
+      });
+      if (!response.headers.get('content-type')?.includes('application/json'))
+        throw Error(
+          '当前静态预览未连接 AI 后端，请在已登录的 Conversation 页面生成。',
+        );
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || '生成失败');
+      if (started !== revision.current) {
+        tell('草稿已修改，本次 AI 结果未应用。');
+        return;
+      }
+      update(checkBoard(result.board));
+      tell('AI 分镜已生成，可调整、播放或保存模板。');
+    } catch (e) {
+      tell((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
   function readTemplates(): Template[] {
     const data = JSON.parse(localStorage.getItem(storeKey) ?? '[]');
     return data.map((t: Template) => ({
@@ -55,6 +86,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   }
   const shot = board.shots[index];
   function update(next: Storyboard) {
+    revision.current++;
     setBoard(next);
     setMovie('');
     tell('');
@@ -74,16 +106,14 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     try {
       const saved = checkBoard(board);
       const stored = readTemplates();
-      const original = stored.find(t => t.id === active);
-      const id = original?.board.name === saved.name ? active : crypto.randomUUID();
-      if (stored.some(t => t.id !== id && t.board.name === saved.name)) {
+      const original = stored.find((t) => t.id === active);
+      const id =
+        original?.board.name === saved.name ? active : crypto.randomUUID();
+      if (stored.some((t) => t.id !== id && t.board.name === saved.name)) {
         tell('此项目已有同名模板，请改名或先调用已有模板。');
         return;
       }
-      const next = [
-        ...stored.filter((t) => t.id !== id),
-        { id, board: saved },
-      ];
+      const next = [...stored.filter((t) => t.id !== id), { id, board: saved }];
       localStorage.setItem(storeKey, JSON.stringify(next));
       list(next);
       setActive(id);
@@ -119,6 +149,20 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   return (
     <section className={styles.panel} aria-label="镜头脚本">
       <h3>镜头脚本</h3>
+      <div className={styles.bar}>
+        <label>
+          导演要求
+          <input
+            value={brief}
+            maxLength={1000}
+            onChange={(e) => setBrief(e.target.value)}
+            placeholder="例如：开场缓慢推进，敲门时短暂震动"
+          />
+        </label>
+        <button disabled={generating} onClick={() => void directShots()}>
+          {generating ? 'AI 生成中…' : 'AI 生成镜头脚本'}
+        </button>
+      </div>
       <div className={styles.bar}>
         <label>
           镜头模板
