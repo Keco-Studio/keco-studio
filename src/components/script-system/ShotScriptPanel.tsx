@@ -89,7 +89,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         return;
       }
       const next = artwork
-        ? checkBoard({ ...board, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork } : s) })
+        ? checkBoard({ ...board, characterGuide: result.characterGuide, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork } : s) })
         : checkBoard({ ...result.board, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork })) });
       update(next);
       tell(artwork ? 'Scene artwork is ready.' : 'Shot directions updated. Illustrate a shot to add its scene image.');
@@ -110,7 +110,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         tell('Illustrating shot ' + (i + 1) + ' of ' + board.shots.length + '…');
         const result = await requestGeneration(shot.id, next);
         if (revision.current !== started) throw Error('The draft changed. Generate again from the updated shots.');
-        next = checkBoard({ ...next, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork } : s) });
+        next = checkBoard({ ...next, characterGuide: result.characterGuide, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork } : s) });
         illustrated++;
       }
       if (next !== board) update(next);
@@ -417,6 +417,11 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
           Add branch
         </button>
       </fieldset>
+      <label>Character guide
+        <textarea value={board.characterGuide ?? ''} maxLength={4000}
+          placeholder="One character per line: name, silhouette, hair, clothing and signature prop. Leave blank to generate a guide."
+          onChange={e => update({ ...board, characterGuide: e.target.value })} />
+      </label>
       <div className={styles.bar}>
         <button disabled={generating} onClick={() => directShots(true)}>{shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
         <span>Illustrates the selected shot.</span>

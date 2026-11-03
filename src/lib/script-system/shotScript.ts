@@ -19,6 +19,7 @@ const shot = z.object({
 export type Shot = z.infer<typeof shot>;
 export const storyboard = z.object({
   version: z.literal(1),
+  characterGuide: z.string().max(4000).optional(),
   name: z.string().trim().min(1).max(100),
   shots: z.array(shot).min(1).max(5000),
 });
