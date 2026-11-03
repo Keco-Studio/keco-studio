@@ -402,6 +402,8 @@ export function InlineFlowChart({
       }}
     >
       <FlowChartPanel
+        key={endpoint}
+        layoutKey={endpoint}
         {...chart}
         markedNodes={marked}
         onSelectPlotNode={(id) => {

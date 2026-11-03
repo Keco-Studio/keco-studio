@@ -20,6 +20,7 @@ import styles from './ScriptSplitView.module.css';
 export type FlowChartPanelProps = {
   renderWiring?: (positions: Map<string, { x: number; y: number; layer: number }>) => React.ReactNode;
   tools?: React.ReactNode;
+  layoutKey?: string;
   graph: FlowGraph;
   selectedPlotNodeId: string;
   previewNodeIds?: string[];
@@ -236,7 +237,7 @@ function mergeBranchRoute(
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
-  renderWiring, tools,
+  renderWiring, tools, layoutKey,
   previewNodeIds = [],
   title = 'Flow chart',
   referenceLabel,
@@ -247,10 +248,32 @@ export function FlowChartPanel({
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
-  const layout = useMemo(
+  const initialLayout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
     [graph]
   );
+  const storageKey = layoutKey && 'script-flow-layout:' + layoutKey;
+  type Point = { x: number; y: number };
+  const [manual, setManual] = useState<Record<string, Point>>(() => {
+    try {
+      const stored = storageKey && JSON.parse(localStorage.getItem(storageKey) || '{}');
+      return stored && typeof stored === 'object' ? stored : {};
+    } catch { return {}; }
+  });
+  const drag = useRef<{ id: string; pointer: number; start: Point; origin: Point; last: Point; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const layout = useMemo(() => {
+    const positions = new Map(initialLayout.positions);
+    let { width, height } = initialLayout;
+    for (const [id, pos] of positions) {
+      const point = manual[id];
+      if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+      positions.set(id, { ...pos, x: point.x, y: point.y });
+      width = Math.max(width, point.x + NODE_WIDTH + PAD);
+      height = Math.max(height, point.y + NODE_HEIGHT + PAD);
+    }
+    return { positions, width, height };
+  }, [initialLayout, manual]);
   const ordinaryMergeEdges = useMemo(() => {
     const incoming = new Map<string, FlowGraph['edges']>();
     for (const edge of graph.edges) {
@@ -283,9 +306,9 @@ export function FlowChartPanel({
     const el = bodyRef.current;
     if (!el) return;
     const availableWidth = Math.max(0, el.clientWidth - FLOW_BODY_HORIZONTAL_PADDING);
-    setScale(calculateFitScale(availableWidth, layout.width));
-    el.scrollTop = 0;
-  }, [layout.width]);
+    setScale(calculateFitScale(availableWidth, initialLayout.width));
+
+  }, [initialLayout.width]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -296,7 +319,7 @@ export function FlowChartPanel({
     const observer = new ResizeObserver(fitToWidth);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fitToWidth, graph, layout.height]);
+  }, [fitToWidth]);
 
   const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -461,8 +484,33 @@ export function FlowChartPanel({
                     data-flow-preview-node={preview || undefined}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     className={styles.flowNode}
+                    style={layoutKey && !readOnly && !preview ? { cursor: 'grab', touchAction: 'none', userSelect: 'none' } : undefined}
+                    onPointerDown={e => {
+                      suppressClick.current = false;
+                      if (!layoutKey || readOnly || preview || e.button !== 0 || !e.isPrimary || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                      drag.current = { id: node.id, pointer: e.pointerId, start: { x: e.clientX, y: e.clientY }, origin: pos, last: pos, moved: false };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={e => {
+                      const d = drag.current;
+                      if (!d || d.pointer !== e.pointerId || d.id !== node.id) return;
+                      const dx = e.clientX - d.start.x, dy = e.clientY - d.start.y;
+                      if (!d.moved && Math.hypot(dx, dy) < 4) return;
+                      d.moved = true;
+                      const point = { x: Math.max(0, d.origin.x + dx / scale), y: Math.max(0, d.origin.y + dy / scale) };
+                      d.last = point;
+                      setManual(previous => ({ ...previous, [node.id]: point }));
+                    }}
+                    onLostPointerCapture={e => {
+                      const d = drag.current;
+                      if (!d || d.pointer !== e.pointerId) return;
+                      drag.current = null;
+                      if (!d.moved) return;
+                      suppressClick.current = true;
+                      try { if (storageKey) localStorage.setItem(storageKey, JSON.stringify({ ...manual, [node.id]: d.last })); } catch { /* Keep the layout for this session. */ }
+                    }}
                     onContextMenu={!onNodeMenu || preview || readOnly ? undefined : e => { e.preventDefault(); onNodeMenu(node.id, e.clientX, e.clientY); }}
-                    onClick={preview || readOnly ? undefined : e => { e.currentTarget.focus(); if ((e.shiftKey || e.ctrlKey || e.metaKey) && onToggleMarked) onToggleMarked(node.id); else onSelectPlotNode(node.id); }}
+                    onClick={preview || readOnly ? undefined : e => { if (suppressClick.current) return; e.currentTarget.focus(); if ((e.shiftKey || e.ctrlKey || e.metaKey) && onToggleMarked) onToggleMarked(node.id); else onSelectPlotNode(node.id); }}
                     role={preview || readOnly ? undefined : 'button'}
                     tabIndex={preview || readOnly ? undefined : 0}
                     onKeyDown={(event) => {
