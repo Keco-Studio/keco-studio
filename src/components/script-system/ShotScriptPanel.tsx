@@ -568,6 +568,16 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       {!castReady && <div className={styles.bar}>
         <span>Scene artwork needs a reference for each character.</span>
         <button onClick={() => onSwitch?.('characters')}>Set up character references</button>
+        {!board.characterGuide && <button onClick={() => {
+          try {
+            const cast = JSON.parse(localStorage.getItem(castKey) ?? '{}');
+            if (!cast.characterGuide) { onSwitch?.('characters'); return; }
+            const next = checkBoard({...board, characterGuide: cast.characterGuide, castSprites: cast.castSprites});
+            update({...next, shots: invalidateCastShots(next.castSprites)});
+            if (!castIsReady(next)) onSwitch?.('characters');
+            tell('Loaded character profiles from this Conversation.');
+          } catch { tell('Could not read the saved profiles. Open Characters to review them.'); }
+        }}>Use Conversation characters</button>}
       </div>}
       <div className={styles.bar}>
         <button disabled={pending.includes('Shot: ' + shot.id) || !castReady} onClick={() => directShots(true)}>{pending.includes('Shot: ' + shot.id) ? 'Generating…' : shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
