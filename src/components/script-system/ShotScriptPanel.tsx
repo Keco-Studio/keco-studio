@@ -10,6 +10,7 @@ import {
   type Shot,
   type Storyboard,
 } from '@/lib/script-system/shotScript';
+import { shotContinuity } from '@/lib/script-system/shotContinuity';
 import type { FlowRow } from '@/lib/script-system/flow-editing/model';
 import styles from './ShotScriptPanel.module.css';
 
@@ -61,11 +62,13 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'Redone':'Undone');
   }
   const revision = useRef(0);
-  async function requestGeneration(artworkShotId?: string) {
+  async function requestGeneration(artworkShotId?: string, source = board) {
+    const referenceId = artworkShotId && shotContinuity(source).context(artworkShotId).referenceId;
+    const shots = source.shots.map(({ artwork, ...shot }) => shot.id === referenceId ? { ...shot, artwork } : shot);
     const response = await fetch('/api/script-shot-generation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, libraryId, board: { ...board, shots: board.shots.map(({ artwork: _image, ...s }) => s) }, brief, ...(artworkShotId ? { artworkShotId } : {}) }),
+      body: JSON.stringify({ projectId, libraryId, board: { ...source, shots }, brief, ...(artworkShotId ? { artworkShotId } : {}) }),
     });
     if (!response.headers.get('content-type')?.includes('application/json'))
       throw Error(
@@ -96,17 +99,19 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       setGenerating(false);
     }
   }
-  async function illustrateScene() {
+  async function illustrateScene(regenerate = false) {
     const started = revision.current;
     setGenerating(true);
-    let next = board;
+    let next: Storyboard = regenerate ? { ...board, shots: board.shots.map(({ artwork: _previous, ...shot }) => shot) } : board;
+    let illustrated = 0;
     try {
-      for (const [i, shot] of board.shots.entries()) {
+      for (const [i, shot] of shotContinuity(next).order.entries()) {
         if (shot.artwork) continue;
         tell('Illustrating shot ' + (i + 1) + ' of ' + board.shots.length + '…');
-        const result = await requestGeneration(shot.id);
+        const result = await requestGeneration(shot.id, next);
         if (revision.current !== started) throw Error('The draft changed. Generate again from the updated shots.');
         next = checkBoard({ ...next, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork } : s) });
+        illustrated++;
       }
       if (next !== board) update(next);
       setMovie(sceneHtml(next));
@@ -114,7 +119,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       tell('Scene preview is ready.');
       requestAnimationFrame(() => preview.current?.scrollIntoView({ block: 'nearest' }));
     } catch (e) {
-      if (next !== board && revision.current === started) update(next);
+      if (illustrated && revision.current === started) update(next);
       tell((e as Error).message);
     } finally {
       setGenerating(false);
@@ -419,7 +424,8 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       {shot.artwork && <img className={styles.artwork} src={shot.artwork} alt={shot.scene} />}
       <div className={styles.bar}>
         <button onClick={save}>Save template</button>
-        <button disabled={generating} onClick={illustrateScene}>{board.shots.some(s => !s.artwork) ? 'Illustrate scene with PixelLab and play' : 'Play illustrated scene'}</button>
+        <button disabled={generating} onClick={() => illustrateScene()}>{board.shots.some(s => !s.artwork) ? 'Illustrate scene with PixelLab and play' : 'Play illustrated scene'}</button>
+        {board.shots.some(s => s.artwork) && <button disabled={generating} onClick={() => illustrateScene(true)}>Re-illustrate entire scene</button>}
         <button onClick={exportAnimation}>Export animation as HTML</button>
       </div>
       <span role="status">{message}</span>
