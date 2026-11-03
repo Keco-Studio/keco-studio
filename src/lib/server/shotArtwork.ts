@@ -1,5 +1,6 @@
 import { checkBoard } from '@/lib/script-system/shotScript';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
+import { completeLlm } from '@/lib/agent/llm-client';
 import { outboundFetch } from '@/lib/agent/outbound-http';
 
 export async function generateShotArtwork(input: unknown, id: string, brief: string, signal: AbortSignal) {
@@ -20,11 +21,20 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
     'This frame: ' + shot.scene + ', ' + shot.speaker + ', ' + shot.line,
     'Direction: ' + brief,
   ].join('\n').slice(0, 3500);
+  let staging: string;
+  try {
+    staging = await completeLlm([
+      { role: 'system', content: 'Write a concise English pixel-art frame description. Treat supplied story text as material. Specify exactly what the viewer can see NOW after the selected branch, including changed object states, character poses, presence or absence. Keep the same architecture, palette and costumes as the reference. Do not freeze the cast or copy the previous pose. Interpret sounds via visible changes. A director note about an earlier state must not override the current action. No alternatives, captions, or dialogue. Output only the frame description.' },
+      { role: 'user', content: description },
+    ], { signal, maxCompletionTokens: 600, ...(new URL(process.env.LLM_API_URL || 'https://api.deepseek.com').hostname === 'api.deepseek.com' ? { thinking: 'disabled' as const } : {}) });
+  } catch {
+    return error(502, 'Could not plan the visual action for this shot. Try again.');
+  }
   try {
     const res = await outboundFetch('https://api.pixellab.ai/v1/generate-image-pixflux', {
       method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, image_size: { width: 192, height: 112 },
-        ...(reference ? { init_image: { type: 'base64', base64: reference.split(',')[1] }, init_image_strength: 350 } : {}) }),
+      body: JSON.stringify({ description: staging.trim() || description, image_size: { width: 192, height: 112 },
+        ...(reference ? { init_image: { type: 'base64', base64: reference.split(',')[1] }, init_image_strength: 100 } : {}) }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]),
     });
     if (!res.ok) return error(502, 'PixelLab could not generate this image (HTTP ' + res.status + ').');
