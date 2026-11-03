@@ -7,17 +7,24 @@ export type FlowBinding = { rowId: string; blockId: string; role: 'action' | 'sp
 export function resolveFlowLineage(rows: readonly FlowRow[], blocks: readonly ScriptSourceBlock[], existing: readonly FlowBinding[] = [], terminalIds: readonly string[] = []) {
   const bindings: FlowBinding[] = [];
   const diagnostics: FlowDiagnostic[] = [];
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     if (terminalIds.includes(row.id)) continue;
     const type = flowText(row.values.Type);
-    const role: FlowBinding['role'] = type === '3' ? 'action' : ['1', '2'].includes(type) ? 'speech' : 'text';
     const text = normalize(flowText(row.values.Content));
     const speaker = normalize(flowText(row.values.Name));
+    const role: FlowBinding['role'] = type === '3' && speaker ? 'action' : ['1', '2'].includes(type) ? 'speech' : 'text';
     const prior = existing.find(b => b.rowId === row.id);
     const matches = blocks.filter(block => {
       if (prior && (prior.blockId !== block.blockId || prior.role !== role)) return false;
       const parsed = parseSourceDialogue(block.text);
+      // An established anchor disambiguates a later text edit. A role change
+      // still invalidates the binding; it is never guessed from nearby prose.
+      if (prior) return role === 'text' ? !parsed : Boolean(parsed);
       if (role === 'text') return normalize(block.text) === text;
+      const partner = role === 'speech' ? rows[index - 1] : rows[index + 1];
+      const paired = partner && normalize(flowText(partner.values.Name)) === speaker
+        && (role === 'speech' ? flowText(partner.values.Type) === '3' : ['1', '2'].includes(flowText(partner.values.Type)));
+      if (parsed && paired && normalize(role === 'speech' ? parsed.cue : parsed.dialogue) !== normalize(flowText(partner.values.Content))) return false;
       return parsed && normalize(parsed.speaker) === speaker
         && normalize(role === 'speech' ? parsed.dialogue : parsed.cue) === text;
     });

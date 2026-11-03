@@ -55,7 +55,7 @@ export function applyFlowEdit(source: readonly FlowRow[], edit: FlowEdit, alloca
     // Adding a choice to the old physical tail supersedes its implicit end.
     if (!controls.length) row.values.Commands = commandTokens(row.values.Commands).filter(t => !isControlToken(t)).join('; ');
     row.values[`Option${edit.optionIndex}`] = edit.text;
-    row.values[`Option${edit.optionIndex}_Next`] = destination;
+    row.values[`Option${edit.optionIndex}_Next`] = `Jump ${destination}`;
     if (edit.commands !== undefined) row.values[`Option${edit.optionIndex}_Commands`] = edit.commands;
   } else {
     row.values.Commands = [...commandTokens(row.values.Commands).filter(t => !isControlToken(t)),

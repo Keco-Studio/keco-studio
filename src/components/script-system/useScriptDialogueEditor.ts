@@ -956,6 +956,16 @@ export function useScriptDialogueEditor({
 
   return {
     enabled: Boolean(supabase && fields),
+    waitForIdle: () => enqueueCommand(async () => true),
+    refreshAfterFlow: async () => {
+      setHistoryPast([]);
+      setHistoryFuture([]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) }),
+      ]);
+    },
     characters,
     blocks,
     editingBlockId,

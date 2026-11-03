@@ -61,6 +61,6 @@ Script 编辑成功后从最新行重建图。plot_plan 仅提供经验证的分
 
 ## 实施边界
 
-本设计待用户确认后进入实施计划。新增代码独立放在 `script-system/flow-editing` 和对应服务/API/UI，尽量不扩大 ScriptSplitView。工作区第一步未完成的改动不回退、不混称本次交付。实现中对条件播放、动画、模板管理不扩展范围。
+本设计已获用户确认并进入实施。新增代码独立放在 `script-system/flow-editing` 和对应服务/API/UI，尽量不扩大 ScriptSplitView。工作区第一步未完成的改动不回退、不混称本次交付。实现中对条件播放、动画、模板管理不扩展范围。
 
 设计检查：独立 builder check 已完成，提出的历史映射、重新生成入口、正文编辑后摘要维护三项问题已在上文作开发者决策。现有 FlowChartPanel、ScriptSplitView、scriptPlayer、buildPersistedPlotGraph 基线为 4 套件/48 测试通过。

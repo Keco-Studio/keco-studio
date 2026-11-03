@@ -61,3 +61,17 @@ Files: create `tests/e2e/specs/script-flow-editing.spec.ts`; record evidence in 
 
 ## Execution record
 Baseline: 4 suites / 48 tests passed before changes. Plan self-review maps each design section to Tasks 1–5. User design approval and native execution authorization carry forward; no additional execution confirmation needed.
+
+### Implementation and review record (2026-11-03)
+Tasks 1–4 are implemented. The independent whole-change review found sparse physical row ordering, ambiguous repeated dialogue mapping and invisible self-loop routing; each was reproduced and fixed with a regression test. Narration mapping and generated terminal IDs also have regression coverage. No reviewer findings remain deferred.
+
+Implementation rulings:
+- Scene groups remain presentation metadata; current Script rows determine edges, replacing stale persisted edges.
+- Stable source block/role identity and current document fingerprint are authoritative. Stored sourceText is descriptive; normal text edits do not require rewriting it in the dialogue transaction. Regeneration resolves current content and rejects structural ambiguity before replacement.
+- Finalization reparents staging rows, preserves the stable library name, releases the staging job uniqueness key and retains custom values. Migrations target only the isolated local database.
+- Phase 1 template/reuse changes remain separate and unfinished.
+
+Verification coverage: 13 focused suites, 95 tests passed, including 8 live database tests without skips. These cover role checks, conflict/replay, rollback, regeneration and player behavior. TypeScript and API TypeScript checks passed. Final edited-component ESLint passed without warnings. Earlier full lint completed with 0 errors and existing repository warnings.
+
+Limits: the full repository unit run reported 133 failed, 328 skipped and 5507 passed. Failures include Windows path/CRLF/Unix-tool assumptions and generated Next files during concurrent development; the API sanitization failure introduced by this feature was fixed and its focused regression passed. Not every full-suite failure has been individually classified. npm run validate was interrupted in the MCP check, so the repository-wide gate is not green. Browser coverage is recorded below; it does not substitute for a single browser journey covering regeneration and every branch type.
+The authenticated browser save/reload, replay, stale request and viewer-denial scenario passed before the final layout adjustment. Final narrow-layout verification remains open due to local development-server startup failures.

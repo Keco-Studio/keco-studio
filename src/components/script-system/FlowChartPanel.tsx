@@ -129,7 +129,7 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
   const positions = new Map<string, { x: number; y: number; layer: number }>();
   let maxWidth = 0;
   const needsOuterRoute = edges.some((edge) => (
-    (layerById.get(edge.to) ?? 0) - (layerById.get(edge.from) ?? 0) > 1
+    edge.from === edge.to || (layerById.get(edge.to) ?? 0) - (layerById.get(edge.from) ?? 0) > 1
   ));
   const horizontalPad = PAD + (needsOuterRoute ? OUTER_ROUTE_GUTTER : 0);
 
@@ -179,7 +179,11 @@ function edgePath(
   from: { x: number; y: number; layer: number },
   to: { x: number; y: number; layer: number },
   canvasWidth: number
-): { path: string; route: 'direct' | 'outer' } {
+): { path: string; route: 'direct' | 'outer' | 'loop' } {
+  if (from.x === to.x && from.y === to.y) {
+    const right = from.x + NODE_WIDTH;
+    return { path: `M ${right} ${from.y + NODE_HEIGHT * .75} C ${right + 48} ${from.y + NODE_HEIGHT * .75}, ${right + 48} ${from.y + NODE_HEIGHT * .25}, ${right} ${from.y + NODE_HEIGHT * .25}`, route: 'loop' };
+  }
   const x1 = from.x + NODE_WIDTH / 2;
   const y1 = from.y + NODE_HEIGHT;
   const x2 = to.x + NODE_WIDTH / 2;

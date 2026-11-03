@@ -1,0 +1,10 @@
+.editor { flex-shrink: 0; padding: 12px 16px; border-bottom: 1px solid var(--border-color, #ddd); overflow: auto; max-height: 60%; font-size: 13px; }
+.editor h3 { margin: 0 0 12px; font-size: 14px; }
+.editor fieldset { border: 0; padding: 0; min-width: 0; }
+.editor label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.editor input, .editor select { width: 100%; padding: 6px; background: var(--background, white); color: inherit; border: 1px solid #aaa; border-radius: 4px; }
+.editor button { cursor: pointer; padding: 6px 10px; border: 1px solid #aaa; border-radius: 4px; }
+.editor button:disabled { cursor: default; opacity: .5; }
+.editor pre { max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
+.editor [role=alert] { color: #a12d25; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }

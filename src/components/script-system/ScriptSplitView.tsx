@@ -45,6 +45,8 @@ import {
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
+import { ScriptFlowEditor } from './ScriptFlowEditor';
+import { projectFlowGraph } from '@/lib/script-system/flow-editing/projection';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
@@ -223,18 +225,20 @@ export function ScriptSplitView({
     graph: initialGraph,
     rowIds,
   }));
-  let graph = graphState.graph;
+  let sceneGraph = graphState.graph;
   if (graphState.libraryId !== libraryId) {
-    graph = initialGraph;
-    setGraphState({ libraryId, graph, rowIds });
+    sceneGraph = initialGraph;
+    setGraphState({ libraryId, graph: sceneGraph, rowIds });
   } else if (!sameRowIds(graphState.rowIds, rowIds)) {
-    graph = retitleFlowGraph(coalesceThinLinearPlotNodes(reconcileScriptFlowGraph({
+    sceneGraph = retitleFlowGraph(coalesceThinLinearPlotNodes(reconcileScriptFlowGraph({
       graph: graphState.graph,
       previousRows: graphState.rowIds.map((id) => ({ id })),
       rows,
     }), flowRows), flowRows);
-    setGraphState({ libraryId, graph, rowIds });
+    setGraphState({ libraryId, graph: sceneGraph, rowIds });
   }
+  // Scene groups describe presentation; current row values determine every edge.
+  const graph = useMemo(() => projectFlowGraph(sceneGraph, rows.map((row, index) => ({ id: row.id, values: flowRows[index] ?? {} }))), [sceneGraph, rows, flowRows]);
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
@@ -320,6 +324,17 @@ export function ScriptSplitView({
     sourceToken,
   });
 
+  const [flowSaveRequest, setFlowSaveRequest] = useState(0);
+  const pendingFlowFlush = useRef<((saved: boolean) => void) | null>(null);
+  useEffect(() => () => { pendingFlowFlush.current?.(false); pendingFlowFlush.current = null; }, [libraryId]);
+  const beforeFlowOpen = async () => {
+    await dialogueEditor.waitForIdle();
+    if (!dialogueEditor.editingBlockId) return true;
+    return new Promise<boolean>(resolve => {
+      pendingFlowFlush.current = resolve;
+      setFlowSaveRequest(v => v + 1);
+    });
+  };
   const editingProps = dialogueEditor.enabled
     ? {
         characters: dialogueEditor.characters,
@@ -328,6 +343,8 @@ export function ScriptSplitView({
         setEditingBlockId: dialogueEditor.setEditingBlockId,
         finishEditingBlock: dialogueEditor.finishEditingBlock,
         isBusy: dialogueEditor.isBusy,
+        saveRequestVersion: flowSaveRequest,
+        onSaveRequestComplete: (saved: boolean) => { pendingFlowFlush.current?.(saved); pendingFlowFlush.current = null; },
         canUndo: dialogueEditor.canUndo,
         canRedo: dialogueEditor.canRedo,
         onUndo: () => dialogueEditor.undo(),
@@ -535,6 +552,14 @@ export function ScriptSplitView({
                 className={styles.rightPane}
                 style={{ flex: `${1 - ratio} 1 0%` }}
               >
+                {projectId && supabase && !referenceTemplate && !graphPreview ? <ScriptFlowEditor
+                  key={`${projectId}:${libraryId}`}
+                  projectId={projectId}
+                  libraryId={libraryId}
+                  selectedRowIds={selectedRows.map(row => row.id)}
+                  beforeOpen={beforeFlowOpen}
+                  onSaved={dialogueEditor.refreshAfterFlow}
+                /> : null}
                 <FlowChartPanel
                   graph={displayedGraph}
                   title="Branch Structure"

@@ -36,6 +36,7 @@ function fakeSupabase(options: {
   const supabase = {
     rpc(name: string, params: unknown) {
       rpcCalls.push({ name, params });
+      if (name === 'script_flow_regeneration_context') return Promise.resolve({ data: null, error: null });
       return Promise.resolve({ data: options.failDialogueFinalization ? false : true, error: null });
     },
     from(table: string) {

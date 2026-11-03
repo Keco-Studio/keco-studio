@@ -40,6 +40,10 @@ import {
 } from './FlowChartPanel';
 
 describe('FlowChartPanel', () => {
+  it('routes a self loop outside its node so the fill does not hide the edge', () => {
+    const markup = renderToStaticMarkup(<FlowChartPanel graph={{ nodes: [{ id: 'A', label: 'Again', rowIndex: 0, rowIndexes: [0] }], edges: [{ from: 'A', to: 'A' }] }} selectedPlotNodeId="A" onSelectPlotNode={() => {}} />);
+    expect(markup).toContain('data-flow-route="loop"');
+  });
   it('supports a workspace title and a read-only structure-reference label', () => {
     const markup = renderToStaticMarkup(
       <FlowChartPanel

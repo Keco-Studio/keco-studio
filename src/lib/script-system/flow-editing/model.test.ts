@@ -1,5 +1,6 @@
 import { analyzeFlow, type FlowRow } from './model';
 import { applyFlowEdit } from './edit';
+import { createScriptPlayerState, nextPosition, readScriptOptions } from '@/components/libraries/components/scriptPlayer';
 
 const row = (id: string, values: Record<string, unknown> = {}): FlowRow => ({ id, values: { Content: id, ...values } });
 describe('authoritative Script flow', () => {
@@ -24,7 +25,7 @@ describe('authoritative Script flow', () => {
     const before = JSON.stringify(rows);
     const next = applyFlowEdit(rows, { type: 'option', rowId: 'a', optionIndex: 1, text: 'Changed', target: { kind: 'row', rowId: 'c' } }, () => 'new');
     expect(next[0].values).toMatchObject({ If: 'v>1', Cg: { id: 'image' }, Commands: 'Score +1', Option0_Next: 'B', Option1: 'Changed', Option1_Commands: 'Score +2' });
-    expect(next[0].values.Option1_Next).toBe(next[2].values.Label);
+    expect(next[0].values.Option1_Next).toBe(`Jump ${next[2].values.Label}`);
     expect(JSON.stringify(rows)).toBe(before);
   });
   it('ends an option using an independent terminal row without removing its button', () => {
@@ -32,7 +33,7 @@ describe('authoritative Script flow', () => {
     expect(next[0].values.Option3).toBe('Leave');
     const terminal = next.find(r => r.id === 'terminal')!;
     expect(terminal.values.Commands).toBe('End');
-    expect(next[0].values.Option3_Next).toBe(terminal.values.Label);
+    expect(next[0].values.Option3_Next).toBe(`Jump ${terminal.values.Label}`);
     // Appending a terminal cannot change the old final row's semantics.
     expect(next.find(r => r.id === 'b')!.values.Commands).toBe('End');
   });
@@ -50,5 +51,18 @@ describe('authoritative Script flow', () => {
     expect(next[0].values.Option0).toBe('A');
     expect(next[0].values.Option12).toBe('');
     expect(next[0].values.Option12_Commands).toBe('');
+  });
+  it('plays a newly edited option using the standard Jump syntax', () => {
+    const copied = applyFlowEdit([row('a', { Type: '4' }), row('b', { Type: '4', Commands: 'End' })],
+      { type: 'option', rowId: 'a', optionIndex: 0, text: 'Go', target: { kind: 'row', rowId: 'b' } }, () => 'terminal');
+    const assets = copied.map(r => ({ id: r.id, libraryId: 'library', name: '', propertyValues: r.values }));
+    const columns = { labelKey: 'Label', commandsKey: 'Commands', options: [{ index: 0, textKey: 'Option0', nextKey: 'Option0_Next' }] };
+    const result = nextPosition(createScriptPlayerState(assets, columns), assets, columns, 0);
+    expect(result.warning).toBeUndefined();
+    expect(result.done).toBe(true);
+  });
+  it('resolves legacy bare option labels consistently in graph and player', () => {
+    const asset = { id: 'a', libraryId: 'lib', name: '', propertyValues: { Option0: 'Go', Option0_Next: 'B' } };
+    expect(readScriptOptions(asset, { options: [{ index: 0, textKey: 'Option0', nextKey: 'Option0_Next' }] })[0].targetLabel).toBe('B');
   });
 });
