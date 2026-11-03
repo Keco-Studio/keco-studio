@@ -75,6 +75,8 @@ export function InlineFlowChart({
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
+  const undoIds=useRef<string[]>([]);
+  const remember=(id:string)=>{undoIds.current=[...undoIds.current.filter(x=>x!==id),id].slice(-20);};
   const retry = useRef({ signature: '', id: '' });
   const released = useRef(false);
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -140,6 +142,8 @@ export function InlineFlowChart({
         if (res.status === 409) await load();
         throw new Error((await res.json()).error || '粘贴失败');
       }
+      remember(retry.current.id);
+      surface.current?.focus();
       await onSaved();
       await load();
       retry.current = { signature: '', id: '' };
@@ -336,6 +340,8 @@ export function InlineFlowChart({
         );
       }
       cancel();
+      remember(retry.current.id);
+      surface.current?.focus();
       await onSaved();
       await load();
       setMessage('Saved');
@@ -354,6 +360,17 @@ export function InlineFlowChart({
       setCursor(undefined);
     }
   }
+  async function undoFlow(){
+    const id=undoIds.current.at(-1);
+    if(!id || locked.current)return;
+    locked.current=true;setBusy(true);
+    try {
+      if(!await beforeOpen())throw Error('请先保存对白');
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({undoRequestId:id})});
+      if(!response.ok)throw Error(response.status===409?'剧本已更改，不能覆盖后续修改。':'撤销失败');
+      undoIds.current.pop();cancel();await onSaved();await load();setMessage('已撤销流程修改');
+    }catch(e){setMessage((e as Error).message);}finally{locked.current=false;setBusy(false);}
+  }
   const editable = data?.canEdit && !data.diagnostics.length;
   const currentNode = chart.graph.nodes.find((n) => n.id === properties);
   return (
@@ -368,6 +385,7 @@ export function InlineFlowChart({
           )
         )
           return;
+        if(!e.shiftKey && (e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){e.preventDefault();void undoFlow();return;}
         if (e.key === 'Escape') {
           e.preventDefault();
           cancel();
@@ -412,6 +430,7 @@ export function InlineFlowChart({
         }
         tools={
           <div className={styles.wireTools}>
+            {undoIds.current.length>0 && <button disabled={busy} onClick={()=>void undoFlow()}>撤销流程修改</button>}
             <span role="status">
               {busy
                 ? 'Saving…'
@@ -534,7 +553,8 @@ export function InlineFlowChart({
                 selectedRowIds={currentNode.rowIndexes.map((i) => rowIds[i])}
                 beforeOpen={beforeOpen}
                 inlineProperties
-                onSaved={async () => {
+                onSaved={async (id) => {
+                    if(id)remember(id);
                   await onSaved();
                   await load();
                   setProperties(null);

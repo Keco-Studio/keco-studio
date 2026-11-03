@@ -48,6 +48,14 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   const [run, restart] = useState(0);
   const [brief, setBrief] = useState('');
   const [generating, setGenerating] = useState(false);
+  type Draft = {board:Storyboard;active:string;choice:string;index:number};
+  const history=useRef<{past:Draft[];future:Draft[]}>({past:[],future:[]});
+  function travel(redo:boolean){
+    const from=redo?history.current.future:history.current.past;
+    const previous=from.pop();if(!previous)return;
+    (redo?history.current.past:history.current.future).push({board,active,choice,index});
+    revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'已重做':'已撤销');
+  }
   const revision = useRef(0);
   async function directShots() {
     const started = revision.current;
@@ -87,6 +95,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   const shot = board.shots[index];
   function update(next: Storyboard) {
     revision.current++;
+    history.current.past=[...history.current.past,{board,active,choice,index}].slice(-50);history.current.future=[];
     setBoard(next);
     setMovie('');
     tell('');
@@ -147,8 +156,13 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     }
   }
   return (
-    <section className={styles.panel} aria-label="镜头脚本">
+    <section className={styles.panel} aria-label="镜头脚本" tabIndex={0} onKeyDown={e=>{
+        if((e.ctrlKey||e.metaKey) && !e.altKey && e.key.toLowerCase()==='z' && !(e.target as Element).closest('textarea,input:not([type=checkbox]):not([type=number]),[contenteditable=true]')){
+          e.preventDefault();travel(e.shiftKey);
+        }
+      }}>
       <h3>镜头脚本</h3>
+      <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>撤销</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>重做</button></div>
       <div className={styles.bar}>
         <label>
           导演要求

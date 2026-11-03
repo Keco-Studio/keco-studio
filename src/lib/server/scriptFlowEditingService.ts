@@ -54,6 +54,12 @@ export async function readScriptFlow(scope: Scope) {
     outlets: model.outlets, diagnostics: [...model.diagnostics, ...identity.diagnostics] };
 }
 export async function saveScriptFlow(scope: Scope, body: unknown) {
+  if(body && typeof body==='object' && 'undoRequestId' in body) {
+    const {undoRequestId}=z.object({undoRequestId:z.string().uuid()}).strict().parse(body);
+    const {error}=await getSupabaseServiceRoleClient().rpc('undo_script_flow',{p_project_id:scope.projectId,p_library_id:scope.libraryId,p_actor:scope.actorUserId,p_request_id:undoRequestId});
+    if(error)throw error;
+    return {undone:true};
+  }
   if (body && typeof body==='object' && 'duplicateScript' in body) {
     const request=z.object({duplicateScript:z.string().trim().min(1).max(80),requestId:z.string().uuid(),expectedFingerprint:z.string().regex(/^[a-f0-9]{32}$/)}).strict().parse(body);
     const raw=await readRaw(scope);

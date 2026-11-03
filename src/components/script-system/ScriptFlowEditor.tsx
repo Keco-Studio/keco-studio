@@ -6,7 +6,7 @@ import { ScriptReadingView } from './ScriptReadingView';
 import styles from './ScriptFlowEditor.module.css';
 
 type Snapshot = { rows: FlowRow[]; fingerprint: string; canEdit: boolean; diagnostics: FlowDiagnostic[] };
-type Props = { inlineProperties?: boolean; onDismiss?: () => void; projectId: string; libraryId: string; selectedRowIds: string[]; beforeOpen: () => Promise<boolean>; onSaved: () => void | Promise<void> };
+type Props = { inlineProperties?: boolean; onDismiss?: () => void; projectId: string; libraryId: string; selectedRowIds: string[]; beforeOpen: () => Promise<boolean>; onSaved: (requestId?:string) => void | Promise<void> };
 export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeOpen, onSaved, inlineProperties, onDismiss }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,7 +72,7 @@ export function ScriptFlowEditor({ projectId, libraryId, selectedRowIds, beforeO
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, requestId: retry.current.requestId }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? 'Unable to save flow');
-      await onSaved(); setSnapshot(null); onDismiss?.();
+      await onSaved(retry.current.requestId); setSnapshot(null); onDismiss?.();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); inFlight.current = false; }
   };

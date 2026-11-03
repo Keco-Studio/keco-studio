@@ -556,7 +556,11 @@ export function ScriptSplitView({
                 <SourceDocumentEditor key={sourceDocumentId} projectId={projectId} documentId={sourceDocumentId} flushLayout />
               </Suspense>
             </div>}
-            <div className={styles.leftBody} hidden={view!=='dialogue'}>
+            <div className={styles.leftBody} hidden={view!=='dialogue'} tabIndex={0} onKeyDown={e=>{
+              if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z' && !e.altKey && !(e.target as Element).closest('textarea,input,[contenteditable=true]')) {
+                e.preventDefault(); if(e.shiftKey)void dialogueEditor.redo();else void dialogueEditor.undo();
+              }
+            }}>
                 <VisualNovelScriptView
                   rows={selectedRows}
                   scriptColumns={scriptColumns}
