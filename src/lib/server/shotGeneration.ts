@@ -24,7 +24,8 @@ export async function generateShotResponse(
       { status: 400 },
     );
   }
-  if (board.shots.length > 60 || JSON.stringify(board).length > 32000)
+  const promptBoard = { ...board, shots: board.shots.map(({ artwork: _artwork, ...shot }) => shot) };
+  if (board.shots.length > 60 || JSON.stringify(promptBoard).length > 32000)
     return Response.json(
       { error: 'Generate up to 60 shots and 32,000 characters per request.' },
       { status: 413 },
@@ -39,7 +40,7 @@ export async function generateShotResponse(
         },
         {
           role: 'user',
-          content: JSON.stringify({ direction: input.brief, board }),
+          content: JSON.stringify({ direction: input.brief, board: promptBoard }),
         },
       ],
       {
@@ -74,6 +75,7 @@ export async function generateShotResponse(
             },
           },
         ],
+        ...(new URL(process.env.LLM_API_URL || 'https://api.deepseek.com').hostname === 'api.deepseek.com' ? { thinking: 'disabled' as const } : {}),
         toolName: 'direct_shots',
         maxCompletionTokens: 8000,
         signal,

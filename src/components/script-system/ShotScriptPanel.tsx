@@ -47,6 +47,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   });
   const [choice, select] = useState('example');
   const [active, setActive] = useState('');
+  const preview = useRef<HTMLIFrameElement>(null);
   const [movie, setMovie] = useState('');
   const [run, restart] = useState(0);
   const [brief, setBrief] = useState('');
@@ -60,29 +61,60 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'Redone':'Undone');
   }
   const revision = useRef(0);
-  async function directShots() {
+  async function requestGeneration(artworkShotId?: string) {
+    const response = await fetch('/api/script-shot-generation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, libraryId, board: { ...board, shots: board.shots.map(({ artwork: _image, ...s }) => s) }, brief, ...(artworkShotId ? { artworkShotId } : {}) }),
+    });
+    if (!response.headers.get('content-type')?.includes('application/json'))
+      throw Error(
+        'The AI service is unavailable. Open the signed-in Conversation to generate shots.',
+      );
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Generation failed');
+    return result;
+  }
+  async function directShots(artwork = false) {
     const started = revision.current;
     setGenerating(true);
-    tell('Generating camera moves, timing and effects…');
+    tell(artwork ? 'Illustrating this shot with PixelLab…' : 'Generating camera moves, timing and effects…');
     try {
-      const response = await fetch('/api/script-shot-generation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, libraryId, board, brief }),
-      });
-      if (!response.headers.get('content-type')?.includes('application/json'))
-        throw Error(
-          'The AI service is unavailable. Open the signed-in Conversation to generate shots.',
-        );
-      const result = await response.json();
-      if (!response.ok) throw Error(result.error || 'Generation failed');
+      const result = await requestGeneration(artwork ? board.shots[index].id : undefined);
       if (started !== revision.current) {
         tell('Your draft changed during generation. The AI result was not applied.');
         return;
       }
-      update(checkBoard(result.board));
-      tell('Shots generated. You can edit, play or save this template.');
+      const next = artwork
+        ? checkBoard({ ...board, shots: board.shots.map((s, i) => i === index ? { ...s, artwork: result.artwork } : s) })
+        : checkBoard({ ...result.board, shots: result.board.shots.map((s: Shot, i: number) => ({ ...s, artwork: board.shots[i].artwork })) });
+      update(next);
+      tell(artwork ? 'Scene artwork is ready.' : 'Shot directions updated. Illustrate a shot to add its scene image.');
     } catch (e) {
+      tell((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+  async function illustrateScene() {
+    const started = revision.current;
+    setGenerating(true);
+    let next = board;
+    try {
+      for (const [i, shot] of board.shots.entries()) {
+        if (shot.artwork) continue;
+        tell('Illustrating shot ' + (i + 1) + ' of ' + board.shots.length + '…');
+        const result = await requestGeneration(shot.id);
+        if (revision.current !== started) throw Error('The draft changed. Generate again from the updated shots.');
+        next = checkBoard({ ...next, shots: next.shots.map(s => s.id === shot.id ? { ...s, artwork: result.artwork } : s) });
+      }
+      if (next !== board) update(next);
+      setMovie(sceneHtml(next));
+      restart(n => n + 1);
+      tell('Scene preview is ready.');
+      requestAnimationFrame(() => preview.current?.scrollIntoView({ block: 'nearest' }));
+    } catch (e) {
+      if (next !== board && revision.current === started) update(next);
       tell((e as Error).message);
     } finally {
       setGenerating(false);
@@ -137,22 +169,17 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       );
     }
   }
-  function generate(download: boolean) {
+  function exportAnimation() {
     try {
       const html = sceneHtml(board);
-      if (download) {
-        const url = URL.createObjectURL(
-          new Blob([html], { type: 'text/html;charset=utf-8' }),
-        );
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = (board.name || 'Scene animation') + '.html';
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-      } else {
-        setMovie(html);
-        restart((n) => n + 1);
-      }
+      const url = URL.createObjectURL(
+        new Blob([html], { type: 'text/html;charset=utf-8' }),
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (board.name || 'Scene animation') + '.html';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
       tell('');
     } catch {
       tell('Check the name, branch targets, choice labels and durations before generating again.');
@@ -165,6 +192,8 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         }
       }}>
       <h3>Shot Script</h3>
+      {movie && <iframe ref={preview} key={libraryId + run} title="Scene animation" sandbox="allow-scripts" srcDoc={movie} />}
+
       <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>Undo</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>Redo</button></div>
       <div className={styles.bar}>
         <label>
@@ -384,19 +413,17 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         </button>
       </fieldset>
       <div className={styles.bar}>
+        <button disabled={generating} onClick={() => directShots(true)}>{shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
+        <span>Illustrates the selected shot.</span>
+      </div>
+      {shot.artwork && <img className={styles.artwork} src={shot.artwork} alt={shot.scene} />}
+      <div className={styles.bar}>
         <button onClick={save}>Save template</button>
-        <button onClick={() => generate(false)}>Generate and play animation</button>
-        <button onClick={() => generate(true)}>Export animation as HTML</button>
+        <button disabled={generating} onClick={illustrateScene}>{board.shots.some(s => !s.artwork) ? 'Illustrate scene with PixelLab and play' : 'Play illustrated scene'}</button>
+        <button onClick={exportAnimation}>Export animation as HTML</button>
       </div>
       <span role="status">{message}</span>
-      {movie && (
-        <iframe
-          key={libraryId + run}
-          title="Scene animation"
-          sandbox="allow-scripts"
-          srcDoc={movie}
-        />
-      )}
+
     </section>
   );
 }

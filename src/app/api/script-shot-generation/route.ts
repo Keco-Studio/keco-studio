@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
+import { generateShotArtwork } from '@/lib/server/shotArtwork';
 import { generateShotResponse } from '@/lib/server/shotGeneration';
 
 export const POST = withAuth(async (request, _ctx, { supabase }) => {
@@ -10,6 +11,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
         projectId: z.string().uuid(),
         libraryId: z.string().uuid(),
         board: z.unknown(),
+        artworkShotId: z.string().min(1).optional(),
         brief: z.string().max(1000),
       })
       .strict()
@@ -26,6 +28,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
     .maybeSingle();
   if (error || !library)
     return Response.json({ error: 'You do not have access to this Script.' }, { status: 403 });
+  if (input.artworkShotId) return generateShotArtwork(input.board, input.artworkShotId, input.brief, request.signal);
   return generateShotResponse(
     { board: input.board, brief: input.brief },
     request.signal,
