@@ -8,3 +8,14 @@
 .editor pre { max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
 .editor [role=alert] { color: #a12d25; overflow-wrap: anywhere; }
 .actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.board { overflow:auto; max-height:45vh; background:#182435 radial-gradient(#41516a 1px, transparent 1px); background-size:16px 16px; border-radius:6px; }
+.wires { position:absolute; inset:0; pointer-events:none; }
+.card { position:absolute; width:214px; box-sizing:border-box; background:#29394d; color:white; border-radius:6px; }
+.cardTitle,.pin { display:flex; align-items:center; height:32px; gap:8px; }
+.cardTitle { background:#335b79; border-radius:6px 6px 0 0; padding-right:6px; }
+.cardTitle + .pin { margin-top:5px; }
+.pin { justify-content:flex-end; padding-left:8px; }
+.cardTitle span,.pin span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.card button { padding:0; border:0; width:18px; height:22px; color:#80d9fa; background:transparent; }
+.card button[aria-pressed=true] { color:#ffca64; }
