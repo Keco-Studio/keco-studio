@@ -11,6 +11,7 @@ import {
   type Storyboard,
 } from '@/lib/script-system/shotScript';
 import { GenerationQueue, type QueueRow } from '@/lib/script-system/generationQueue';
+import { ReuseBackdrop } from './ReuseBackdrop';
 import { CharacterCards } from './CharacterCards';
 import { castDefinitions, castIsReady } from '@/lib/script-system/shotCast';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
@@ -169,7 +170,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       const result = await requestGeneration(signal, id, source);
       const current = latest.current;
       const now = current.shots.find(s => s.id === id);
-      if (epoch !== revision.current || !now || now.line !== target.line || now.scene !== target.scene ||
+      if (epoch !== revision.current || !now || now.artwork !== target.artwork || now.line !== target.line || now.scene !== target.scene ||
           now.speaker !== target.speaker || current.characterGuide !== source.characterGuide ||
           result.visibleCast.some((name: string) => current.castSprites?.find(s => s.name === name)?.image !== source.castSprites?.find(s => s.name === name)?.image) ||
           JSON.stringify(shotContinuity(current).context(id).beats) !== JSON.stringify(shotContinuity(source).context(id).beats))
@@ -337,6 +338,15 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       }}>
       <h3>Shot Script</h3>{activity}
       <div className={styles.bar}><span>{castReady ? 'Character designs ready.' : 'Prepare the cast before illustrating new shots.'}</span><button onClick={() => onSwitch?.('characters')}>Open Characters</button></div>
+      <div className={styles.bar}>
+        <button onClick={() => {
+          try {
+            setMovie(sceneHtml(board, true));
+            restart(n => n + 1);
+          } catch { tell('Check the shot durations and branch targets before previewing.'); }
+        }}>Quick preview</button>
+        <span>Play now with available artwork and draft backgrounds.</span>
+      </div>
       {movie && <iframe ref={preview} key={libraryId + run} title="Scene animation" sandbox="allow-scripts" srcDoc={movie} />}
 
       <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>Undo</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>Redo</button></div>
@@ -577,6 +587,11 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
         <button disabled={pending.includes('Shot: ' + shot.id) || !castReady} onClick={() => directShots(true)}>{pending.includes('Shot: ' + shot.id) ? 'Generating…' : shot.artwork ? 'Regenerate scene artwork' : 'Generate scene artwork'} · PixelLab</button>
         <span>Illustrates the selected shot.</span>
       </div>
+      <ReuseBackdrop key={shot.id} board={board} shot={shot} apply={fields => {
+        if (latest.current !== board) { tell('Your draft changed. Compose the updated shot again.'); return; }
+        update({...board, shots:board.shots.map(s => s.id === shot.id ? {...s,...fields} : s)});
+        tell('Scene artwork composed locally.');
+      }}/>
       {shot.artwork && <img className={styles.artwork} src={shot.artwork} alt={shot.scene} />}
       <div className={styles.bar}>
         <button onClick={save}>Save template</button>
