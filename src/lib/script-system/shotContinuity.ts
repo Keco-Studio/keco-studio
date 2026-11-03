@@ -33,5 +33,5 @@ export function shotContinuity(board: Storyboard) {
     }
     return { beats, referenceId };
   }
-  return { order, context };
+  return { order, context, parentId: (id: string) => parents.get(id)?.id };
 }

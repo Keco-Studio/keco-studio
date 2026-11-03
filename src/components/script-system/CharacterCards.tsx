@@ -5,12 +5,12 @@ import type { Storyboard } from '@/lib/script-system/shotScript';
 import styles from './ShotScriptPanel.module.css';
 
 type Props = {
-  board: Storyboard; busy: boolean; generate: (name: string) => void;
+  board: Storyboard; busy: boolean; pending: (name: string) => boolean; generate: (name: string) => void;
   draft: () => void; save: (guide: string) => void;
 };
 type Editor = { original?: string; name: string; description: string };
 
-export function CharacterCards({ board, busy, generate, draft, save }: Props) {
+export function CharacterCards({ board, busy, pending, generate, draft, save }: Props) {
   const [edit, setEdit] = useState<Editor | null>(null);
   const [error, setError] = useState('');
   let profiles: ReturnType<typeof castDefinitions> = [];
@@ -35,6 +35,7 @@ export function CharacterCards({ board, busy, generate, draft, save }: Props) {
     try { save(guide); setEdit(null); setError(''); }
     catch { setError('Could not save this profile in browser storage. Your edits are still here.'); }
   }
+  const missing = profiles.filter(p => !pending(p.name) && !board.castSprites?.some(s => s.name === p.name && s.appearance === p.appearance));
   const form = edit && <form className={styles.profileForm} onSubmit={e => {e.preventDefault(); submit();}}>
     <label>Name<input required autoFocus maxLength={100} value={edit.name} onChange={e => setEdit({...edit, name:e.target.value})}/></label>
     <label>Character description<textarea required rows={4} placeholder="Describe their silhouette, hairstyle, clothes and signature items." value={edit.description} onChange={e => setEdit({...edit, description:e.target.value})}/></label>
@@ -44,6 +45,7 @@ export function CharacterCards({ board, busy, generate, draft, save }: Props) {
   return <>
     <div className={styles.bar}>
       <button disabled={busy || !!edit} onClick={()=>open({name:'',description:''})}>Add character</button>
+      {!!profiles.length && <button disabled={busy || !!edit || !missing.length} onClick={() => missing.forEach(p => generate(p.name))}>Generate missing references ({missing.length})</button>}
       {!profiles.length && !invalid && <button disabled={busy || !!edit || board.characterGuide?.trim().toLowerCase()==='none'} onClick={draft}>Draft profiles from Script</button>}
       {!profiles.length && !board.characterGuide && <button disabled={busy || !!edit} onClick={() => {try { save('None'); } catch {setError('Could not save the empty cast.');}}}>Use an empty cast</button>}
     </div>
@@ -60,7 +62,7 @@ export function CharacterCards({ board, busy, generate, draft, save }: Props) {
           {edit?.original===p.name ? form : <><p>{description}</p>
           <div className={styles.bar}>
             <button disabled={busy || !!edit} onClick={()=>open({original:p.name,name:p.name,description})}>Edit profile</button>
-            <button disabled={busy || !!edit} onClick={()=>generate(p.name)}>{sprite?'Regenerate reference':'Generate reference'}</button>
+            <button disabled={busy || pending(p.name) || !!edit} onClick={()=>generate(p.name)}>{pending(p.name) ? 'Generating…' : sprite?'Regenerate reference':'Generate reference'}</button>
           </div></>}
         </article>;
       })}
