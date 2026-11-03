@@ -297,6 +297,7 @@ export function ScriptEditableDialogBlock({
         showChrome ? styles.dialogRowHot : '',
         isEditing ? styles.dialogRowEditing : '',
       ].filter(Boolean).join(' ')}
+      data-script-clip-rows={[block.actionRowId,block.speechRowId].filter(Boolean).join(" ")}
       data-testid={`script-dialogue-block-${block.id}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => {

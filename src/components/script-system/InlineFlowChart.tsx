@@ -13,6 +13,11 @@ import type {
 } from '@/lib/script-system/flow-editing/edit';
 import { FlowChartPanel, type FlowChartPanelProps } from './FlowChartPanel';
 import { ScriptFlowEditor } from './ScriptFlowEditor';
+import { copyRows } from '@/lib/script-system/flow-editing/clipboard';
+import {
+  parseScriptReuseSnapshot,
+  type ScriptReuseSnapshot,
+} from '@/lib/script-system/reuse/schema';
 import styles from './ScriptFlowEditor.module.css';
 
 type Snapshot = {
@@ -22,6 +27,8 @@ type Snapshot = {
   diagnostics: FlowDiagnostic[];
 };
 type Props = FlowChartPanelProps & {
+  sourceVersion?: string;
+  duplicateUrl?: (id: string) => string;
   characters?: string[];
   onInsertDialogue?: (speaker: string) => Promise<boolean>;
   projectId: string;
@@ -35,6 +42,7 @@ const key = (pin: FlowOutlet) =>
 const name = (pin: FlowOutlet) => pin.text || 'Continue';
 
 export function InlineFlowChart({
+  sourceVersion, duplicateUrl,
   characters = [],
   onInsertDialogue,
   projectId,
@@ -79,7 +87,7 @@ export function InlineFlowChart({
   const rowSignature = rowIds.join('|');
   useEffect(() => {
     void load().catch((e) => setMessage(e.message));
-  }, [load, rowSignature]);
+  }, [load, rowSignature, sourceVersion]);
   const cancel = () => {
     setArmed(undefined);
     setSelected(undefined);
@@ -87,6 +95,191 @@ export function InlineFlowChart({
     setCursor(undefined);
     pointer.current = null;
   };
+  const surface = useRef<HTMLDivElement>(null);
+  const buffer = useRef<ScriptReuseSnapshot | null>(null);
+  const [marked, setMarked] = useState<string[]>([]);
+  const clipType = 'application/x-keco-script';
+  const currentIds = (nodeId = chart.selectedPlotNodeId) => {
+    const ids = marked.includes(nodeId) ? marked : [nodeId];
+    return chart.graph.nodes
+      .filter((n) => ids.includes(n.id))
+      .flatMap((n) => n.rowIndexes.map((i) => rowIds[i]));
+  };
+  function capture(ids: string[]) {
+    if (!data) throw new Error('Script is still loading.');
+    const fragment = copyRows(
+      projectId,
+      libraryId,
+      data.rows,
+      ids,
+      chart.graph.nodes.map((n) => ({
+        localId: n.id,
+        title: n.label,
+        rowIds: n.rowIndexes.map((i) => rowIds[i]),
+      })),
+    );
+    buffer.current = fragment;
+    return fragment;
+  }
+  async function place(fragment: ScriptReuseSnapshot) {
+    if (!data?.canEdit || locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    try {
+      if (!(await beforeOpen())) throw new Error('请先保存对白。');
+      const payload = { fragment, expectedFingerprint: data.fingerprint };
+      const signature = JSON.stringify(payload);
+      if (retry.current.signature !== signature)
+        retry.current = { signature, id: crypto.randomUUID() };
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, requestId: retry.current.id }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) await load();
+        throw new Error((await res.json()).error || '粘贴失败');
+      }
+      await onSaved();
+      await load();
+      retry.current = { signature: '', id: '' };
+      setMessage('已创建独立副本');
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
+  }
+  async function duplicateWhole() {
+    setMenu(null);
+    if (!data || locked.current) return;
+    const name = window.prompt('新 Script 名称');
+    if (!name?.trim()) return;
+    locked.current = true;
+    setBusy(true);
+    try {
+      if (!(await beforeOpen())) throw new Error('请先保存对白。');
+      const payload = {
+        duplicateScript: name.trim(),
+        expectedFingerprint: data.fingerprint,
+      };
+      const signature = JSON.stringify(payload);
+      if (retry.current.signature !== signature)
+        retry.current = { signature, id: crypto.randomUUID() };
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, requestId: retry.current.id }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.libraryId)
+        throw new Error(result.error || '创建副本失败');
+      window.location.assign(
+        duplicateUrl?.(result.libraryId) ??
+          `/script-system/${projectId}/script/${result.libraryId}`,
+      );
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
+  }
+  async function menuCopy(id: string, duplicate: boolean) {
+    setMenu(null);
+    try {
+      const fragment = capture(currentIds(id));
+      if (duplicate) await place(fragment);
+      else {
+        // Native Ctrl+C writes both flavors. A menu copy also remains available
+        // when system clipboard access is unavailable.
+        if (navigator.clipboard?.writeText)
+          await navigator.clipboard
+            .writeText(
+              fragment.rows
+                .map((r) => String(r.values.Content ?? ''))
+                .join('\n'),
+            )
+            .catch(() => {});
+        setMessage(`已复制 ${fragment.rows.length} 行，可在图中粘贴`);
+      }
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    function copy(e: ClipboardEvent) {
+      const el = e.target as HTMLElement;
+      if (
+        el.closest?.('textarea,input,[contenteditable=true]') ||
+        !e.clipboardData
+      )
+        return;
+      const range = window.getSelection();
+      const chartFocused = surface.current?.contains(el);
+      const scope = surface.current?.closest('[data-script-copy-scope]');
+      const ids =
+        range?.rangeCount &&
+        !range.isCollapsed &&
+        scope?.contains(range.anchorNode) &&
+        scope.contains(range.focusNode)
+          ? Array.from(
+              scope.querySelectorAll<HTMLElement>('[data-script-clip-rows]'),
+            )
+              .filter((n) => range.getRangeAt(0).intersectsNode(n))
+              .flatMap((n) => n.dataset.scriptClipRows!.split(' '))
+          : [];
+      if (!ids.length && !chartFocused) return;
+      try {
+        const frag = capture(ids.length ? ids : currentIds());
+        e.clipboardData.setData(clipType, JSON.stringify(frag));
+        e.clipboardData.setData(
+          'text/plain',
+          ids.length
+            ? range!.toString()
+            : frag.rows.map((r) => String(r.values.Content ?? '')).join('\n'),
+        );
+        e.preventDefault();
+        setMessage(`已复制 ${frag.rows.length} 行`);
+      } catch (err) {
+        setMessage((err as Error).message);
+      }
+    }
+    function paste(e: ClipboardEvent) {
+      const el = e.target as HTMLElement;
+      if (
+        !surface.current?.contains(el) ||
+        el.closest?.('textarea,input,[contenteditable=true]')
+      )
+        return;
+      try {
+        const raw = e.clipboardData?.getData(clipType);
+        const plain = e.clipboardData?.getData('text/plain');
+        const fragment = raw
+          ? parseScriptReuseSnapshot(JSON.parse(raw))
+          : buffer.current &&
+              plain ===
+                buffer.current.rows
+                  .map((r) => String(r.values.Content ?? ''))
+                  .join('\n')
+            ? buffer.current
+            : undefined;
+        if (fragment) {
+          e.preventDefault();
+          void place(fragment);
+        }
+      } catch (err) {
+        setMessage((err as Error).message);
+      }
+    }
+    document.addEventListener('copy', copy);
+    document.addEventListener('paste', paste);
+    return () => {
+      document.removeEventListener('copy', copy);
+      document.removeEventListener('paste', paste);
+    };
+  });
   const pins = useMemo(() => {
     const groups = new Map<string, FlowOutlet[]>();
     if (!data) return groups;
@@ -166,6 +359,8 @@ export function InlineFlowChart({
   return (
     <div
       className={styles.inlineChart}
+      ref={surface}
+      tabIndex={0}
       onKeyDown={(e) => {
         if (
           (e.target as HTMLElement).closest(
@@ -187,6 +382,19 @@ export function InlineFlowChart({
     >
       <FlowChartPanel
         {...chart}
+        markedNodes={marked}
+        onSelectPlotNode={(id) => {
+          setMarked([]);
+          chart.onSelectPlotNode(id);
+        }}
+        onToggleMarked={(id) =>
+          setMarked((old) => {
+            const previous = old.length ? old : [chart.selectedPlotNodeId];
+            return previous.includes(id)
+              ? previous.filter((n) => n !== id)
+              : [...previous, id];
+          })
+        }
         onNodeMenu={
           editable
             ? (id, x, y) => {
@@ -254,6 +462,36 @@ export function InlineFlowChart({
                   }}
                 >
                   节点属性
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() => void duplicateWhole()}
+                >
+                  创建整份 Script 副本…
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => void menuCopy(menu.id, false)}
+                >
+                  复制所选节点
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={!buffer.current || busy}
+                  onClick={() => {
+                    setMenu(null);
+                    if (buffer.current) void place(buffer.current);
+                  }}
+                >
+                  粘贴节点
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() => void menuCopy(menu.id, true)}
+                >
+                  创建节点副本
                 </button>
                 {onInsertDialogue && (
                   <button role="menuitem" onClick={() => setAdding((v) => !v)}>

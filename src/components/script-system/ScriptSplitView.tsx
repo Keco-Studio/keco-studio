@@ -513,7 +513,7 @@ export function ScriptSplitView({
         </div>
       ) : null}
       <div
-        ref={bodyRef}
+        ref={bodyRef} data-script-copy-scope
         className={`${styles.body} ${dragging ? styles.dragging : ''}`}
       >
           <div
@@ -554,7 +554,7 @@ export function ScriptSplitView({
               >
                 {projectId && supabase && !referenceTemplate && !graphPreview ? <InlineFlowChart
                   key={`${projectId}:${libraryId}`}
-                  projectId={projectId} libraryId={libraryId} rowIds={rowIds}
+                  projectId={projectId} libraryId={libraryId} rowIds={rowIds} sourceVersion={JSON.stringify(flowRows)}
                   characters={dialogueEditor.characters.map(c=>c.name)}
                   onInsertDialogue={dialogueEditor.enabled ? speaker=>dialogueEditor.insertAfterBlock(null,speaker) : undefined}
                   beforeOpen={beforeFlowOpen} onSaved={dialogueEditor.refreshAfterFlow}

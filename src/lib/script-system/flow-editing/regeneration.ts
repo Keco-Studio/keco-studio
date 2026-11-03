@@ -26,15 +26,18 @@ export async function prepareFlowRegeneration(client: SupabaseClient, jobId: str
   const blocks = listScriptSourceBlocks(document.markdown);
   const previous = rowsFrom(raw);
   const generated = rowsFrom(nextRaw);
-  const oldIdentity = resolveFlowLineage(previous, blocks, raw.state.bindings, raw.state.terminalIds);
+  const detachedIds=[...(raw.state.terminalIds??[]), ...(raw.state.copiedIds??[])];
+  const oldIdentity = resolveFlowLineage(previous, blocks, raw.state.bindings, detachedIds);
   const newIdentity = resolveFlowLineage(generated, blocks);
   if (oldIdentity.diagnostics.length || newIdentity.diagnostics.length) throw new Error('Source mapping changed; existing Script preserved');
-  const merged = reconcileFlowOverrides(previous, oldIdentity.bindings, generated, newIdentity.bindings, raw.state.terminalIds);
+  const merged = reconcileFlowOverrides(previous, oldIdentity.bindings, generated, newIdentity.bindings, detachedIds);
   // Existing terminal IDs are global primary keys in the stable library.
   const terminalIds: string[] = [];
+  const copiedIds:string[]=[];
   for (const row of merged) {
+    if(raw.state.copiedIds?.includes(row.id)){row.id=randomUUID();copiedIds.push(row.id);continue;}
     if (raw.state.terminalIds?.includes(row.id)) { row.id = randomUUID(); terminalIds.push(row.id); }
   }
   return { p_expected_flow: context.data.fingerprint as string, p_rows: merged,
-    p_state: { version: 1, bindings: newIdentity.bindings, terminalIds } };
+    p_state: { version: 1, bindings: newIdentity.bindings, ...(copiedIds.length?{copiedIds}:{}), terminalIds } };
 }

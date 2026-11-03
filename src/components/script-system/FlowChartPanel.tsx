@@ -26,6 +26,8 @@ export type FlowChartPanelProps = {
   title?: string;
   referenceLabel?: string;
   readOnly?: boolean;
+  markedNodes?: string[];
+  onToggleMarked?: (id: string) => void;
   onNodeMenu?: (id: string, x: number, y: number) => void;
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
@@ -239,7 +241,7 @@ export function FlowChartPanel({
   title = 'Flow chart',
   referenceLabel,
   readOnly = false,
-  onNodeMenu, onSelectPlotNode,
+  markedNodes, onToggleMarked, onNodeMenu, onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -454,12 +456,13 @@ export function FlowChartPanel({
                   <g
                     key={node.id}
                     data-flow-node-id={node.id}
+                    data-copy-selected={markedNodes?.includes(node.id) || undefined}
                     data-flow-layer={pos.layer}
                     data-flow-preview-node={preview || undefined}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     className={styles.flowNode}
                     onContextMenu={!onNodeMenu || preview || readOnly ? undefined : e => { e.preventDefault(); onNodeMenu(node.id, e.clientX, e.clientY); }}
-                    onClick={preview || readOnly ? undefined : () => onSelectPlotNode(node.id)}
+                    onClick={preview || readOnly ? undefined : e => { e.currentTarget.focus(); if ((e.shiftKey || e.ctrlKey || e.metaKey) && onToggleMarked) onToggleMarked(node.id); else onSelectPlotNode(node.id); }}
                     role={preview || readOnly ? undefined : 'button'}
                     tabIndex={preview || readOnly ? undefined : 0}
                     onKeyDown={(event) => {
