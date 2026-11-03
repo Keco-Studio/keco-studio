@@ -13,6 +13,9 @@ import {
 import type { FlowRow } from '@/lib/script-system/flow-editing/model';
 import styles from './ShotScriptPanel.module.css';
 
+const cameraLabels: Record<Shot['movement'], string> = {'静止':'Static','推进':'Push in','拉远':'Pull back','左摇':'Pan left','右摇':'Pan right'};
+const effectLabels: Record<Shot['tags'][number], string> = {'淡入':'Fade in','人物入场':'Character entrance','震动':'Camera shake','暗场':'Fade to dark'};
+
 type Template = { id: string; board: Storyboard };
 type Props = {
   projectId: string;
@@ -24,11 +27,11 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
   const storeKey = 'keco.shots.templates.v1:' + projectId;
   const [initial] = useState(() => {
     try {
-      return { board: fromScript(rows, '当前剧本镜头', scenes), message: '' };
+      return { board: fromScript(rows, 'Current Script shots', scenes), message: '' };
     } catch (e) {
       return {
         board: structuredClone(example),
-        message: '当前 Script 无法导入，已打开示例：' + (e as Error).message,
+        message: 'Could not import the current Script. Showing the example instead: ' + (e as Error).message,
       };
     }
   });
@@ -54,13 +57,13 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
     const from=redo?history.current.future:history.current.past;
     const previous=from.pop();if(!previous)return;
     (redo?history.current.past:history.current.future).push({board,active,choice,index});
-    revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'已重做':'已撤销');
+    revision.current++;setBoard(previous.board);setIndex(previous.index);setActive(previous.active);select(previous.choice);setMovie('');tell(redo?'Redone':'Undone');
   }
   const revision = useRef(0);
   async function directShots() {
     const started = revision.current;
     setGenerating(true);
-    tell('AI 正在为当前镜头编排运镜、时长和动画标签…');
+    tell('Generating camera moves, timing and effects…');
     try {
       const response = await fetch('/api/script-shot-generation', {
         method: 'POST',
@@ -69,16 +72,16 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       });
       if (!response.headers.get('content-type')?.includes('application/json'))
         throw Error(
-          '当前静态预览未连接 AI 后端，请在已登录的 Conversation 页面生成。',
+          'The AI service is unavailable. Open the signed-in Conversation to generate shots.',
         );
       const result = await response.json();
-      if (!response.ok) throw Error(result.error || '生成失败');
+      if (!response.ok) throw Error(result.error || 'Generation failed');
       if (started !== revision.current) {
-        tell('草稿已修改，本次 AI 结果未应用。');
+        tell('Your draft changed during generation. The AI result was not applied.');
         return;
       }
       update(checkBoard(result.board));
-      tell('AI 分镜已生成，可调整、播放或保存模板。');
+      tell('Shots generated. You can edit, play or save this template.');
     } catch (e) {
       tell((e as Error).message);
     } finally {
@@ -119,7 +122,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       const id =
         original?.board.name === saved.name ? active : crypto.randomUUID();
       if (stored.some((t) => t.id !== id && t.board.name === saved.name)) {
-        tell('此项目已有同名模板，请改名或先调用已有模板。');
+        tell('This template name is already in use. Choose another name or load the existing template.');
         return;
       }
       const next = [...stored.filter((t) => t.id !== id), { id, board: saved }];
@@ -127,10 +130,10 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       list(next);
       setActive(id);
       select(id);
-      tell('模板已保存，可在此项目中再次调用。');
+      tell('Template saved to this project.');
     } catch {
       tell(
-        '保存失败，请检查模板名称、选项文字、目标和镜头时长，或浏览器存储空间。',
+        'Could not save. Check the template name, choices, destinations, shot durations and browser storage.',
       );
     }
   }
@@ -143,7 +146,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         );
         const a = document.createElement('a');
         a.href = url;
-        a.download = (board.name || '场景动画') + '.html';
+        a.download = (board.name || 'Scene animation') + '.html';
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       } else {
@@ -152,36 +155,36 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       }
       tell('');
     } catch {
-      tell('请检查名称、分支目标、选项文字和时长后重新生成。');
+      tell('Check the name, branch targets, choice labels and durations before generating again.');
     }
   }
   return (
-    <section className={styles.panel} aria-label="镜头脚本" tabIndex={0} onKeyDown={e=>{
+    <section className={styles.panel} aria-label="Shot Script" tabIndex={0} onKeyDown={e=>{
         if((e.ctrlKey||e.metaKey) && !e.altKey && e.key.toLowerCase()==='z' && !(e.target as Element).closest('textarea,input:not([type=checkbox]):not([type=number]),[contenteditable=true]')){
           e.preventDefault();travel(e.shiftKey);
         }
       }}>
-      <h3>镜头脚本</h3>
-      <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>撤销</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>重做</button></div>
+      <h3>Shot Script</h3>
+      <div className={styles.bar}><button disabled={!history.current.past.length} onClick={()=>travel(false)}>Undo</button><button disabled={!history.current.future.length} onClick={()=>travel(true)}>Redo</button></div>
       <div className={styles.bar}>
         <label>
-          导演要求
+          Director’s notes
           <input
             value={brief}
             maxLength={1000}
             onChange={(e) => setBrief(e.target.value)}
-            placeholder="例如：开场缓慢推进，敲门时短暂震动"
+            placeholder="Example: Push in slowly, then shake briefly at the knock."
           />
         </label>
         <button disabled={generating} onClick={() => void directShots()}>
-          {generating ? 'AI 生成中…' : 'AI 生成镜头脚本'}
+          {generating ? 'Generating…' : 'Generate shots with AI'}
         </button>
       </div>
       <div className={styles.bar}>
         <label>
-          镜头模板
+          Shot template
           <select value={choice} onChange={(e) => select(e.target.value)}>
-            <option value="example">内置 · 门口的选择</option>
+            <option value="example">Built-in · At the Door</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.board.name}
@@ -193,25 +196,25 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
           onClick={() => {
             const t = templates.find((t) => t.id === choice);
             load(t?.board ?? example, t?.id ?? '');
-            tell('已载入镜头脚本。修改模板名称后保存，可创建新模板。');
+            tell('Template loaded. To save a new copy, change its name.');
           }}
         >
-          调用模板
+          Load template
         </button>
         <button
           onClick={() => {
             try {
-              load(fromScript(rows, '当前剧本镜头', scenes), '');
+              load(fromScript(rows, 'Current Script shots', scenes), '');
             } catch (e) {
               tell((e as Error).message);
             }
           }}
         >
-          从当前 Script 载入
+          Load from current Script
         </button>
       </div>
       <label>
-        模板名称
+        Template name
         <input
           value={board.name}
           maxLength={100}
@@ -220,7 +223,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       </label>
       <div className={styles.bar}>
         <label>
-          当前镜头
+          Current shot
           <select
             value={index}
             onChange={(e) => setIndex(Number(e.target.value))}
@@ -244,28 +247,28 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
             setIndex(board.shots.length);
           }}
         >
-          添加镜头
+          Add shot
         </button>
       </div>
       <div className={styles.grid}>
         <label>
-          场景
+          Scene
           <input
             value={shot.scene}
             onChange={(e) => edit({ scene: e.target.value })}
           />
         </label>
         <label>
-          说话人
+          Speaker
           <input
-            placeholder="旁白"
+            placeholder="Narrator"
             value={shot.speaker}
             onChange={(e) => edit({ speaker: e.target.value })}
           />
         </label>
       </div>
       <label>
-        对白
+        Dialogue
         <textarea
           value={shot.line}
           onChange={(e) => edit({ line: e.target.value })}
@@ -273,7 +276,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
       </label>
       <div className={styles.grid}>
         <label>
-          运镜
+          Camera movement
           <select
             value={shot.movement}
             onChange={(e) =>
@@ -281,12 +284,12 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
             }
           >
             {movements.map((m) => (
-              <option key={m}>{m}</option>
+              <option key={m} value={m}>{cameraLabels[m]}</option>
             ))}
           </select>
         </label>
         <label>
-          时长（秒）
+          Duration (seconds)
           <input
             type="number"
             min=".2"
@@ -298,7 +301,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
         </label>
       </div>
       <fieldset>
-        <legend>动画标签</legend>
+        <legend>Animation effects</legend>
         {effects.map((tag) => (
           <label className={styles.check} key={tag}>
             <input
@@ -312,19 +315,19 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
                 })
               }
             />
-            {tag}
+            {effectLabels[tag]}
           </label>
         ))}
       </fieldset>
       <fieldset>
-        <legend>下一镜 / 对话分支</legend>
-        {shot.exits.length === 0 && <small>此镜头结束后停止播放。</small>}
+        <legend>Next shot / Dialogue branches</legend>
+        {shot.exits.length === 0 && <small>Playback ends after this shot.</small>}
         {shot.exits.map((exit, i) => (
           <div key={i} className={styles.bar}>
             <label>
-              选项文字
+              Choice text
               <input
-                placeholder="留空表示自动转场"
+                placeholder="Leave blank to advance automatically"
                 value={exit.label}
                 onChange={(e) =>
                   edit({
@@ -336,7 +339,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
               />
             </label>
             <label>
-              目标镜头
+              Target shot
               <select
                 value={exit.target ?? ''}
                 onChange={(e) =>
@@ -347,7 +350,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
                   })
                 }
               >
-                <option value="">结束</option>
+                <option value="">End</option>
                 {board.shots.map((s, j) => (
                   <option key={s.id} value={s.id}>
                     {j + 1} · {s.scene} · {s.line.slice(0, 22)}
@@ -360,7 +363,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
                 edit({ exits: shot.exits.filter((_, j) => i !== j) })
               }
             >
-              移除
+              Remove
             </button>
           </div>
         ))}
@@ -370,26 +373,26 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes }: Props) {
               exits: [
                 ...shot.exits,
                 {
-                  label: '选项 ' + (shot.exits.length + 1),
+                  label: 'Choice ' + (shot.exits.length + 1),
                   target: board.shots[index + 1]?.id ?? null,
                 },
               ],
             })
           }
         >
-          添加分支
+          Add branch
         </button>
       </fieldset>
       <div className={styles.bar}>
-        <button onClick={save}>保存模板</button>
-        <button onClick={() => generate(false)}>生成并播放场景动画</button>
-        <button onClick={() => generate(true)}>导出动画 HTML</button>
+        <button onClick={save}>Save template</button>
+        <button onClick={() => generate(false)}>Generate and play animation</button>
+        <button onClick={() => generate(true)}>Export animation as HTML</button>
       </div>
       <span role="status">{message}</span>
       {movie && (
         <iframe
           key={libraryId + run}
-          title="场景动画"
+          title="Scene animation"
           sandbox="allow-scripts"
           srcDoc={movie}
         />

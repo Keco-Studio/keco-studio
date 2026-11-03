@@ -24,27 +24,27 @@ async function main() {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error }));
     };
-    if (req.headers.host !== host) return reply(403, '本地地址无效');
+    if (req.headers.host !== host) return reply(403, 'Invalid local address');
     const path = new URL(req.url || '/', 'http://' + host).pathname;
     if (path === '/api/script-shot-generation' && req.method === 'POST') {
       if (
         req.headers.origin !== 'http://' + host ||
         !req.headers['content-type']?.includes('application/json')
       )
-        return reply(403, '只接受当前预览页请求');
-      if (busy) return reply(429, '已有镜头正在生成');
+        return reply(403, 'Requests must originate from this preview');
+      if (busy) return reply(429, 'Shot generation is already in progress');
       busy = true;
       try {
         const chunks: Buffer[] = [];
         let size = 0;
         for await (const chunk of req) {
           size += chunk.length;
-          if (size > 150000) return reply(413, '镜头请求过大');
+          if (size > 150000) return reply(413, 'Shot request is too large');
           chunks.push(Buffer.from(chunk));
         }
         const body = JSON.parse(Buffer.concat(chunks).toString());
         if (typeof body.brief !== 'string' || body.brief.length > 1000)
-          return reply(400, '导演要求格式无效');
+          return reply(400, 'Invalid director’s notes');
         const response = await generateShotResponse(
           body,
           AbortSignal.timeout(120000),
@@ -52,20 +52,20 @@ async function main() {
         res.writeHead(response.status, { 'Content-Type': 'application/json' });
         res.end(await response.text());
       } catch {
-        return reply(400, '请求无效或已超时');
+        return reply(400, 'Invalid request or request timed out');
       } finally {
         busy = false;
       }
       return;
     }
     const file = files[path];
-    if (req.method !== 'GET' || !file) return reply(404, '未找到接口');
+    if (req.method !== 'GET' || !file) return reply(404, 'Endpoint not found');
     try {
       const bytes = await readFile(resolve(directory, file[0]));
       res.writeHead(200, { 'Content-Type': file[1] + '; charset=utf-8' });
       res.end(bytes);
     } catch {
-      return reply(404, '预览文件不存在');
+      return reply(404, 'Preview file not found');
     }
   }).listen(port, '127.0.0.1', () =>
     console.log('Conversation preview: http://' + host),

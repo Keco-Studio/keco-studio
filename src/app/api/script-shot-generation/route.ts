@@ -15,7 +15,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
       .strict()
       .parse(await request.json());
   } catch {
-    return Response.json({ error: '镜头生成请求格式无效。' }, { status: 400 });
+    return Response.json({ error: 'Invalid shot generation request.' }, { status: 400 });
   }
   const { data: library, error } = await supabase
     .from('libraries')
@@ -25,7 +25,7 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
     .eq('document_export_type', 'script')
     .maybeSingle();
   if (error || !library)
-    return Response.json({ error: '无法访问此 Script。' }, { status: 403 });
+    return Response.json({ error: 'You do not have access to this Script.' }, { status: 403 });
   return generateShotResponse(
     { board: input.board, brief: input.brief },
     request.signal,

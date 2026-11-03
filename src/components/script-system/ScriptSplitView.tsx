@@ -535,24 +535,24 @@ export function ScriptSplitView({
             }
           >
             {projectId && sourceDocumentId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
-              <button type="button" aria-pressed={view==='dialogue'} onClick={()=>setView('dialogue')}>对白</button>
+              <button type="button" aria-pressed={view==='dialogue'} onClick={()=>setView('dialogue')}>Dialogue</button>
               <button type="button" aria-pressed={sourceOpen} disabled={switchingView} onClick={async()=>{
                 if (sourceOpen) return;
                 setSwitchingView(true);
                 try { if (await beforeFlowOpen()) { setSourceVisited(true); setView('document'); } }
                 finally { setSwitchingView(false); }
-              }}>源 Document</button>
+              }}>Source Document</button>
               <button type="button" aria-pressed={view==='shots'} disabled={switchingView} onClick={async()=>{
                 if(view==='shots')return;
                 setSwitchingView(true);
                 try { if(await beforeFlowOpen()){setShotsVisited(true);setView('shots');} }finally{setSwitchingView(false);}
-              }}>镜头脚本</button>
+              }}>Shot Script</button>
             </div>}
             {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots'}>
               <ShotScriptPanel key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
             </div>}
             {sourceVisited && projectId && sourceDocumentId && <div className={styles.leftBody} hidden={!sourceOpen}>
-              <Suspense fallback={<p>正在打开源文档…</p>}>
+              <Suspense fallback={<p>Opening source document…</p>}>
                 <SourceDocumentEditor key={sourceDocumentId} projectId={projectId} documentId={sourceDocumentId} flushLayout />
               </Suspense>
             </div>}

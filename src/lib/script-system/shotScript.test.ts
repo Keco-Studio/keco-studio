@@ -13,6 +13,6 @@ describe('shot script generation', () => {
     board.shots[0].line='</script><script>alert(1)</script>';
     expect(sceneHtml(board)).not.toContain(board.shots[0].line);
     board.shots[0].exits[0].target='missing';
-    expect(()=>checkBoard(board)).toThrow('分支目标');
+    expect(()=>checkBoard(board)).toThrow('branch targets');
   });
 });

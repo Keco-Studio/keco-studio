@@ -32,13 +32,13 @@ export function checkBoard(input: unknown) {
       s.exits.some((e) => e.target !== null && !ids.has(e.target)),
     )
   )
-    throw Error('镜头编号重复或分支目标已丢失');
+    throw Error('Duplicate shot IDs or missing branch targets');
   if (
     board.shots.some(
       (s) => s.exits.length > 1 && s.exits.some((e) => !e.label.trim()),
     )
   )
-    throw Error('多分支镜头的每个出口都需要选项文字');
+    throw Error('Each branch needs choice text');
   return board;
 }
 
@@ -61,7 +61,7 @@ export function fromScript(
     name,
     shots: rows.map((r) => ({
       id: r.id,
-      scene: scenes.get(r.id) || '场景',
+      scene: scenes.get(r.id) || 'Scene',
       speaker: flowText(r.values.Name),
       line: flowText(r.values.Content),
       seconds: 3,
@@ -116,13 +116,13 @@ export const example: Storyboard = {
 export function sceneHtml(input: Storyboard) {
   const board = checkBoard(input);
   const json = JSON.stringify(board).replace(/</g, '\\u003c');
-  return `<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>场景动画</title><style>
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scene animation</title><style>
 *{box-sizing:border-box}body{margin:0;background:#132133;color:#fff;font:16px system-ui}main{overflow:hidden;position:relative;min-height:310px;height:100vh;background:#14243b}#world{position:absolute;inset:-16%;background:linear-gradient(155deg,var(--sky),#263c56 58%,#101a29);transform-origin:50% 40%}svg{width:100%;height:100%}.top,.dialog{position:absolute;left:5%;right:5%}.top{top:6%;font-size:13px}.dialog{bottom:7%;background:#101925df;padding:14px;border-radius:8px}p{white-space:pre-wrap;margin:.45em 0}button{background:#f2f7ff;color:#132133;border:0;border-radius:5px;margin:5px 6px 0 0;padding:7px 12px;cursor:pointer}
 @keyframes push{to{transform:scale(1.24)}}@keyframes pull{from{transform:scale(1.24)}}@keyframes left{to{transform:translateX(-8%)}}@keyframes right{to{transform:translateX(8%)}}@keyframes enter{from{transform:translateX(120px);opacity:0}}@keyframes fade{from{opacity:0}}@keyframes shake{25%,75%{transform:translateX(-5px)}50%{transform:translateX(5px)}}@keyframes dark{to{background:#000a}}#veil{position:absolute;inset:0;pointer-events:none}</style><main id="stage"><div id="world"><svg viewBox="0 0 700 340" preserveAspectRatio="xMidYMid slice"><path d="M0 230L165 130l135 70 120-95 280 130v105H0" fill="#1e3549"/><path d="M0 275l350-70 350 64v71H0" fill="#112b3b"/><path d="M320 340l60-133h20l82 133" fill="#566979"/><g id="actor" fill="#0c1925"><circle cx="400" cy="177" r="14"/><path d="M379 250q1-65 21-65t25 65z"/></g></svg></div><div id="veil"></div><div class="top" id="scene"></div><div class="dialog"><b id="speaker"></b><p id="line"></p><div id="choices"></div></div></main><script>
 const board=${json};document.title=board.name;const shots=new Map(board.shots.map(s=>[s.id,s]));const el=id=>document.getElementById(id);let timer;
 function button(text,fn){const b=document.createElement('button');b.textContent=text;b.onclick=fn;el('choices').append(b)}
-function finish(){clearTimeout(timer);el('choices').replaceChildren();el('speaker').textContent='播放结束';button('重新播放',()=>play(board.shots[0].id))}
-function play(id){clearTimeout(timer);const s=shots.get(id);if(!s){finish();return}el('choices').replaceChildren();el('scene').textContent=board.name+' · '+s.scene;el('speaker').textContent=s.speaker||'旁白';el('line').textContent=s.line;const w=el('world'),a=el('actor'),v=el('veil'),stage=el('stage');for(const n of [w,a,v,stage])n.style.animation='none';void stage.offsetWidth;
+function finish(){clearTimeout(timer);el('choices').replaceChildren();el('speaker').textContent='Playback complete';button('Replay',()=>play(board.shots[0].id))}
+function play(id){clearTimeout(timer);const s=shots.get(id);if(!s){finish();return}el('choices').replaceChildren();el('scene').textContent=board.name+' · '+s.scene;el('speaker').textContent=s.speaker||'Narrator';el('line').textContent=s.line;const w=el('world'),a=el('actor'),v=el('veil'),stage=el('stage');for(const n of [w,a,v,stage])n.style.animation='none';void stage.offsetWidth;
 w.style.setProperty('--sky','hsl('+([...s.scene].reduce((h,c)=>h+c.charCodeAt(0),0)%360)+' 30% 48%)');
 const move={'推进':'push','拉远':'pull','左摇':'left','右摇':'right'}[s.movement];if(move)w.style.animation=move+' '+s.seconds+'s ease-in-out both';a.style.display=s.speaker&&s.speaker!=='旁白'?'':'none';if(s.tags.includes('人物入场'))a.style.animation='enter .7s both';if(s.tags.includes('暗场'))v.style.animation='dark '+s.seconds+'s forwards';stage.style.animation=[s.tags.includes('淡入')?'fade .5s':'',s.tags.includes('震动')?'shake .38s':''].filter(Boolean).join(',');
 timer=setTimeout(()=>{if(!s.exits.length){finish();return}if(s.exits.length===1&&!s.exits[0].label){play(s.exits[0].target);return}for(const e of s.exits)button(e.label,()=>play(e.target));},s.seconds*1000)}

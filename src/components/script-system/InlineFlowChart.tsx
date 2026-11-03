@@ -19,6 +19,7 @@ import {
   type ScriptReuseSnapshot,
 } from '@/lib/script-system/reuse/schema';
 import styles from './ScriptFlowEditor.module.css';
+import toolbar from './ScriptWorkspaceToolbar.module.css';
 
 type Snapshot = {
   rows: FlowRow[];
@@ -128,7 +129,7 @@ export function InlineFlowChart({
     locked.current = true;
     setBusy(true);
     try {
-      if (!(await beforeOpen())) throw new Error('请先保存对白。');
+      if (!(await beforeOpen())) throw new Error('Save the dialogue first.');
       const payload = { fragment, expectedFingerprint: data.fingerprint };
       const signature = JSON.stringify(payload);
       if (retry.current.signature !== signature)
@@ -140,14 +141,14 @@ export function InlineFlowChart({
       });
       if (!res.ok) {
         if (res.status === 409) await load();
-        throw new Error((await res.json()).error || '粘贴失败');
+        throw new Error((await res.json()).error || 'Paste failed');
       }
       remember(retry.current.id);
       surface.current?.focus();
       await onSaved();
       await load();
       retry.current = { signature: '', id: '' };
-      setMessage('已创建独立副本');
+      setMessage('Independent copy created');
     } catch (e) {
       setMessage((e as Error).message);
     } finally {
@@ -158,12 +159,12 @@ export function InlineFlowChart({
   async function duplicateWhole() {
     setMenu(null);
     if (!data || locked.current) return;
-    const name = window.prompt('新 Script 名称');
+    const name = window.prompt('New Script name');
     if (!name?.trim()) return;
     locked.current = true;
     setBusy(true);
     try {
-      if (!(await beforeOpen())) throw new Error('请先保存对白。');
+      if (!(await beforeOpen())) throw new Error('Save the dialogue first.');
       const payload = {
         duplicateScript: name.trim(),
         expectedFingerprint: data.fingerprint,
@@ -178,7 +179,7 @@ export function InlineFlowChart({
       });
       const result = await response.json();
       if (!response.ok || !result.libraryId)
-        throw new Error(result.error || '创建副本失败');
+        throw new Error(result.error || 'Could not create a copy');
       window.location.assign(
         duplicateUrl?.(result.libraryId) ??
           `/script-system/${projectId}/script/${result.libraryId}`,
@@ -206,7 +207,7 @@ export function InlineFlowChart({
                 .join('\n'),
             )
             .catch(() => {});
-        setMessage(`已复制 ${fragment.rows.length} 行，可在图中粘贴`);
+        setMessage(`Copied ${fragment.rows.length} rows. Paste them into the graph.`);
       }
     } catch (e) {
       setMessage((e as Error).message);
@@ -245,7 +246,7 @@ export function InlineFlowChart({
             : frag.rows.map((r) => String(r.values.Content ?? '')).join('\n'),
         );
         e.preventDefault();
-        setMessage(`已复制 ${frag.rows.length} 行`);
+        setMessage(`Copied ${frag.rows.length} rows`);
       } catch (err) {
         setMessage((err as Error).message);
       }
@@ -365,10 +366,10 @@ export function InlineFlowChart({
     if(!id || locked.current)return;
     locked.current=true;setBusy(true);
     try {
-      if(!await beforeOpen())throw Error('请先保存对白');
+      if(!await beforeOpen())throw Error('Save the dialogue first');
       const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({undoRequestId:id})});
-      if(!response.ok)throw Error(response.status===409?'剧本已更改，不能覆盖后续修改。':'撤销失败');
-      undoIds.current.pop();cancel();await onSaved();await load();setMessage('已撤销流程修改');
+      if(!response.ok)throw Error(response.status===409?'The Script has changed. Undo would overwrite a later edit.':'Undo failed');
+      undoIds.current.pop();cancel();await onSaved();await load();setMessage('Flow edit undone');
     }catch(e){setMessage((e as Error).message);}finally{locked.current=false;setBusy(false);}
   }
   const editable = data?.canEdit && !data.diagnostics.length;
@@ -430,7 +431,8 @@ export function InlineFlowChart({
         }
         tools={
           <div className={styles.wireTools}>
-            {undoIds.current.length>0 && <button disabled={busy} onClick={()=>void undoFlow()}>撤销流程修改</button>}
+            <div className={styles.wireActionRow}>
+            {undoIds.current.length>0 && <button className={toolbar.button} disabled={busy} onClick={()=>void undoFlow()}>Undo flow edit</button>}
             <span role="status">
               {busy
                 ? 'Saving…'
@@ -440,19 +442,24 @@ export function InlineFlowChart({
                     : armed
                       ? 'Choose an input · Esc to cancel'
                       : selected
-                        ? 'Delete to disconnect'
+                        ? 'Connection selected'
                         : editable
                           ? 'Connect pins · Alt-click a wire to disconnect'
                           : '')}
             </span>
             {selected && (
               <button
+                type="button"
+                className={toolbar.button}
+                title="Disconnect the selected wire (Delete)"
+                aria-keyshortcuts="Delete Backspace"
                 disabled={busy}
                 onClick={() => void save(selected, { kind: 'end' })}
               >
                 Disconnect
               </button>
             )}
+            </div>
             {targets.map((id) => (
               <button
                 key={id}
@@ -469,7 +476,7 @@ export function InlineFlowChart({
               <div
                 ref={menuRef}
                 role="menu"
-                aria-label="节点操作"
+                aria-label="Node actions"
                 className={styles.nodeMenu}
                 style={{ left: menu.x, top: menu.y }}
               >
@@ -480,20 +487,20 @@ export function InlineFlowChart({
                     setMenu(null);
                   }}
                 >
-                  节点属性
+                  Node properties
                 </button>
                 <button
                   role="menuitem"
                   disabled={busy}
                   onClick={() => void duplicateWhole()}
                 >
-                  创建整份 Script 副本…
+                  Duplicate Script…
                 </button>
                 <button
                   role="menuitem"
                   onClick={() => void menuCopy(menu.id, false)}
                 >
-                  复制所选节点
+                  Copy selected nodes
                 </button>
                 <button
                   role="menuitem"
@@ -503,18 +510,18 @@ export function InlineFlowChart({
                     if (buffer.current) void place(buffer.current);
                   }}
                 >
-                  粘贴节点
+                  Paste nodes
                 </button>
                 <button
                   role="menuitem"
                   disabled={busy}
                   onClick={() => void menuCopy(menu.id, true)}
                 >
-                  创建节点副本
+                  Duplicate nodes
                 </button>
                 {onInsertDialogue && (
                   <button role="menuitem" onClick={() => setAdding((v) => !v)}>
-                    在此后添加对白…
+                    Add dialogue after this node…
                   </button>
                 )}
                 {adding &&
@@ -530,8 +537,8 @@ export function InlineFlowChart({
                             (await onInsertDialogue?.(speaker))
                           ) {
                             await load();
-                            setMessage('已添加对白');
-                          } else setMessage('未能插入对白');
+                            setMessage('Dialogue added');
+                          } else setMessage('Could not insert dialogue');
                         } catch (e) {
                           setMessage((e as Error).message);
                         }
@@ -541,7 +548,7 @@ export function InlineFlowChart({
                     </button>
                   ))}
                 {adding && !characters.length && (
-                  <span>请先在剧本中添加角色。</span>
+                  <span>Add a character to the Script first.</span>
                 )}
               </div>
             )}

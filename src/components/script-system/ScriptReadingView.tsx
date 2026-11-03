@@ -30,36 +30,36 @@ export function ScriptReadingView({
         const isAction =
           flowText(values.Type) === '3' && !isEnvironmentSpeaker(character);
         const speaker = isAction
-          ? '动作'
+          ? 'Action'
           : isEnvironmentSpeaker(character)
-            ? '旁白'
+            ? 'Narrator'
             : character;
         return (
           <article
             key={id}
             style={{ padding: '12px 0', borderTop: '1px solid #dce2e9' }}
           >
-            <small>第 {index + 1} 行</small>
+            <small>Line {index + 1}</small>
             {content && (
               <p style={{ whiteSpace: 'pre-wrap' }}>
-                <strong>{speaker}：</strong>
+                <strong>{speaker}: </strong>
                 {isAction ? character + ' · ' : ''}
                 {content}
               </p>
             )}
-            {values.If ? <p>条件：{flowText(values.If)}</p> : null}
+            {values.If ? <p>Condition: {flowText(values.If)}</p> : null}
             {bySource.get(id)?.map((pin) => {
               const dest = pin.targetRowId
                 ? byId.get(pin.targetRowId)
                 : undefined;
               const to = dest
-                ? `第 ${dest.index + 1} 行 · ${flowText(dest.row.values.Content) || '结束'}`
+                ? `Line ${dest.index + 1} · ${flowText(dest.row.values.Content) || 'End'}`
                 : pin.kind === 'end'
-                  ? '结束'
-                  : '未找到目标';
+                  ? 'End'
+                  : 'Missing target';
               return (
                 <p key={pin.optionIndex ?? 'next'}>
-                  {pin.kind === 'option' ? `选择「${pin.text}」：` : '接下来：'}
+                  {pin.kind === 'option' ? `Choice “${pin.text}”: ` : 'Next: '}
                   {to}
                 </p>
               );
@@ -69,7 +69,7 @@ export function ScriptReadingView({
               .map((x) => x.trim())
               .filter((x) => x && !/^(End$|Jump\s)/i.test(x))
               .map((x, i) => (
-                <p key={i}>指令：{x}</p>
+                <p key={i}>Command: {x}</p>
               ))}
             {bySource.get(id)?.map((pin) => {
               const command =
@@ -78,7 +78,7 @@ export function ScriptReadingView({
                   : flowText(values[`Option${pin.optionIndex}_Commands`]);
               return command ? (
                 <p key={pin.optionIndex}>
-                  选择「{pin.text}」时执行：{command}
+                  On “{pin.text}”: {command}
                 </p>
               ) : null;
             })}

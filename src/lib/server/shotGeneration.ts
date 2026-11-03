@@ -20,13 +20,13 @@ export async function generateShotResponse(
     board = checkBoard(input.board);
   } catch {
     return Response.json(
-      { error: '请先修正镜头和分支目标。' },
+      { error: 'Fix the shots and branch targets first.' },
       { status: 400 },
     );
   }
   if (board.shots.length > 60 || JSON.stringify(board).length > 32000)
     return Response.json(
-      { error: '每次最多生成 60 个镜头、32000 字符。' },
+      { error: 'Generate up to 60 shots and 32,000 characters per request.' },
       { status: 413 },
     );
   try {
@@ -102,7 +102,7 @@ export async function generateShotResponse(
       return Response.json(
         {
           error:
-            '镜头 AI 尚未配置。请在服务端设置 LLM_API_KEY 后重启服务。草稿已保留。',
+            'Shot generation is unavailable. Configure LLM_API_KEY on the server and restart it. Your draft is preserved.',
         },
         { status: 503 },
       );
@@ -110,7 +110,7 @@ export async function generateShotResponse(
     return Response.json(
       {
         error:
-          'AI 镜头生成失败，请检查服务端模型配置或稍后重试。当前草稿已保留。',
+          'Could not generate shots. Check the server model settings or try again later. Your draft is preserved.',
       },
       { status: 502 },
     );

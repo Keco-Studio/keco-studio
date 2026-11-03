@@ -24,3 +24,8 @@
 .nodeMenu button:hover,.nodeMenu button:focus-visible { background:#eaf3ff; }
 
 .inlineChart [data-copy-selected] rect { stroke:#007aff; stroke-width:3; }
+
+.wireActionRow { display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; min-height:32px; }
+.wireActionRow [role=status] { flex:1 1 8em; }
+.wireActionRow button { flex:none; white-space:nowrap; }
+.wireActionRow button:disabled { opacity:.5; cursor:default; }
