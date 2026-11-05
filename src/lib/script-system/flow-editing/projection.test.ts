@@ -9,7 +9,7 @@ describe('flow graph projects current rows', () => {
     expect(visibleFlowOutlets(graph, rows).map(p => p.rowId)).toEqual(['b']);
   });
   it('splits an ended introduction from a later scene without changing Script commands', () => {
-    const rows = [{ id: 'a', values: { Content: '人物介绍', Commands: 'End' } }, { id: 'b', values: { Content: '第一幕', Commands: 'Jump C' } }, { id: 'c', values: { Label: 'C', Commands: 'End' } }];
+    const rows = [{ id: 'a', values: { Content: '\u4eba\u7269\u4ecb\u7ecd', Commands: 'End' } }, { id: 'b', values: { Content: '\u7b2c\u4e00\u5e55', Commands: 'Jump C' } }, { id: 'c', values: { Label: 'C', Commands: 'End' } }];
     const graph = projectFlowGraph(group, rows);
     expect(graph.nodes.map(n => n.rowIndexes)).toEqual([[0], [1], [2]]);
     expect(graph.edges).toEqual([{ from: graph.nodes[1].id, to: graph.nodes[2].id }]);
