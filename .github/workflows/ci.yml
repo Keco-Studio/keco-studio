@@ -161,8 +161,8 @@ jobs:
             tests/unit/mcp/evidence-scan.test.ts
 
       # Extract the LOCAL Supabase keys so the RLS behavior tests connect to the
-      # local instance (started above), never to the remote project the build
-      # step's secrets may point at. Mirrors playwright.yml's extraction.
+      # local instance (started above) for both tests and build.
+      # Mirrors playwright.yml's extraction and supports fork pull requests.
       - name: Extract local Supabase keys
         id: local-supabase
         run: |
@@ -236,12 +236,10 @@ jobs:
 
       - name: Build project
         env:
-          # Read Supabase environment variables from GitHub Secrets
-          # These are required at build time because the code checks them at module load
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          # SUPABASE_SERVICE_ROLE_KEY may be needed by some API routes
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Validate the production build against the isolated CI database.
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.local-supabase.outputs.anon_key }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.local-supabase.outputs.service_key }}
         run: npm run build
 
       - name: Stop Supabase services
