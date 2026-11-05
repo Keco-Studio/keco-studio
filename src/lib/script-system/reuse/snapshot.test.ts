@@ -51,7 +51,7 @@ describe('Script reuse capture', () => {
 
   it('rejects oversized UTF-8 content instead of truncating', () => {
     const source = sourceFixture();
-    source.rows[0].values.Content = '文'.repeat(400_000);
+    source.rows[0].values.Content = '\u6587'.repeat(400_000);
     expect(() => captureScriptReuseSnapshot(source, { kind: 'all' })).toThrow();
   });
 });

@@ -79,3 +79,13 @@ describe('import script conversion cache', () => {
     expect(resolver).toHaveBeenCalledTimes(2);
   });
 });
+
+
+it('does not cache fallback results so a later import can retry AI', async () => {
+  resetStoryConversionCache();
+  const resolver = jest.fn(async () => ({ fallback: true }));
+  const options = { shouldCache: (value: { fallback: boolean }) => !value.fallback };
+  await getOrResolveStory('fallback-source', resolver, options);
+  await getOrResolveStory('fallback-source', resolver, options);
+  expect(resolver).toHaveBeenCalledTimes(2);
+});

@@ -1,66 +1,66 @@
-# Script 与流程图双向编辑设计
+# Bidirectional Editing Design for Script and Flowchart
 
-## 用户决定与当前状态
+## User Decision and Current State
 
-2026-11-03 用户明确选择最初需求的第二步，并选择“直接编辑流程图并同步 Script”。本阶段交付现有 Script 的分支结构编辑与双向同步。第一步保存/复用尚未完成，其未提交改动保留，不把它列为已交付或本阶段前置条件。镜头脚本、场景动画属于后续阶段。
+On 2026-11-03 the user explicitly chose the second step of the original requirement and selected "directly edit the flowchart and sync the Script." This phase delivers branch-structure editing and bidirectional synchronization for the existing Script. The first step, save/reuse, is not yet complete; its uncommitted changes are retained and are not listed as delivered or as a prerequisite for this phase. Shot scripts and scene animation belong to later phases.
 
-现有 `buildScriptFlowGraph` 从行生成展示图，会按章节分组、合并标题节点、隐藏自环，且固定扫描 10 个选项。`FlowChartPanel` 仅支持选择节点，不能写回。`plot_plan` 可能优先于当前行数据，不能把展示图直接作为反向编译输入。当前播放器支持动态选项，并有 End、选项、Jump、顺序执行的优先级。源文档派生 Script 还涉及文档同步和重新生成。
+The existing `buildScriptFlowGraph` generates a display graph from lines; it groups by chapter, merges title nodes, hides self-loops, and scans a fixed 10 options. `FlowChartPanel` only supports selecting nodes and cannot write back. `plot_plan` may take precedence over current line data, so the display graph cannot be used directly as reverse-compilation input. The current player supports dynamic options and has priority for End, options, Jump, and sequential execution. A Script derived from a source document also involves document synchronization and regeneration.
 
-## 方案
+## Approach
 
-用户已选择：直接编辑流程图并同步 Script。另一方案“只做导入/导出转换，流程图用于浏览”不满足所选交互。
+The user has chosen: directly edit the flowchart and sync the Script. The alternative approach, "only do import/export conversion, use the flowchart for browsing," does not satisfy the selected interaction.
 
-实现选择由开发者承担：沿用 Next.js/React、现有图渲染及 Supabase；使用完整行数据加稳定行 ID 作为权威内容，编辑命令只修改指定出口。展示图只作投影；不创建另一份会独立漂移的剧情正文，也不让 LLM 推测图编辑意图。格式转换保证语义和全部字段值保留，不承诺格式空白字节一致。
+Implementation choices are left to the developer: continue using Next.js/React, the existing graph rendering, and Supabase; use complete line data plus stable line IDs as the authoritative content, with edit commands modifying only the specified exit. The display graph is only a projection; do not create another copy of the story text that can drift independently, and do not let an LLM infer graph-edit intent. Format conversion guarantees that semantics and all field values are preserved; it does not promise byte-identical formatting whitespace.
 
-## 用户可见操作
+## User-Visible Operations
 
-- 左侧 Script、右侧流程图保持现有布局和相互定位。新增图编辑模式及选中节点的出口编辑面板。
-- 每个出口显示来源对白/行、出口类型、选项文本、目标节点与目标行；同一场景内部多个分支分别列出，不能猜测用户要修改哪一行。
-- 可以把出口改接另一节点（默认其入口行，允许明确选择节点内部行）；可以编辑、添加、删除选项；可以设置普通出口为跳转、顺序继续或结束。删除选项需要明确操作，不能把“结束”解释为删除选项按钮。
-- 本阶段采用选择来源出口与目标的控件完成连线操作，键盘可用；拖线手势、自由画布布局持久化、新增/删除整段剧情节点和原始文本 IDE 不作为本阶段验收条件。正文增删继续沿用现有 Script 编辑器。
-- 修改先保留在草稿，展示受影响字段与诊断，点击 Save 原子提交，Cancel 放弃；提交前等待当前对白草稿保存。保存失败保留草稿，版本冲突不自动覆盖他人的改动。
-- viewer 仅可浏览。旧本地结构模板及生成过程的参考图继续只读。
+- Keep the existing layout and mutual positioning of Script on the left and flowchart on the right. Add a graph edit mode and an exit-editing panel for the selected node.
+- Each exit displays the source dialogue/line, exit type, option text, target node, and target line; multiple branches within the same scene are listed separately, and the user's intended line to modify must not be guessed.
+- An exit can be rewired to another node (defaulting to its entry line, with explicit selection of an internal line within the node allowed); options can be edited, added, and deleted; a normal exit can be set to jump, continue sequentially, or end. Deleting an option requires an explicit action; "end" must not be interpreted as a delete-option button.
+- This phase uses controls that select the source exit and target to complete connection operations, and is keyboard-accessible; drag-line gestures, free-canvas layout persistence, adding/deleting entire story nodes, and a raw-text IDE are not acceptance criteria for this phase. Adding and deleting body text continues to use the existing Script editor.
+- Changes are first kept in a draft, showing affected fields and diagnostics; clicking Save commits atomically, and Cancel discards; before committing, wait for the current dialogue draft to be saved. If saving fails, the draft is retained; version conflicts do not automatically overwrite others' changes.
+- Viewers can only browse. Old local structure templates and reference graphs from the generation process remain read-only.
 
-## 转换契约
+## Conversion Contract
 
-完整模型含字段定义、有序行 ID/全部值、可选场景分组，以及具有来源行 ID 和选项序号的出口。场景标题和布局不能决定执行顺序。分组缺失时确定性生成，跳转到场景内部必须定位真实目标行。
+The complete model contains field definitions, ordered line IDs/all values, optional scene grouping, and exits with source line IDs and option indices. Scene titles and layout must not determine execution order. When grouping is missing, generate it deterministically; jumping to an internal line within a scene must locate the real target line.
 
-扫描实际 OptionN/OptionN_Next/OptionN_Commands 字段，无固定 3 或 10 个选项上限（沿用总大小/行数安全限制）。解析 Label、Commands 的独立控制命令及选项目标。If、数值命令、未知非控制命令、资源和自定义列原样保留；不扩大播放器尚未支持的条件执行能力。存在条件的节点明确显示条件，不能暗示条件已被试玩求值。
+Scan the actual OptionN/OptionN_Next/OptionN_Commands fields, with no fixed limit of 3 or 10 options (retain the existing total-size/line-count safety limits). Parse independent control commands in Label and Commands and option targets. If, numeric commands, unknown non-control commands, resources, and custom columns are preserved as-is; do not expand conditional-execution capabilities that the player does not yet support. Nodes with conditions explicitly display the condition and must not imply that the condition has been evaluated by playtesting.
 
-统一图与播放器的控制流解释：End 优先，其次选项，再 Jump，最后顺序行。同时存在多个控制意图、重复 Label、失效目标、无法安全理解的控制命令时显示精确行/字段诊断并阻止相关写入；不静默修复。非法输入的原值保留以便修正。展示不可达行和循环，不丢弃自环；自动循环沿用播放器防护。
+Unify the control-flow interpretation of the graph and the player: End first, then options, then Jump, and finally sequential lines. When multiple control intents coexist, labels are duplicated, targets are invalid, or control commands cannot be safely understood, display precise line/field diagnostics and block the relevant writes; do not silently repair. Preserve the original values of invalid input for correction. Display unreachable lines and cycles, do not discard self-loops; automatic looping follows the player's existing protection.
 
-图编辑只修改指定的 Label、Jump/End 或 OptionN 字段。目标无标签时生成唯一标签。修改控制命令必须保留数值命令及其他 token，不替换正文中的同名字符串。顺序出口对应真实物理顺序，不能根据画布位置编译。选项设为结束时使用符合标准格式的独立终止行，保留按钮和选项命令；新增终止行与本次保存同事务。
+Graph editing modifies only the specified Label, Jump/End, or OptionN fields. When the target has no label, generate a unique label. Modifying control commands must preserve numeric commands and other tokens, and must not replace same-named strings in the body text. Sequential exits correspond to the real physical order and must not be compiled from canvas position. When an option is set to end, use a standalone termination line in the standard format, preserving the button and option commands; the new termination line is created in the same transaction as this save.
 
-Script 编辑成功后从最新行重建图。plot_plan 仅提供经验证的分组/标题，不覆盖真实控制边；旧计划不一致时显示诊断并从 Script 派生边。结构编辑同时更新受影响计划，防止刷新恢复旧边。
+After a successful Script edit, rebuild the graph from the latest lines. plot_plan only provides validated grouping/titles and does not override real control edges; when the old plan is inconsistent, display diagnostics and derive edges from the Script. Structural edits also update the affected plan to prevent a refresh from restoring old edges.
 
-## 持久化与源文档
+## Persistence and Source Document
 
-新增项目/库范围的结构编辑 API。客户端提交编辑命令、期望内容指纹、文档 token（适用时）和 requestId。服务端从会话取 actor，重新读取完整数据、校验项目角色、库归属和操作，生成变更；不接受客户端任意 SQL 或权威整库替换。
+Add a project/library-scoped structural editing API. The client submits edit commands, the expected content fingerprint, the document token (when applicable), and a requestId. The server obtains the actor from the session, re-reads the complete data, validates project role, library ownership, and operation, and generates the change; it does not accept arbitrary client SQL or authoritative whole-library replacement.
 
-事务覆盖字段/行值、必要终止行、plot_plan、结构元数据和幂等结果。指纹覆盖字段、行顺序、值、计划与结构元数据。相同请求重放返回原结果，同 key 不同请求返回 409。任一步失败全量回滚；不靠客户端补偿多次请求。
+The transaction covers field/line values, necessary termination lines, plot_plan, structural metadata, and idempotent results. The fingerprint covers fields, line order, values, plan, and structural metadata. Replaying the same request returns the original result; the same key with a different request returns 409. Any step failing rolls back everything; do not rely on client-side compensation across multiple requests.
 
-对有 source_document_id 的库，不能只改派生行后被重新生成覆盖。新增版本化、服务端受控的结构覆盖元数据，绑定 source document、库和稳定源块身份，记录原控制字段、编辑后的控制字段、目标身份及所依赖源块摘要。它是源文档的结构补充，不把完整源文档重写成自然语言。保存时校验文档版本和 update tail，并与结构覆盖元数据原子写入。该覆盖仅属于被编辑的 Script，不更改同源的其他派生表的正文或结构。
+For libraries with a source_document_id, do not modify only the derived lines and then have them overwritten by regeneration. Add versioned, server-controlled structural override metadata bound to the source document, library, and stable source-block identity, recording the original control fields, the edited control fields, the target identity, and the source-block digest it depends on. It is a structural supplement to the source document and does not rewrite the complete source document into natural language. On save, validate the document version and update tail, and write atomically with the structural override metadata. This override belongs only to the edited Script and does not change the body text or structure of other derived tables from the same source.
 
-重新生成该库前确定性应用仍匹配的结构覆盖，保留已有资源/自定义值的对应行映射；未编辑的内容继续原有转换路径。源块删除、重写、映射歧义导致不能应用时必须在替换已有库之前返回冲突，并保留已有库。不得静默丢弃覆盖，也不把目标 Label 当永久行身份。没有可验证源块映射的历史库，在预览中阻止结构保存并说明需要重新建立映射，不猜测正文位置。
+Before regenerating that library, deterministically apply structural overrides that still match, preserving the corresponding line mapping for existing resource/custom values; unedited content continues along the original conversion path. If a source block is deleted, rewritten, or mapping is ambiguous such that the override cannot be applied, a conflict must be returned before replacing the existing library, and the existing library must be preserved. Do not silently discard overrides, and do not treat the target Label as a permanent line identity. For historical libraries without verifiable source-block mapping, block structural saves in the preview and explain that the mapping needs to be re-established; do not guess body-text positions.
 
-### 审阅后明确的实现决策
+### Implementation Decisions Clarified After Review
 
-- 历史库第一次打开结构编辑时进行只读映射预检：优先复用已有 lineage 与 BlockAnchor；缺失时采用现有对白块/源块匹配机制，对规范化的说话人、动作、正文及完整块边界做唯一匹配。只有唯一、完整的匹配可随首次保存原子建立映射。重复正文、多行归属不唯一时返回具体冲突项；不自动模糊匹配，也不以“所有旧库禁用”代替迁移实现。无源文档库直接以持久行 ID 编辑。
-- “重新生成后保留”特指替换被编辑的同一库。若现有入口实际创建新库，必须显式区分“更新当前 Script”和“创建新 Script”：更新操作使用当前库的结构覆盖，并在替换前验证；新建默认使用源文档结构，不继承另一个库的覆盖。不得以新建库成功冒充当前库再生成验收。
-- 正常通过已有对白编辑器修改台词时，文档/派生行同步事务同时更新对应结构元数据摘要，保留可确定的源块身份、出口和目标；不因为修改一句台词永久阻断重新生成。直接源文档编辑导致摘要变化时，重新生成预检按稳定块身份和唯一行映射验证；可确定的正文变化更新摘要，删除目标或改变块结构等歧义返回冲突，禁止静默使用旧标签。上述路径需要分别测试。
+- When a historical library first opens structural editing, perform a read-only mapping pre-check: prefer reusing existing lineage and BlockAnchor; when missing, use the existing dialogue-block/source-block matching mechanism to perform unique matching on normalized speaker, action, body text, and complete block boundaries. Only unique, complete matches may establish the mapping atomically with the first save. When body text is duplicated or line ownership is ambiguous, return the specific conflicting items; do not automatically fuzzy-match, and do not substitute "disable all old libraries" for implementing migration. Libraries without a source document are edited directly using persistent line IDs.
+- "Preserved after regeneration" specifically means replacing the same edited library. If the existing entry point actually creates a new library, explicitly distinguish "update current Script" from "create new Script": the update operation uses the current library's structural overrides and validates before replacement; new creation uses the source document structure by default and does not inherit another library's overrides. Do not pass off successful new-library creation as acceptance for regenerating the current library.
+- When dialogue is modified normally through the existing dialogue editor, the document/derived-line synchronization transaction also updates the corresponding structural metadata digest, preserving determinable source-block identity, exits, and targets; do not permanently block regeneration just because one line of dialogue was changed. When direct source-document editing causes the digest to change, the regeneration pre-check validates by stable block identity and unique line mapping; determinable body-text changes update the digest, while ambiguity such as deleted targets or changed block structure returns a conflict, and silently using old labels is prohibited. The above paths need to be tested separately.
 
-## 验收
+## Acceptance
 
-1. 标准 Script → 编辑图 → 标准 Script → 再读图，正文、If、命令、资源及自定义字段保留；未编辑内容不变。
-2. 修改选项目标、文本、添加/删除选项、设置结束及顺序继续，刷新后仍正确，试玩走实际新路径。
-3. 超过 10 个选项、同场景多个分支、合流、自环、跨场景内部行跳转全部有明确表示。
-4. 失效目标、重复标签、控制歧义有定位诊断，不产生错误或部分保存。
-5. viewer/非成员不能写；协作冲突、重复提交、事务中途失败均由真实数据库测试覆盖。
-6. 已绑定源文档的库重新生成后保留编辑；源块变化造成歧义时中止替换并保留旧内容。
-7. 现有 Script/流程图/播放器测试、类型检查及 lint 通过；本地浏览器验证保存、取消、错误、刷新、键盘操作。没有验证的内容不标为完成。
+1. Standard Script → edit graph → standard Script → re-read graph: body text, If, commands, resources, and custom fields are preserved; unedited content is unchanged.
+2. Modifying option targets, text, adding/deleting options, setting end, and sequential continuation remain correct after refresh, and playtesting follows the actual new paths.
+3. More than 10 options, multiple branches in the same scene, merges, self-loops, and jumps to internal lines across scenes all have clear representations.
+4. Invalid targets, duplicate labels, and control ambiguity have located diagnostics and do not produce errors or partial saves.
+5. Viewers/non-members cannot write; collaboration conflicts, duplicate submissions, and mid-transaction failures are all covered by real database tests.
+6. Libraries bound to a source document retain edits after regeneration; when source-block changes cause ambiguity, abort replacement and preserve old content.
+7. Existing Script/flowchart/player tests, type checking, and lint pass; verify save, cancel, errors, refresh, and keyboard operation in a local browser. Content that has not been verified must not be marked complete.
 
-## 实施边界
+## Implementation Boundaries
 
-本设计已获用户确认并进入实施。新增代码独立放在 `script-system/flow-editing` 和对应服务/API/UI，尽量不扩大 ScriptSplitView。工作区第一步未完成的改动不回退、不混称本次交付。实现中对条件播放、动画、模板管理不扩展范围。
+This design has been confirmed by the user and has entered implementation. New code is placed independently under `script-system/flow-editing` and the corresponding service/API/UI, minimizing expansion of ScriptSplitView. Incomplete changes from the first step in the workspace are not reverted and are not conflated with this delivery. During implementation, do not expand scope to conditional playback, animation, or template management.
 
-设计检查：独立 builder check 已完成，提出的历史映射、重新生成入口、正文编辑后摘要维护三项问题已在上文作开发者决策。现有 FlowChartPanel、ScriptSplitView、scriptPlayer、buildPersistedPlotGraph 基线为 4 套件/48 测试通过。
+Design check: the independent builder check has been completed, and the three issues raised—historical mapping, regeneration entry point, and digest maintenance after body-text editing—have been decided by the developer above. The existing FlowChartPanel, ScriptSplitView, scriptPlayer, and buildPersistedPlotGraph baselines pass 4 suites/48 tests.

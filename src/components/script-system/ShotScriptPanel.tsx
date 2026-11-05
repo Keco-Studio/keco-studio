@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   checkBoard,
   effects,
@@ -18,19 +18,20 @@ import { shotContinuity } from '@/lib/script-system/shotContinuity';
 import type { FlowRow } from '@/lib/script-system/flow-editing/model';
 import styles from './ShotScriptPanel.module.css';
 
-const cameraLabels: Record<Shot['movement'], string> = {'静止':'Static','推进':'Push in','拉远':'Pull back','左摇':'Pan left','右摇':'Pan right'};
-const effectLabels: Record<Shot['tags'][number], string> = {'淡入':'Fade in','人物入场':'Character entrance','震动':'Camera shake','暗场':'Fade to dark'};
+const cameraLabels: Record<Shot['movement'], string> = {'\u9759\u6b62':'Static','\u63a8\u8fdb':'Push in','\u62c9\u8fdc':'Pull back','\u5de6\u6447':'Pan left','\u53f3\u6447':'Pan right'};
+const effectLabels: Record<Shot['tags'][number], string> = {'\u6de1\u5165':'Fade in','\u4eba\u7269\u5165\u573a':'Character entrance','\u9707\u52a8':'Camera shake','\u6697\u573a':'Fade to dark'};
 
 type Template = { id: string; board: Storyboard };
 type Props = {
   charactersOpen?: boolean;
-  onSwitch?: (view: 'characters' | 'shots') => void;
+  previewOpen?: boolean;
+  onSwitch?: (view: 'characters' | 'shots' | 'preview') => void;
   projectId: string;
   libraryId: string;
   rows: FlowRow[];
   scenes: Map<string, string>;
 };
-export function ShotScriptPanel({ projectId, libraryId, rows, scenes, charactersOpen, onSwitch }: Props) {
+export function ShotScriptPanel({ projectId, libraryId, rows, scenes, charactersOpen, previewOpen, onSwitch }: Props) {
   const storeKey = 'keco.shots.templates.v1:' + projectId;
   const castKey = 'keco.script.cast:' + projectId + ':' + libraryId;
   const [initial] = useState(() => {
@@ -48,6 +49,11 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     }
   });
   const [board, setBoard] = useState(initial.board);
+  const shotPreview = useMemo(() => {
+    if (!previewOpen) return { html: '', error: '' };
+    try { return { html: sceneHtml(board, true), error: '' }; }
+    catch { return { html: '', error: 'Check the shot durations and branch targets in Shot Script before previewing.' }; }
+  }, [board, previewOpen]);
   const [index, setIndex] = useState(0);
   const [message, tell] = useState(initial.message);
   const [templates, list] = useState<Template[]>(() => {
@@ -225,6 +231,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       setMovie(sceneHtml(latest.current));
       restart(n => n + 1);
       tell('Scene preview is ready.');
+      onSwitch?.('preview');
       requestAnimationFrame(() => preview.current?.scrollIntoView?.({ block: 'nearest' }));
     } catch (e) { tell((e as Error).message); }
     finally { batchActive.current = false; setBatch(false); }
@@ -312,6 +319,18 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
     </section>}
     {Object.entries(failures).map(([key, reason]) => <p key={key}>{jobTitle(key)}: {reason}</p>)}
   </div>;
+  if (previewOpen) return (
+    <section className={styles.panel} aria-label="Shot Script preview">
+      <h3>Preview</h3>
+      <p>Preview the current Shot Script, including timing, camera movement, effects and branches. Shots without artwork use draft backgrounds.</p>
+      <div className={styles.bar}>
+        <button onClick={() => restart(n => n + 1)}>Restart preview</button>
+        <button onClick={() => onSwitch?.('shots')}>Edit Shot Script</button>
+      </div>
+      {shotPreview.error ? <p role="alert">{shotPreview.error}</p> :
+        <iframe ref={preview} key={libraryId + run} title="Scene animation" sandbox="allow-scripts" srcDoc={shotPreview.html} />}
+    </section>
+  );
   if (charactersOpen) return (
     <section className={styles.panel} aria-label="Characters">
       <h3>Characters</h3>{activity}
@@ -340,6 +359,7 @@ export function ShotScriptPanel({ projectId, libraryId, rows, scenes, characters
       <div className={styles.bar}><span>{castReady ? 'Character designs ready.' : 'Prepare the cast before illustrating new shots.'}</span><button onClick={() => onSwitch?.('characters')}>Open Characters</button></div>
       <div className={styles.bar}>
         <button onClick={() => {
+          if (onSwitch) { onSwitch('preview'); return; }
           try {
             setMovie(sceneHtml(board, true));
             restart(n => n + 1);

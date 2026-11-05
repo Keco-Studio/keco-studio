@@ -2,6 +2,12 @@ import { resolveFlowLineage, reconcileFlowOverrides } from './lineage';
 const blocks = [{ blockId: 'block', text: 'Ada（smiles）：Hello', nodeIndex: 0 }];
 const rows = [ { id: 'action', values: { Type: '3', Name: 'Ada', Content: 'smiles' } }, { id: 'speech', values: { Type: '1', Name: 'Ada', Content: 'Hello', Commands: 'End', Cg: 'image', If: 'x>1' } } ];
 describe('flow source identity', () => {
+  it('binds legacy quoted Script dialogue to the unquoted compiled content', () => {
+    const source = [{ blockId: 'legacy', text: 'Guide: "Choose your route."', nodeIndex: 0 }];
+    const result = resolveFlowLineage([{ id: 'speech', values: { Type: '1', Name: 'Guide', Content: 'Choose your route.' } }], source);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.bindings[0]).toMatchObject({ blockId: 'legacy', role: 'speech' });
+  });
   it('keeps narration containing colons editable after saving flow state', () => {
     const narrative = ['\u4eba\u7269：\u6797\u6653、\u738b\u59e8、\u8d75\u54e5', '\u7b2c\u4e00\u5e55：\u6289\u62e9\u4e4b\u591c', '\u573a\u666f\u4e00：\u6797\u6653\u5bb6\u5367\u5ba4。\u591c。'];
     const source = narrative.map((text, i) => ({ blockId: `block-${i}`, text, nodeIndex: i }));

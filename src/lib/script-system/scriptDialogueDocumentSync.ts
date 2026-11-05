@@ -47,18 +47,23 @@ export type ParsedSourceDialogue = {
 function formatSourceDialogue(input: ParsedSourceDialogue): string {
   const cue = input.cue.trim();
   const dialogue = input.dialogue.trim();
-  return `${input.speaker.trim()}${cue ? `（${cue}）` : ''}：${dialogue}`;
+  return `${input.speaker.trim()}${cue ? `(${cue})` : ''}: ${dialogue}`;
 }
 
 export function parseSourceDialogue(value: string): ParsedSourceDialogue | null {
   const match = /^([^：:（(]{1,64})\s*([（(]([^）)]*)[）)])?\s*[：:]\s*(.*)$/.exec(value.trim());
   if (!match) return null;
   const trailingCue = /^[（(]([^）)]*)[）)]\s*(.*)$/.exec(match[4].trim());
+  const rawDialogue = trailingCue?.[2]?.trim() ?? match[4].trim();
+  // Legacy Script quotes delimit dialogue; compiled Content excludes them.
+  const dialogue = /^"[\s\S]*"$/.test(rawDialogue)
+    ? rawDialogue.slice(1, -1)
+    : rawDialogue;
   return {
     speaker: match[1].trim(),
     cue: match[3]?.trim() ?? trailingCue?.[1]?.trim() ?? '',
     cueMarkup: match[2] ?? (trailingCue ? `（${trailingCue[1].trim()}）` : ''),
-    dialogue: trailingCue?.[2]?.trim() ?? match[4].trim(),
+    dialogue,
   };
 }
 
@@ -271,7 +276,7 @@ export function applyScriptDialogueCommand(
             };
       }
       if (!nextDialogue) throw new Error('SOURCE_MAPPING_AMBIGUOUS');
-      nextText = `${nextDialogue.speaker}${currentDialogue.cueMarkup}：${nextDialogue.dialogue}`;
+      nextText = `${nextDialogue.speaker}${currentDialogue.cueMarkup.replace(/（/g, '(').replace(/）/g, ')')}: ${nextDialogue.dialogue}`;
     } else if (command.role === 'action' && currentDialogue) {
       nextText = command.nextText.trim()
         ? `${command.speaker ?? currentDialogue.speaker}（${command.nextText.trim()}）：${command.dialogue ?? currentDialogue.dialogue}`
@@ -284,6 +289,10 @@ export function applyScriptDialogueCommand(
       nextText = command.nextText.trim()
         ? `${command.speaker}（${command.nextText.trim()}）：${command.dialogue.trim()}`
         : `${command.speaker}：${command.dialogue.trim()}`;
+    }
+    if (currentDialogue && /:\s/.test(block.text) && (command.role === 'speech' || command.role === 'action')) {
+      const parsedNext = parseSourceDialogue(nextText);
+      if (parsedNext) nextText = formatSourceDialogue(parsedNext);
     }
     return {
       markdown: replaceScriptSourceBlock(markdown, block.blockId, nextText),

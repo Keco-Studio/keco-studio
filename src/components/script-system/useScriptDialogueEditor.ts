@@ -386,6 +386,14 @@ export function useScriptDialogueEditor({
     try {
       const writeSource = async () => {
         if (!isDerivedScript) return;
+        if (block.speechType === '3' && (block.dialogue.trim() || block.action.trim())) {
+          await syncSource({
+            type: 'edit', blockId: block.id, role: 'narration',
+            previousText: block.dialogue || block.action,
+            nextText: values.dialogue || values.action,
+          });
+          return;
+        }
         if (block.action.trim() || block.dialogue.trim()) {
           await syncSource({
             type: 'edit',

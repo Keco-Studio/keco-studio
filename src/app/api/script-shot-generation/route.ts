@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { generateShotArtwork, prepareCharacters } from '@/lib/server/shotArtwork';
 import { generateShotResponse } from '@/lib/server/shotGeneration';
+import { documentStateGateway } from '@/lib/documents/documentStateGateway';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 
 export const POST = withAuth(async (request, _ctx, { supabase }) => {
   let input;
@@ -25,14 +27,23 @@ export const POST = withAuth(async (request, _ctx, { supabase }) => {
   }
   const { data: library, error } = await supabase
     .from('libraries')
-    .select('id')
+    .select('id, source_document_id')
     .eq('id', input.libraryId)
     .eq('project_id', input.projectId)
     .eq('document_export_type', 'script')
     .maybeSingle();
   if (error || !library)
     return Response.json({ error: 'You do not have access to this Script.' }, { status: 403 });
-  if (input.prepareCast) return prepareCharacters(input.board, input.brief, request.signal, input.characterName, input.profilesOnly);
+  if (input.prepareCast) {
+    let sourceText: string | undefined;
+    if (library.source_document_id) {
+      const source = await documentStateGateway.read(supabase, library.source_document_id);
+      if (source.projectId !== input.projectId) return Response.json({ error: 'Source project mismatch.' }, { status: 403 });
+      sourceText = toScriptImportPlainText(source.markdown);
+      if (sourceText.length > 60000) return Response.json({ error: 'Source document exceeds the character extraction limit.' }, { status: 400 });
+    }
+    return prepareCharacters(input.board, input.brief, request.signal, input.characterName, input.profilesOnly, sourceText);
+  }
   if (input.artworkShotId) return generateShotArtwork(input.board, input.artworkShotId, input.brief, request.signal, input.redrawBackground);
   return generateShotResponse(
     { board: input.board, brief: input.brief },

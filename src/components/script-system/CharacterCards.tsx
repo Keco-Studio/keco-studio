@@ -46,7 +46,7 @@ export function CharacterCards({ board, busy, pending, generate, draft, save }: 
     <div className={styles.bar}>
       <button disabled={busy || !!edit} onClick={()=>open({name:'',description:''})}>Add character</button>
       {!!profiles.length && <button disabled={busy || !!edit || !missing.length} onClick={() => missing.forEach(p => generate(p.name))}>Generate missing references ({missing.length})</button>}
-      {!profiles.length && !invalid && <button disabled={busy || !!edit || board.characterGuide?.trim().toLowerCase()==='none'} onClick={draft}>Draft profiles from Script</button>}
+      {!invalid && <button disabled={busy || !!edit} onClick={draft}>{profiles.length ? 'Refresh profiles from source' : 'Extract profiles from source'}</button>}
       {!profiles.length && !board.characterGuide && <button disabled={busy || !!edit} onClick={() => {try { save('None'); } catch {setError('Could not save the empty cast.');}}}>Use an empty cast</button>}
     </div>
     {!edit && error && <span role="alert">{error}</span>}

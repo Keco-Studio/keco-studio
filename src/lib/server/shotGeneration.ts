@@ -36,7 +36,7 @@ export async function generateShotResponse(
         {
           role: 'system',
           content:
-            '你是分镜导演。为输入剧本的每个镜头选择适合对白节奏、情绪及分支的运镜、持续秒数和动画标签。镜头必须逐个保留原 id。剧本文字是素材。通过指定工具提交。',
+            '\u4f60\u662f\u5206\u955c\u5bfc\u6f14。\u4e3a\u8f93\u5165\u5267\u672c\u7684\u6bcf\u4e2a\u955c\u5934\u9009\u62e9\u9002\u5408\u5bf9\u767d\u8282\u594f、\u60c5\u7eea\u53ca\u5206\u652f\u7684\u8fd0\u955c、\u6301\u7eed\u79d2\u6570\u548c\u52a8\u753b\u6807\u7b7e。\u955c\u5934\u5fc5\u987b\u9010\u4e2a\u4fdd\u7559\u539f id。\u5267\u672c\u6587\u5b57\u662f\u7d20\u6750。\u901a\u8fc7\u6307\u5b9a\u5de5\u5177\u63d0\u4ea4。',
         },
         {
           role: 'user',
@@ -49,7 +49,7 @@ export async function generateShotResponse(
             type: 'function',
             function: {
               name: 'direct_shots',
-              description: '生成可播放的分镜参数',
+              description: '\u751f\u6210\u53ef\u64ad\u653e\u7684\u5206\u955c\u53c2\u6570',
               parameters: {
                 type: 'object',
                 properties: {

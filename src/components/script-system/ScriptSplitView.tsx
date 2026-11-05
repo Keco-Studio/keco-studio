@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  lazy, Suspense, useCallback,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -52,7 +52,6 @@ import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
 
-const SourceDocumentEditor = lazy(() => import('@/components/documents/DocumentEditor').then(({ DocumentEditor }) => ({ default: DocumentEditor })));
 
 export type ScriptSplitViewProps = {
   projectId?: string;
@@ -259,12 +258,10 @@ export function ScriptSplitView({
     graph,
   });
   const [ratio, setRatio] = useState(() => readSplitRatio());
-  const [view,setView]=useState<'dialogue'|'document'|'characters'|'shots'>('dialogue');
-  const sourceOpen=view==='document';
+  const [view,setView]=useState<'dialogue'|'preview'|'characters'|'shots'>('dialogue');
   const [shotsVisited,setShotsVisited]=useState(false);
   const shotRows=useMemo(()=>rows.map((r,i)=>({id:r.id,values:flowRows[i]??{}})),[rows,flowRows]);
   const shotScenes=useMemo(()=>new Map(graph.nodes.flatMap(n=>n.rowIndexes.map(i=>[rows[i]?.id,n.label] as const))),[graph,rows]);
-  const [sourceVisited, setSourceVisited] = useState(false);
   const [switchingView, setSwitchingView] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -534,27 +531,22 @@ export function ScriptSplitView({
                 : { flex: `${ratio} 1 0%` }
             }
           >
-            {projectId && sourceDocumentId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
+            {projectId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
               <button type="button" aria-pressed={view==='dialogue'} onClick={()=>setView('dialogue')}>Dialogue</button>
-              <button type="button" aria-pressed={sourceOpen} disabled={switchingView} onClick={async()=>{
-                if (sourceOpen) return;
+              <button type="button" aria-pressed={view==='preview'} disabled={switchingView} onClick={async()=>{
+                if (view==='preview') return;
                 setSwitchingView(true);
-                try { if (await beforeFlowOpen()) { setSourceVisited(true); setView('document'); } }
+                try { if (await beforeFlowOpen()) { setShotsVisited(true); setView('preview'); } }
                 finally { setSwitchingView(false); }
-              }}>Source Document</button>
+              }}>Preview</button>
               {(['characters', 'shots'] as const).map(tab => <button key={tab} type="button" aria-pressed={view===tab} disabled={switchingView} onClick={async()=>{
                 if(view===tab)return;
                 setSwitchingView(true);
                 try { if(await beforeFlowOpen()){setShotsVisited(true);setView(tab);} }finally{setSwitchingView(false);}
               }}>{tab==='characters'?'Characters':'Shot Script'}</button>)}
             </div>}
-            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots' && view!=='characters'}>
-              <ShotScriptPanel charactersOpen={view==='characters'} onSwitch={setView} key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
-            </div>}
-            {sourceVisited && projectId && sourceDocumentId && <div className={styles.leftBody} hidden={!sourceOpen}>
-              <Suspense fallback={<p>Opening source document…</p>}>
-                <SourceDocumentEditor key={sourceDocumentId} projectId={projectId} documentId={sourceDocumentId} flushLayout />
-              </Suspense>
+            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots' && view!=='characters' && view!=='preview'}>
+              <ShotScriptPanel charactersOpen={view==='characters'} previewOpen={view==='preview'} onSwitch={setView} key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
             </div>}
             <div className={styles.leftBody} hidden={view!=='dialogue'} tabIndex={0} onKeyDown={e=>{
               if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z' && !e.altKey && !(e.target as Element).closest('textarea,input,[contenteditable=true]')) {

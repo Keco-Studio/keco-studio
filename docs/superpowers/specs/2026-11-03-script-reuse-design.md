@@ -1,98 +1,98 @@
-# KECO-1173 Phase 1: Script 保存、模板复用与局部复制
+# KECO-1173 Phase 1: Script Saving, Template Reuse, and Partial Copy
 
-日期：2026-11-03。状态：设计待确认，尚未实现。
+Date: 2026-11-03. Status: Design pending confirmation, not yet implemented.
 
-## 目标与边界
+## Goals and Boundaries
 
-用户已选择项目内云端模板，以及同项目内局部复制粘贴。本阶段让完整 Script 和选中片段可以持久保存、生成独立副本、插入现有 Script。文本与流程图完整双向编辑、镜头模板、场景动画属于后续阶段。
+The user has chosen in-project cloud templates, as well as partial copy-paste within the same project. This phase enables complete Scripts and selected fragments to be persistently saved, generate independent copies, and be inserted into existing Scripts. Full bidirectional text and flowchart editing, shot templates, and scene animation belong to subsequent phases.
 
-普通选中文字仍执行文本复制。本阶段的结构化 Script 选择以完整对白块为单位；动作和台词组成的对白块不可被拆成半个块。用户可选择多个块。流程图支持多选节点并复制其关联的全部数据行，行重叠时去重。
+Ordinary selected text still performs text copy. The structured Script selection in this phase is based on complete dialogue blocks as units; a dialogue block composed of action and dialogue cannot be split into half a block. The user can select multiple blocks. The flowchart supports multi-selecting nodes and copying all associated data rows, deduplicating when rows overlap.
 
-## 已有代码与限制
+## Existing Code and Limitations
 
-- `scriptStructureTemplates.ts` 当前只在 localStorage 保存 FlowGraph 和统计，图节点仅引用行索引，无法独立恢复对白。
-- `ScriptSplitView.tsx` 联动对白和流程图，`FlowChartPanel.tsx` 当前只支持单节点选择。
-- `VisualNovelScriptView.tsx` 有 plot-node 编辑模式和 player 播放模式。
-- Script 内容已保存在 library 数据行中，并可能通过 source_document_id 与源文档、对白来源和 plot plan 关联。
-- `scriptImportService.ts`、`scriptDialogueRpc.ts` 已有导入和修改机制，但不能假设逐条调用可以保证批量粘贴的原子性。
-- 旧 ScriptLine 固定三个选项，其他链路已有动态选项；快照不得降级到旧三选项格式。
+- `scriptStructureTemplates.ts` currently only saves FlowGraph and statistics in localStorage; graph nodes only reference row indexes and cannot independently restore dialogue.
+- `ScriptSplitView.tsx` links dialogue and flowchart; `FlowChartPanel.tsx` currently only supports single-node selection.
+- `VisualNovelScriptView.tsx` has a plot-node edit mode and a player playback mode.
+- Script content is already saved in library data rows and may be associated with the source document, dialogue sources, and plot plan via source_document_id.
+- `scriptImportService.ts` and `scriptDialogueRpc.ts` already have import and modification mechanisms, but it cannot be assumed that calling them one by one guarantees atomicity of batch paste.
+- The old ScriptLine has a fixed three options; other pipelines already have dynamic options; snapshots must not be downgraded to the old three-option format.
 
-## 方案选择
+## Solution Selection
 
-1. 已选择：Supabase 项目内云端模板。换设备可访问，遵循项目协作权限，需要数据库迁移与原子写入接口。
-2. 未选择：扩展浏览器本地模板。成本较低，但不能满足跨设备持久保存和项目成员复用。
+1. Selected: Supabase in-project cloud templates. Accessible across devices, follows project collaboration permissions, requires database migration and atomic write interfaces.
+2. Not selected: extending browser-local templates. Lower cost, but cannot satisfy cross-device persistent saving and reuse by project members.
 
-保留旧本地结构模板作为只读参考，明确标记“仅结构参考”；它们缺少对白，不自动迁移为完整模板，也不提供假装可完整复用的操作。
+Keep the old local structure templates as read-only references, clearly marked "structure reference only"; they lack dialogue, are not automatically migrated to complete templates, and do not offer operations that pretend to be fully reusable.
 
-## 用户流程
+## User Flows
 
-### 保存与模板管理
+### Saving and Template Management
 
-继续沿用当前 Script 保存/自动保存机制。保存模板前先提交当前编辑草稿并等待完成；失败则中止。读取服务器一致快照后保存，不把陈旧客户端图作为权威内容。
+Continue to use the current Script save/autosave mechanism. Before saving a template, first commit the current editing draft and wait for completion; abort on failure. Read a server-consistent snapshot before saving; do not treat a stale client graph as authoritative content.
 
-工具栏提供“保存为模板”，支持整个 Script 或当前选中部分。填写必填名称和可选描述。模板库列出名称、创建者、更新时间、场景/对白/选项统计，可预览、重命名、删除。
+The toolbar provides "Save as Template", supporting the entire Script or the currently selected portion. Fill in a required name and optional description. The template library lists name, creator, update time, and scene/dialogue/option statistics, and supports preview, rename, and delete.
 
-模板是创建时的内容快照，原 Script 的后续变化不修改模板。本版重新保存创建新模板，不提供覆盖内容或版本历史；名称允许重复，稳定 ID 区分条目。
+A template is a content snapshot at creation time; subsequent changes to the original Script do not modify the template. In this version, re-saving creates a new template; content overwrite and version history are not provided; names may be duplicated, and stable IDs distinguish entries.
 
-### 复用
+### Reuse
 
-“创建新 Script”：在当前项目内创建可在 Script 侧栏访问的独立 Script，并打开它。模板和源 Script 的内容不被修改。
+"Create New Script": creates an independent Script within the current project that is accessible in the Script sidebar, and opens it. The contents of the template and source Script are not modified.
 
-“插入当前 Script”：选择一个节点/对白块作为插入位置，预览插入量和边界连接，确认后提交。选中的是当前位置，不自动把已有分支改接到新片段。空 Script 可以直接插入；非空 Script 必须明确选择插入点。
+"Insert into Current Script": select a node/dialogue block as the insertion position, preview the insertion amount and boundary connections, and commit after confirmation. What is selected is the current position; existing branches are not automatically rewired to the new fragment. An empty Script can be inserted into directly; a non-empty Script must explicitly select an insertion point.
 
-插入对白块之间时，仅改接该处的顺序路径。如果选中节点的出口是选项分支或显式跳转，预览必须选择具体要改接的出口，或选择“作为未连接片段加入”；不能重定向该节点所有出口。未连接片段需显示不可达提示，用户可在后续明确接入。
+When inserting between dialogue blocks, only the sequential path at that location is rewired. If the selected node's exit is an option branch or an explicit jump, the preview must select the specific exit to rewire, or choose "add as unconnected fragment"; it must not redirect all exits of that node. Unconnected fragments must show an unreachable warning, and the user can explicitly connect them later.
 
-### 局部复制
+### Partial Copy
 
-流程图通过 Ctrl/Cmd+点击切换多选，Shift+点击可留给实现者选择合理扩展；第一版不强制框选。Script 编辑器提供显式“选择片段”模式和块级多选，避免和文本选择、编辑快捷键冲突。
+The flowchart toggles multi-selection via Ctrl/Cmd+click; Shift+click may be left to the implementer to choose a reasonable extension; the first version does not mandate box selection. The Script editor provides an explicit "Select Fragment" mode and block-level multi-selection, avoiding conflicts with text selection and editing shortcuts.
 
-选择后提供“复制片段”和“保存选中部分为模板”。复制暂存在当前标签页的项目作用域剪贴板，可在同项目不同 Script 间粘贴；页面刷新会清空，长期保存应使用模板。首版不承诺跨标签页或操作系统结构化剪贴板互通。
+After selection, provide "Copy Fragment" and "Save Selected Portion as Template". The copy is temporarily stored in a project-scoped clipboard for the current tab and can be pasted between different Scripts in the same project; page refresh clears it, and long-term saving should use templates. The first version does not promise cross-tab or OS structured clipboard interoperability.
 
-非连续选择按源 Script 行顺序保留，不能因数组拼接产生新顺序连接。选择动作不修改内容；多选状态与当前查看节点状态分别保存。
+Non-contiguous selections are preserved in source Script row order; new sequential connections must not be produced by array concatenation. Selection actions do not modify content; multi-selection state and the currently viewed node state are saved separately.
 
-## 快照与复制语义
+## Snapshot and Copy Semantics
 
-采用 version=1 的可校验快照，保存字段语义描述、完整行值、稳定的片段内部行 ID、对白块映射、节点分组与显式连接、入口出口、变量引用、资源引用及来源说明。字段映射使用语义键和类型，不携带目标库必须复用的 field UUID。保留当前实际列及动态选项，未知/不兼容列在预览中报错，不静默舍弃。
+Adopt a verifiable snapshot with version=1, saving field semantic descriptions, complete row values, stable fragment-internal row IDs, dialogue block mappings, node groupings and explicit connections, entry/exit points, variable references, resource references, and source notes. Field mapping uses semantic keys and types, and does not carry field UUIDs that the target library must reuse. Preserve current actual columns and dynamic options; unknown/incompatible columns report errors in the preview and are not silently discarded.
 
-节点分组同时保存可验证的行 ID 关联；rowIndexes 仅是界面派生值。复制出来的 Script 数据才是内容来源，FlowGraph 是投影，不维护第二份独立可编辑正文。
+Node grouping also saves verifiable row ID associations; rowIndexes are only UI-derived values. The copied Script data is the content source; FlowGraph is a projection, and a second independent editable body is not maintained.
 
-插入和新建时分配新的 asset、block、node 标识和 Label，重写选中内容内部的所有已识别跳转。重复粘贴互不覆盖。不能只做字符串全局替换，正文中的同名文字不改写。
+On insert and create, assign new asset, block, node identifiers and Labels, and rewrite all recognized jumps within the selected content. Repeated pastes do not overwrite each other. Do not perform only global string replacement; text with the same name in the body is not rewritten.
 
-边界处理：
+Boundary handling:
 
-- 内部显式跳转和顺序连接保留并重映射。
-- 指向选区之外的连接（含隐式顺序离开）列为待处理出口。入边不复制，只作为预览说明。
-- 每个出口必须在粘贴预览中指定现有目标或选择“在此结束”。选项选择“在此结束”时保留选项文本，并生成独立结束目标，不能产生空目标后意外顺序执行。
-- 非连续选区之间默认没有新连接。预览需要显式完成边界选择，才允许写入。
-- 断开的多入口片段允许作为模板存储，显示入口和未连接提示；新建 Script 要选择入口，插入时明确插入点到入口及出口的连接。不得默默让不可达节点变成顺序执行。
-- 变量名称默认保留；同名变量可能影响目标剧情，预览列出引用与赋值并明确说明共享名称的语义。本版不提供变量自动重命名。
-- 资源保留同项目引用，不复制二进制文件。副本内容独立，但引用同一资源；资源不存在或不可访问时阻止应用并列出问题。
+- Internal explicit jumps and sequential connections are preserved and remapped.
+- Connections pointing outside the selection (including implicit sequential exits) are listed as pending exits. Inbound edges are not copied and are only described in the preview.
+- Each exit must specify an existing target in the paste preview or choose "end here". When an option chooses "end here", the option text is preserved and an independent end target is generated; an empty target must not be produced followed by unexpected sequential execution.
+- By default there are no new connections between non-contiguous selections. The preview must explicitly complete boundary selection before writing is allowed.
+- Disconnected multi-entry fragments are allowed to be stored as templates, showing entries and unconnected warnings; creating a new Script requires selecting an entry, and inserting requires explicit connections from the insertion point to the entry and from the exit. Unreachable nodes must not silently become sequential execution.
+- Variable names are preserved by default; same-named variables may affect the target plot; the preview lists references and assignments and explicitly explains the semantics of shared names. This version does not provide automatic variable renaming.
+- Resources retain same-project references; binary files are not copied. Copy content is independent but references the same resources; if a resource does not exist or is inaccessible, block application and list the problems.
 
-## 持久化、权限和并发
+## Persistence, Permissions, and Concurrency
 
-新增项目作用域模板表（建议 `script_templates`）：id、project_id、name、description、schema_version、snapshot、created_by、created_at、updated_at。具体约束、索引、payload 上限及 API 路径交给实现计划确定，前后端限制一致。
+Add a project-scoped template table (suggested `script_templates`): id, project_id, name, description, schema_version, snapshot, created_by, created_at, updated_at. Specific constraints, indexes, payload limits, and API paths are left to the implementation plan to determine, with consistent limits on frontend and backend.
 
-按当前项目授权服务的实际角色语义实现：有读取权限的成员查看模板，有编辑权限的成员创建、重命名、删除并应用模板；只读成员不能写入。API 与 RLS 双重校验，禁止跨项目应用/资源引用。不能沿用历史迁移里过宽的 authenticated 策略。
+Implement according to the actual role semantics of the current project authorization service: members with read permission can view templates; members with edit permission can create, rename, delete, and apply templates; read-only members cannot write. Validate both via API and RLS; cross-project application/resource references are prohibited. Do not reuse the overly broad authenticated policies from historical migrations.
 
-模板保存从服务端读取一致内容；客户端传来源 ID、选择 ID 和版本令牌，不信任客户端提供的项目归属。保存模板和复制临时片段时校验来源权限，应用临时片段时重新检查来源访问权。应用持久模板时校验模板项目归属和读取权限、目标编辑权、模板/目标版本和所有资源引用，不依赖原 Script 是否存在或仍可访问；来源说明仅用于溯源。
+Template saving reads consistent content from the server; the client passes source ID, selection ID, and version token, and the client-provided project ownership is not trusted. Validate source permissions when saving templates and copying temporary fragments, and re-check source access rights when applying temporary fragments. When applying a persistent template, validate the template's project ownership and read permission, target edit permission, template/target versions, and all resource references, without depending on whether the original Script exists or is still accessible; source notes are only for traceability.
 
-粘贴使用单次原子操作写入新增行、字段值、顺序、跳转、plot plan 和来源信息；失败全部回滚。采用幂等请求 ID，网络重试不重复插入。目标并发变化时返回冲突并要求刷新预览，不能覆盖他人修改。
+Paste uses a single atomic operation to write new rows, field values, order, jumps, plot plan, and source information; roll back everything on failure. Use idempotent request IDs so network retries do not insert duplicates. When the target changes concurrently, return a conflict and require refreshing the preview; do not overwrite others' modifications.
 
-复用生成新 Script 时不沿用原始 document/block 的来源关系。如果当前 Script 工作区要求源文档，应在同一创建流程生成独立源文档并建立新的映射和工作区归属；不要伪造原文档引用或生成无法在侧栏打开的库。
+When reuse generates a new Script, do not carry over the original document/block source relationships. If the current Script workspace requires a source document, an independent source document should be generated in the same creation flow and new mappings and workspace ownership established; do not fabricate references to the original document or generate a library that cannot be opened in the sidebar.
 
-向已有文档派生 Script 插入时，新增内容必须与目标源文档、对白 lineage 和 plot plan 一致。实现前核实既有文档 revision/Yjs 保存机制：必须借助现有协调写入机制或扩展原子协调入口，避免仅插入表格后被文档重新生成覆盖。不得降级为暂不支持文档派生 Script。若现有存储无法单事务协调，实施计划必须提出有恢复状态与冲突检测的操作协议并明确告知限制。
+When inserting into a Script derived from an existing document, the new content must be consistent with the target source document, dialogue lineage, and plot plan. Before implementation, verify the existing document revision/Yjs save mechanism: the existing coordinated write mechanism must be used or the atomic coordination entry extended, to avoid the inserted table being overwritten by document regeneration. Do not downgrade to "document-derived Script not yet supported". If the existing storage cannot coordinate in a single transaction, the implementation plan must propose an operation protocol with recovery states and conflict detection and clearly communicate the limitations.
 
-模板删除不影响已创建的 Script。删除操作需通过界面确认。粘贴成功后刷新数据并选中新增片段；失败保留剪贴板与预览。整批粘贴不混入当前逐块撤销栈，本版通过明确选中新增片段和既有删除能力处理后续编辑，不宣称支持整批撤销。
+Template deletion does not affect already-created Scripts. Deletion requires UI confirmation. After a successful paste, refresh data and select the newly added fragment; on failure, retain the clipboard and preview. Batch paste is not mixed into the current per-block undo stack; this version handles subsequent editing through explicit selection of the newly added fragment and existing deletion capabilities, and does not claim to support batch undo.
 
-## 验收与验证
+## Acceptance and Verification
 
-1. 完整模板保存后刷新页面仍可访问，同项目另一成员按权限访问；非成员与只读写入均被拒绝。
-2. 从模板创建的新 Script 在侧栏可见可打开，内容完整、可编辑、可试玩；原模板和源 Script 不变。
-3. 图选节点与 Script 选对应块生成等价片段；动作/对白、动态选项、条件、命令与资源引用不丢失。
-4. 同一片段连续粘贴两次，ID 和标签均独立，内部跳转正确，正文中的标签同名文字不被替换。
-5. 外部跳转、隐式出口和非连续选择均需明确处理，不新增意外路径；选项结束可正常试玩。
-6. 模板来源被删除不影响内容快照；失效资源有明确提示。
-7. 文档派生 Script 粘贴后重新打开或重新生成不丢内容，新增来源关系指向目标文档。
-8. 写入失败无半份数据，超时重试不重复插入，协作冲突不会覆盖他人修改。
+1. After a complete template is saved, it remains accessible after page refresh, and another member of the same project can access it according to permissions; non-members and read-only writes are rejected.
+2. A new Script created from a template is visible and openable in the sidebar, with complete content, editable, and playable; the original template and source Script are unchanged.
+3. Selecting nodes in the graph and selecting the corresponding blocks in the Script generate equivalent fragments; actions/dialogue, dynamic options, conditions, commands, and resource references are not lost.
+4. Pasting the same fragment twice consecutively yields independent IDs and labels, correct internal jumps, and text in the body with the same name as a label is not replaced.
+5. External jumps, implicit exits, and non-contiguous selections all require explicit handling, with no unexpected new paths; option endings can be played normally.
+6. Deletion of the template source does not affect the content snapshot; invalid resources have clear warnings.
+7. After pasting into a document-derived Script, reopening or regenerating does not lose content, and the new source relationships point to the target document.
+8. Write failures leave no partial data, timeout retries do not insert duplicates, and collaboration conflicts do not overwrite others' modifications.
 
-测试包括纯快照/重映射单元测试、选择和预览组件测试、真实本地数据库权限/原子性/幂等测试，以及完整保存—复用—复制—重开—试玩 E2E。实现后运行仓库适用的类型检查和验证门禁；外部服务不可用时如实标记未验证项。
+Tests include pure snapshot/remapping unit tests, selection and preview component tests, real local database permission/atomicity/idempotency tests, and full save—reuse—copy—reopen—play E2E. After implementation, run the repository's applicable type checks and verification gates; when external services are unavailable, truthfully mark unverified items.

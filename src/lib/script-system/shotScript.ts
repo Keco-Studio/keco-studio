@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { analyzeFlow, flowText, type FlowRow } from './flow-editing/model';
 
-export const movements = ['静止', '推进', '拉远', '左摇', '右摇'] as const;
-export const effects = ['淡入', '人物入场', '震动', '暗场'] as const;
+export const movements = ['\u9759\u6b62', '\u63a8\u8fdb', '\u62c9\u8fdc', '\u5de6\u6447', '\u53f3\u6447'] as const;
+export const effects = ['\u6de1\u5165', '\u4eba\u7269\u5165\u573a', '\u9707\u52a8', '\u6697\u573a'] as const;
 const png = z.string().max(1500000).regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/);
 const shot = z.object({
   id: z.string().min(1),
@@ -71,8 +71,8 @@ export function fromScript(
       speaker: flowText(r.values.Name),
       line: flowText(r.values.Content),
       seconds: 3,
-      movement: '推进',
-      tags: ['淡入'],
+      movement: '\u63a8\u8fdb',
+      tags: ['\u6de1\u5165'],
       exits: edges.get(r.id) ?? [],
     })),
   });
@@ -80,39 +80,39 @@ export function fromScript(
 
 export const example: Storyboard = {
   version: 1,
-  name: '门口的选择',
+  name: '\u95e8\u53e3\u7684\u9009\u62e9',
   shots: [
     {
       id: 'start',
-      scene: '门厅',
-      speaker: '旁白',
-      line: '门外传来敲门声。',
+      scene: '\u95e8\u5385',
+      speaker: '\u65c1\u767d',
+      line: '\u95e8\u5916\u4f20\u6765\u6572\u95e8\u58f0。',
       seconds: 2,
-      movement: '推进',
-      tags: ['淡入'],
+      movement: '\u63a8\u8fdb',
+      tags: ['\u6de1\u5165'],
       exits: [
-        { label: '开门', target: 'door' },
-        { label: '等待', target: 'wait' },
+        { label: '\u5f00\u95e8', target: 'door' },
+        { label: '\u7b49\u5f85', target: 'wait' },
       ],
     },
     {
       id: 'door',
-      scene: '门厅',
-      speaker: '来客',
-      line: '这是给你的信。',
+      scene: '\u95e8\u5385',
+      speaker: '\u6765\u5ba2',
+      line: '\u8fd9\u662f\u7ed9\u4f60\u7684\u4fe1。',
       seconds: 2,
-      movement: '左摇',
-      tags: ['人物入场'],
+      movement: '\u5de6\u6447',
+      tags: ['\u4eba\u7269\u5165\u573a'],
       exits: [],
     },
     {
       id: 'wait',
-      scene: '走廊',
-      speaker: '旁白',
-      line: '脚步声渐渐远去。',
+      scene: '\u8d70\u5eca',
+      speaker: '\u65c1\u767d',
+      line: '\u811a\u6b65\u58f0\u6e10\u6e10\u8fdc\u53bb。',
       seconds: 3,
-      movement: '拉远',
-      tags: ['暗场'],
+      movement: '\u62c9\u8fdc',
+      tags: ['\u6697\u573a'],
       exits: [],
     },
   ],
@@ -130,11 +130,11 @@ function button(text,fn){const b=document.createElement('button');b.textContent=
 function finish(){clearTimeout(timer);el('choices').replaceChildren();el('speaker').textContent='Playback complete';button('Replay',()=>play(board.shots[0].id))}
 function play(id){clearTimeout(timer);const s=shots.get(id);if(!s){finish();return}el('choices').replaceChildren();el('scene').textContent=board.name+' · '+s.scene;el('speaker').textContent=s.speaker||'Narrator';el('line').textContent=s.line;const w=el('world'),a=el('art'),v=el('veil'),stage=el('stage');for(const n of [w,a,v,stage])n.style.animation='none';void stage.offsetWidth;
 w.style.setProperty('--sky','hsl('+([...s.scene].reduce((h,c)=>h+c.charCodeAt(0),0)%360)+' 30% 48%)');
-const move={'推进':'push','拉远':'pull','左摇':'left','右摇':'right'}[s.movement];if(move)w.style.animation=move+' '+s.seconds+'s ease-in-out both';a.hidden=!s.artwork;el('unillustrated').hidden=!!s.artwork;if(s.artwork)a.src=s.artwork;else a.removeAttribute('src');const actors=el('actors');actors.replaceChildren();
+const move={'\u63a8\u8fdb':'push','\u62c9\u8fdc':'pull','\u5de6\u6447':'left','\u53f3\u6447':'right'}[s.movement];if(move)w.style.animation=move+' '+s.seconds+'s ease-in-out both';a.hidden=!s.artwork;el('unillustrated').hidden=!!s.artwork;if(s.artwork)a.src=s.artwork;else a.removeAttribute('src');const actors=el('actors');actors.replaceChildren();
 const draft=quickPreview&&!s.artwork;
 const cast=draft?(s.visibleCast||[s.speaker].filter(name=>board.castSprites?.some(c=>c.name===name))):s.visibleCast;
 if(draft){el('unillustrated').textContent='Draft background';el('scene').textContent+=' · Quick preview';if(s.backdrop){a.hidden=false;a.src=s.backdrop;el('unillustrated').hidden=true}}
-if(cast&&(draft||s.backdrop&&s.artwork)){if(s.backdrop)a.src=s.backdrop;const width=Math.min(48,Math.floor(184/Math.max(1,cast.length)));cast.forEach((name,i)=>{const sprite=board.castSprites?.find(c=>c.name===name);if(!sprite)return;const img=document.createElement('img');img.src=sprite.image;img.alt=name;img.style.width=(width/192*100)+'%';img.style.height=(Math.round(width*80/48)/112*100)+'%';img.style.left=((i+.5)/cast.length*100)+'%';img.style.bottom=(6/112*100)+'%';actors.append(img)});if(s.tags.includes('人物入场'))actors.animate([{opacity:0,translate:'8% 0'},{opacity:1,translate:'0 0'}],700)}if(s.tags.includes('暗场'))v.style.animation='dark '+s.seconds+'s forwards';stage.style.animation=[s.tags.includes('淡入')?'fade .5s':'',s.tags.includes('震动')?'shake .38s':''].filter(Boolean).join(',');
+if(cast&&(draft||s.backdrop&&s.artwork)){if(s.backdrop)a.src=s.backdrop;const width=Math.min(48,Math.floor(184/Math.max(1,cast.length)));cast.forEach((name,i)=>{const sprite=board.castSprites?.find(c=>c.name===name);if(!sprite)return;const img=document.createElement('img');img.src=sprite.image;img.alt=name;img.style.width=(width/192*100)+'%';img.style.height=(Math.round(width*80/48)/112*100)+'%';img.style.left=((i+.5)/cast.length*100)+'%';img.style.bottom=(6/112*100)+'%';actors.append(img)});if(s.tags.includes('\u4eba\u7269\u5165\u573a'))actors.animate([{opacity:0,translate:'8% 0'},{opacity:1,translate:'0 0'}],700)}if(s.tags.includes('\u6697\u573a'))v.style.animation='dark '+s.seconds+'s forwards';stage.style.animation=[s.tags.includes('\u6de1\u5165')?'fade .5s':'',s.tags.includes('\u9707\u52a8')?'shake .38s':''].filter(Boolean).join(',');
 timer=setTimeout(()=>{if(!s.exits.length){finish();return}if(s.exits.length===1&&!s.exits[0].label){play(s.exits[0].target);return}for(const e of s.exits)button(e.label,()=>play(e.target));},s.seconds*1000)}
 play(board.shots[0].id);</script></html>`;
 }
