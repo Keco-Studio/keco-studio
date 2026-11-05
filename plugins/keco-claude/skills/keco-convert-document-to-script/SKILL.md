@@ -5,6 +5,10 @@ description: Convert nonstandard story documents into the established Keco Scrip
 
 # Convert Document to Script
 
+Read and follow the [shared interaction contract](../../references/interaction-contract.md) for user-visible exchanges and resumptions.
+
+Before expensive or mutating work, summarize Goal, Source, Scope, Success, and Next. Use the user's language for that summary and for progress limited to Completed, Current, Next, and Blocker. Keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artifacts or an on-request detail view.
+
 Read [the existing Script grammar](references/script-grammar.md) before converting.
 Use whole-line **bold titles**, whole-line *italic scene/action descriptions*, and `Speaker: dialogue` without outer quotes. Use ASCII syntax punctuation. Preserve the user's original language, dialogue, actions, speakers, existing choices and variable effects. Return Script text, not JSON and not Type-prefixed dialogue. Do not invent branches or require users to edit source syntax or acknowledge pending-confirmation markers.
 
