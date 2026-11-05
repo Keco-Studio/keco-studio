@@ -19,7 +19,9 @@ export function useScriptWorkspaceMembership(projectId: string | null | undefine
         const body = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(body?.error || 'Failed to load script workspace');
+        throw Object.assign(new Error(body?.error || 'Failed to load script workspace'), {
+          status: response.status,
+        });
       }
       const data = (await response.json()) as {
         documents?: ScriptWorkspaceDocumentRef[];

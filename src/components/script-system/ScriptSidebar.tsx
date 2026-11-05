@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSidebarProjects } from '@/components/layout/hooks/useSidebarProjects';
@@ -87,6 +88,8 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const {
     documents: workspaceDocs,
     refetch: refetchWorkspace,
+    isError: workspaceFailed,
+    error: workspaceError,
   } = useScriptWorkspaceMembership(projectId);
   const { libraries, refetch: refetchLibraries } =
     useSidebarFoldersLibraries(projectId);
@@ -440,6 +443,21 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
               </span>
             </button>
 
+        {workspaceFailed ? (
+          <div role="alert" style={{ padding: '12px', fontSize: 13 }}>
+            {workspaceError && 'status' in workspaceError && workspaceError.status === 401 ? (
+              <>
+                <p>Please sign in to load your documents.</p>
+                <Link href="/projects">Sign in</Link>
+              </>
+            ) : (
+              <p>{workspaceError?.message || 'Failed to load workspace documents.'}</p>
+            )}
+            <button type="button" onClick={() => void refetchWorkspace()} style={{ marginLeft: 12 }}>
+              Retry
+            </button>
+          </div>
+        ) : null}
         <ul className={styles.tree} role="tree" aria-label="Workspace documents">
           {workspaceDocs.map((doc) => {
             const children = scriptsByDocument.get(doc.documentId) ?? [];

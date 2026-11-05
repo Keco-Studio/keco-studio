@@ -18,6 +18,7 @@ import type { StoryDocument } from '@/lib/story-ir/schema';
 import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
 import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
+import { prepareFlowRegeneration } from '@/lib/script-system/flow-editing/regeneration';
 
 const BATCH_SIZE = 200;
 
@@ -208,13 +209,15 @@ async function importCompiledScript(
   try {
     const result = await insertScriptTable(supabase, libraryId, columns, rows);
     if (dialogueGenerationJobId) {
-      const finalized = await supabase.rpc('finalize_dialogue_script_import', {
+      const flow = await prepareFlowRegeneration(supabase, dialogueGenerationJobId, libraryId);
+      const finalized = await supabase.rpc(flow ? 'finalize_dialogue_script_import_with_flow' : 'finalize_dialogue_script_import', {
         p_job_id: dialogueGenerationJobId,
         p_worker_id: dialogueGenerationWorkerId,
         p_script_library_id: libraryId,
         p_source_epoch: dialogueSourceState!.epoch,
         p_source_revision: dialogueSourceState!.revision,
         p_source_update_ids: dialogueSourceState!.updateIds,
+        ...(flow ?? {}),
       });
       if (finalized.error) throw finalized.error;
       const finalRow = Array.isArray(finalized.data) ? finalized.data[0] : finalized.data;

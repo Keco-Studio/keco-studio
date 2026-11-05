@@ -82,6 +82,8 @@ async function* executeStream(
         sourceId: source.sourceId,
         roleMap: toRoleMap(data.characterMapping),
         enableAiPlotPlanning: false,
+        scriptTextSyntax: true,
+        usageBinding: ctx.usageBinding,
         onProgress: (event) => queue.push(event),
   })
     .then((resolved) => ({ resolved }))
@@ -99,6 +101,9 @@ async function* executeStream(
     };
   }
 
+  if ('fallback' in resolution.resolved && resolution.resolved.fallback) {
+    return { success: false, error: 'AI Script conversion could not be validated. The source document is unchanged; please retry.' };
+  }
   yield { phase: 'table_compile', message: 'Compiling script table' };
   yield { phase: 'database_write', message: 'Writing script library' };
   try {

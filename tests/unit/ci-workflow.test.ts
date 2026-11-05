@@ -20,6 +20,7 @@ function getWorkflowJob(
   jobName: string,
   nextJobName?: string
 ): string {
+  source = source.replace(/\r\n/g, '\n');
   const startMarker = `\n  ${jobName}:\n`;
   const start = source.indexOf(startMarker);
   if (start === -1) {
@@ -59,6 +60,14 @@ const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')
 };
 
 describe('CI workflow gates', () => {
+  it('builds fork pull requests with the isolated local database credentials', () => {
+    const buildStep = workflow.split('- name: Build project')[1].split('- name: Stop Supabase')[0];
+    expect(buildStep).toContain('NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321');
+    expect(buildStep).toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.local-supabase.outputs.anon_key }}');
+    expect(buildStep).toContain('SUPABASE_SERVICE_ROLE_KEY: ${{ steps.local-supabase.outputs.service_key }}');
+    expect(buildStep).not.toContain('secrets.');
+  });
+
   it('runs lint, unit tests, and build in CI', () => {
     expect(workflow).toContain('npm run lint');
     expect(workflow).toContain('npm run typecheck:api');

@@ -158,7 +158,7 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).toContain('VISIBLE_SCENE_CONTENT');
   });
 
-  it('prefers a persisted AI plot graph over row-derived headings', () => {
+  it('preserves plot headings but discards edges absent from the current Script', () => {
     const markup = renderToStaticMarkup(
       <ScriptSplitView
         libraryId="lib"
@@ -179,7 +179,7 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).not.toContain('FIRST_PLOT_CONTENT');
     expect(markup).toContain('Suspense intro');
     expect(markup).toContain('Careful route');
-    expect(markup).toContain('East guest room');
+    expect(markup).not.toContain('East guest room');
   });
 
   it('shows filled choices at the bottom of a plot node without a Restart toolbar', () => {

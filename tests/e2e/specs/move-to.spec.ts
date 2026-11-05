@@ -113,11 +113,14 @@ test.describe('Move to: Case 1 — library to sibling folder', () => {
 
     await libraryPage.createFolderUnderProject({ name: sourceFolderName });
     await libraryPage.expectFolderCreated();
+    await expect(page.getByRole('banner').getByRole('button', { name: sourceFolderName, exact: true })).toBeDisabled({ timeout: 30000 });
+    const sourceFolderUrl = page.url();
     await libraryPage.waitForPageLoad();
     await page.waitForTimeout(1500);
 
     await libraryPage.createFolderUnderProject({ name: targetFolderName });
     await libraryPage.expectFolderCreated();
+    await expect(page.getByRole('banner').getByRole('button', { name: targetFolderName, exact: true })).toBeDisabled({ timeout: 30000 });
     await libraryPage.waitForPageLoad();
     await page.waitForTimeout(1500);
 
@@ -125,8 +128,10 @@ test.describe('Move to: Case 1 — library to sibling folder', () => {
     const sourceFolder = sidebar.locator(`[title="${sourceFolderName}"]`).first();
     await expect(sourceFolder).toBeVisible({ timeout: 15000 });
     await sourceFolder.click();
-    await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
-    await page.waitForTimeout(800);
+    // App Router navigation does not emit DOMContentLoaded. Wait for the source
+    // route to commit before opening a modal that belongs to that folder page.
+    await expect(page).toHaveURL(sourceFolderUrl, { timeout: 30000 });
+    await expect(page.getByRole('banner').getByRole('button', { name: sourceFolderName, exact: true })).toBeDisabled({ timeout: 30000 });
 
     await libraryPage.createLibrary({ name: libraryName });
     await libraryPage.expectLibraryCreated();

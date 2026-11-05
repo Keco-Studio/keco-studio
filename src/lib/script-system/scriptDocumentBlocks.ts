@@ -64,7 +64,11 @@ function blockNode(blockId: string, text: string): MutableNode {
         attributes: [{ type: 'mdxJsxAttribute', name: 'id', value: blockId }],
         children: [],
       },
-      { type: 'text', value: text },
+      /^\*\*(.+)\*\*$/.test(text)
+        ? { type: 'strong', children: [{ type: 'text', value: text.slice(2, -2) }] }
+        : /^\*([^*].*?)\*$/.test(text)
+          ? { type: 'emphasis', children: [{ type: 'text', value: text.slice(1, -1) }] }
+          : { type: 'text', value: text },
     ],
   };
 }
@@ -112,7 +116,13 @@ export function replaceScriptSourceBlock(
   if (children[index]?.type !== 'paragraph') {
     throw new Error(`Script source block is not a paragraph: ${blockId}`);
   }
-  children[index] = blockNode(blockId, text);
+  // A visual text edit should not erase the source block's title/description style.
+  const priorContent = children[index].children?.filter(node => node.name !== 'BlockAnchor');
+  const priorStyle = priorContent?.length === 1 ? priorContent[0].type : null;
+  const marked = /^\*.+\*$/.test(text) ? text
+    : priorStyle === 'strong' ? `**${text}**`
+      : priorStyle === 'emphasis' ? `*${text}*` : text;
+  children[index] = blockNode(blockId, marked);
   return serialize(root);
 }
 

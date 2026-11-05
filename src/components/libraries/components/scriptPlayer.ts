@@ -6,6 +6,7 @@ import {
   type VariableState,
 } from '@/lib/story-ir/commands';
 import type { StoryCommand } from '@/lib/story-ir/schema';
+import { targetLabel as flowTargetLabel } from '@/lib/script-system/flow-editing/model';
 
 export interface ScriptOptionColumns {
   index: number;
@@ -262,7 +263,7 @@ export function readScriptOptions(
     return [{
       index,
       text,
-      targetLabel: parseJumpTarget(readString(row, nextKey)),
+      targetLabel: flowTargetLabel(readString(row, nextKey)),
       commands: readString(row, commandsKey),
     }];
   });

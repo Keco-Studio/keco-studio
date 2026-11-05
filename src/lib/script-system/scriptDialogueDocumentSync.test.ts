@@ -10,6 +10,14 @@ const source = [
 ].join('\n\n');
 
 describe('script dialogue document sync', () => {
+  it('keeps ASCII unquoted dialogue syntax after a combined visual edit', () => {
+    const result = applyScriptDialogueCommand(`<BlockAnchor id="${A}" />Ada: Hello`, {
+      type: 'edit', role: 'action', previousText: '', previousDialogue: 'Hello',
+      nextText: '', speaker: 'Ada', dialogue: 'Welcome',
+    });
+    expect(result.markdown).toContain('Ada: Welcome');
+    expect(result.markdown).not.toContain('Ada：');
+  });
   it('edits one source block by its previous visible text', () => {
     const result = applyScriptDialogueCommand(source, {
       type: 'edit',
@@ -38,7 +46,7 @@ describe('script dialogue document sync', () => {
       previousText: 'Ada：Hello',
       nextText: 'Ada：Good morning',
     });
-    expect(result.markdown).toContain('Ada（smiles）：Good morning');
+    expect(result.markdown).toContain('Ada(smiles): Good morning');
     expect(result.changedBlockIds).toEqual([A]);
   });
 
@@ -276,7 +284,7 @@ describe('script dialogue document sync', () => {
       text: 'Ada（smiles）：',
     });
 
-    expect(withAction.markdown).toContain('Ada（smiles）：New line');
+    expect(withAction.markdown).toContain('Ada(smiles): New line');
     expect(withAction.markdown.match(new RegExp(rowId, 'g'))).toHaveLength(1);
   });
 
@@ -321,7 +329,7 @@ describe('script dialogue document sync', () => {
 
     expect(result.changedBlockIds).toEqual([B]);
     expect(result.markdown).toContain(`<BlockAnchor id="${A}" />Ada：Hello`);
-    expect(result.markdown).toContain(`<BlockAnchor id="${B}" />Ada：Changed`);
+    expect(result.markdown).toContain(`<BlockAnchor id="${B}" />Ada: Changed`);
   });
 
   it('deletes the stable source block when visible text is duplicated', () => {

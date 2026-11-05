@@ -1,0 +1,15 @@
+---
+name: keco-stage-script-scene
+description: In Keco Conversation, create character reference sheets for branch scripts and generate shots according to story context; suitable for production and acceptance of cross-shot costume changes, identity confusion, or branch visual continuity errors.
+---
+
+Open the Conversation of the specified project, and verify the source Document, script name, target shot, and branch. If the user only wants to see character settings, stop after completing the Characters stage. If the user only wants to check one shot, use that shot's individual generate button.
+
+1. In **Characters**, use **Extract profiles from source** to draft character cards, or **Add character** to create cards manually. For each card, use **Edit profile** to modify the name and appearance, clothing, and carried accessories, then click **Save profile** to save. Write this shot's actions and temporary props in the shot; for pure environment scenes, optionally use **Use an empty cast**.
+2. Click **Generate reference** on each card to generate a transparent character sheet, and check the silhouette and clothing. When only one character needs adjustment, modify that character's card and regenerate, or click **Regenerate reference** to redraw the same design. Other characters' images should remain unchanged. Character settings are saved in the current browser; shot templates containing character sheets can be reused with **Save template**.
+3. Enter **Shot Script**. Describe the image using the preceding events on the current branch that lead to this shot, the actual choices, and the current dialogue. Inherit the layout and lighting of the same scene; when the script switches locations, rebuild the background according to the new location. List the characters actually present in this shot, and composite using the prepared character images and an empty background. Characters should be removed from the image after they leave. A branch merge has only one representative image; avoid forcing props or endings unique to one path onto other paths.
+4. Use two adjacent shots to check whether characters with the same name use the same character image, then check the speaker, actions, props, branch target, and dialogue. Report costume continuity and action performance separately; a character sprite in a fixed pose cannot prove that action animation has passed acceptance.
+
+For example, in the "bus stop" "initiate conversation" shot, Lin Ye should be recognizable by build and coat, and Xiaoyu by build, raincoat, and backpack. Whether the two actually hand over the umbrella requires separately checking the actions and props in the image.
+
+When maintaining the product implementation, the fixed generation prompts are in src/lib/script-system/shotPrompts.ts, the character preparation state is in src/lib/script-system/shotCast.ts, and the branch context is in src/lib/script-system/shotContinuity.ts. Use the configured generation interface through the logged-in workbench.
