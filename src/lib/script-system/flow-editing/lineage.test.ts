@@ -2,6 +2,22 @@ import { resolveFlowLineage, reconcileFlowOverrides } from './lineage';
 const blocks = [{ blockId: 'block', text: 'Ada（smiles）：Hello', nodeIndex: 0 }];
 const rows = [ { id: 'action', values: { Type: '3', Name: 'Ada', Content: 'smiles' } }, { id: 'speech', values: { Type: '1', Name: 'Ada', Content: 'Hello', Commands: 'End', Cg: 'image', If: 'x>1' } } ];
 describe('flow source identity', () => {
+  it('keeps narration containing colons editable after saving flow state', () => {
+    const narrative = ['人物：林晓、王姨、赵哥', '第一幕：抉择之夜', '场景一：林晓家卧室。夜。'];
+    const source = narrative.map((text, i) => ({ blockId: `block-${i}`, text, nodeIndex: i }));
+    const original = narrative.map((Content, i) => ({ id: `row-${i}`, values: { Type: '4', Content } }));
+    const first = resolveFlowLineage(original, source);
+    expect(first.diagnostics).toEqual([]);
+    const saved = resolveFlowLineage(original, source, first.bindings);
+    expect(saved.diagnostics).toEqual([]);
+    expect(saved.bindings).toEqual(first.bindings);
+    const copied = [...original, { ...original[0], id: 'copy' }];
+    expect(resolveFlowLineage(copied, source, saved.bindings, ['copy']).diagnostics).toEqual([]);
+    expect(resolveFlowLineage(original, source.slice(1), saved.bindings).diagnostics)
+      .toEqual([expect.objectContaining({ rowId: 'row-0', code: 'SOURCE_MAPPING' })]);
+    expect(resolveFlowLineage([{ ...original[0], values: { Type: '2', Name: '人物', Content: '林晓、王姨、赵哥' } }], source, saved.bindings).diagnostics)
+      .toHaveLength(1);
+  });
   it('maps action and speech to unique roles in one anchored block', () => {
     expect(resolveFlowLineage(rows, blocks).bindings).toEqual([
       expect.objectContaining({ rowId: 'action', blockId: 'block', role: 'action' }),

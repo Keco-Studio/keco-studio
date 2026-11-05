@@ -19,7 +19,9 @@ export function resolveFlowLineage(rows: readonly FlowRow[], blocks: readonly Sc
       const parsed = parseSourceDialogue(block.text);
       // An established anchor disambiguates a later text edit. A role change
       // still invalidates the binding; it is never guessed from nearby prose.
-      if (prior) return role === 'text' ? !parsed : Boolean(parsed);
+      // The row type determines narration, not the presence of a colon:
+      // scene descriptions and cast lists also match the dialogue regex.
+      if (prior) return role === 'text' || Boolean(parsed);
       if (role === 'text') return normalize(block.text) === text;
       const partner = role === 'speech' ? rows[index - 1] : rows[index + 1];
       const paired = partner && normalize(flowText(partner.values.Name)) === speaker

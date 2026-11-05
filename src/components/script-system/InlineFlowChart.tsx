@@ -14,6 +14,7 @@ import type {
 import { FlowChartPanel, type FlowChartPanelProps } from './FlowChartPanel';
 import { ScriptFlowEditor } from './ScriptFlowEditor';
 import { copyRows } from '@/lib/script-system/flow-editing/clipboard';
+import { visibleFlowOutlets } from '@/lib/script-system/flow-editing/projection';
 import {
   parseScriptReuseSnapshot,
   type ScriptReuseSnapshot,
@@ -293,7 +294,7 @@ export function InlineFlowChart({
         node.rowIndexes.map((i) => [rowIds[i], node.id] as const),
       ),
     );
-    for (const pin of analyzeFlow(data.rows).outlets) {
+    for (const pin of visibleFlowOutlets(chart.graph, data.rows, rowIds)) {
       const owner = owners.get(pin.rowId);
       if (!owner) continue;
       const list = groups.get(owner) ?? [];
