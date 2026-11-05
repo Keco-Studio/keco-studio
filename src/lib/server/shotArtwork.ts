@@ -1,5 +1,7 @@
 import sharp from 'sharp';
 import { setTimeout as delay } from 'node:timers/promises';
+import { resolve } from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
 import { checkBoard } from '@/lib/script-system/shotScript';
 import { characterGuidePrompt, characterExtractionPrompt, characterPortraitPrompt, characterGuideInput, shotStagingPrompt, shotStagingInput } from '@/lib/script-system/shotPrompts';
@@ -8,6 +10,20 @@ import { castDefinitions, castIsReady } from '@/lib/script-system/shotCast';
 import { shotContinuity } from '@/lib/script-system/shotContinuity';
 import { completeLlm } from '@/lib/agent/llm-client';
 import { outboundFetch } from '@/lib/agent/outbound-http';
+
+if (
+  process.env.NODE_ENV === 'development' &&
+  !process.env.PIXELLAB_API_TOKEN &&
+  !process.env.PIXELLAB_API_KEY
+) {
+  loadEnv({
+    path: resolve(process.cwd(), 'supabase/functions/.env'),
+    quiet: true,
+  });
+}
+
+const pixelLabToken = () =>
+  process.env.PIXELLAB_API_TOKEN ?? process.env.PIXELLAB_API_KEY;
 
 const stagePlan = z.object({
   background: z.string().trim().min(1).max(5000),
@@ -56,7 +72,7 @@ const llmOptions = (signal: AbortSignal) => ({ signal, maxCompletionTokens: 1000
 export async function prepareCharacters(input: unknown, brief: string, signal: AbortSignal, characterName?: string, profilesOnly = false, sourceDocument?: string) {
   let board;
   try { board = checkBoard(input); } catch { return error(400, 'Invalid shot script.'); }
-  const token = process.env.PIXELLAB_API_KEY;
+  const token = pixelLabToken();
 
   let guide = board.characterGuide?.trim();
   if (!guide || profilesOnly) {
@@ -130,7 +146,7 @@ export async function generateShotArtwork(input: unknown, id: string, brief: str
   try { board = checkBoard(input); } catch { return error(400, 'Invalid shot script.'); }
   const shot = board.shots.find(s => s.id === id);
   if (!shot) return error(400, 'Select a shot to illustrate.');
-  const token = process.env.PIXELLAB_API_KEY;
+  const token = pixelLabToken();
   if (!token) return error(503, 'Configure PixelLab on the server to generate scene artwork.');
   const { beats, referenceId } = shotContinuity(board).context(id);
   const reference = board.shots.find(s => s.id === referenceId);
