@@ -9,7 +9,7 @@ export type ScriptContextMenuAction =
   | 'rename'
   | 'delete';
 
-export type ScriptContextMenuType = 'document' | 'script';
+export type ScriptContextMenuType = 'document' | 'script' | 'folder';
 
 type ScriptContextMenuProps = {
   x: number;
@@ -19,6 +19,7 @@ type ScriptContextMenuProps = {
   onAction?: (action: ScriptContextMenuAction) => void;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
   elementRef?: HTMLElement | null;
+  targetName?: string;
 };
 
 export function ScriptContextMenu({
@@ -29,6 +30,7 @@ export function ScriptContextMenu({
   onAction,
   userRole,
   elementRef,
+  targetName,
 }: ScriptContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
@@ -93,6 +95,8 @@ export function ScriptContextMenu({
   const canDeleteDocument = userRole === 'admin' || userRole === 'editor';
   const canRenameScript = userRole === 'admin';
   const canDeleteScript = userRole === 'admin';
+  const canDeleteFolder = userRole === 'admin' || userRole === 'editor';
+  const canRenameFolder = userRole === 'admin' || userRole === 'editor';
 
   const renderMenuItems = () => {
     if (type === 'document') {
@@ -132,6 +136,13 @@ export function ScriptContextMenu({
       );
     }
 
+    if (type === 'folder') {
+      return <>
+        {canRenameFolder ? <button type="button" className={styles.menuItem} onClick={() => handleAction('rename')}>Rename</button> : null}
+        {canDeleteFolder && targetName !== 'Resources Folder' ? <><div className={styles.separator} /><button type="button" className={`${styles.menuItem} ${styles.deleteItem}`} onClick={() => handleAction('delete')}>Delete folder</button></> : null}
+      </>;
+    }
+
     // Script child: Rename / Delete only
     return (
       <>
@@ -164,6 +175,8 @@ export function ScriptContextMenu({
     return null;
   }
 
+  const items = renderMenuItems();
+  if (!items) return null;
   return createPortal(
     <div
       ref={menuRef}
@@ -171,7 +184,7 @@ export function ScriptContextMenu({
       style={{ left: `${position.x}px`, top: `${position.y}px` }}
       role="menu"
     >
-      {renderMenuItems()}
+      {items}
     </div>,
     document.body
   );
