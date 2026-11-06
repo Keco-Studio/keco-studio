@@ -91,7 +91,7 @@ export const POST = withAuth(async function POST(request: NextRequest, { params 
     return NextResponse.json({ edge }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === 'Document edge would create a cycle') {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: 'This relationship would create a cycle' }, { status: 400 });
     }
     const code = (error as { code?: string }).code;
     if (code === '23505') {
