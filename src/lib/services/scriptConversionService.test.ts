@@ -1,21 +1,14 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { describe, expect, it } from '@jest/globals';
-const serviceSource = fs.readFileSync(
-  path.join(process.cwd(), 'src/lib/services/scriptConversionService.ts'),
-  'utf8'
-);
-
-describe('scriptConversionService audited plan facade', () => {
-  it('exports the minimal story-plan resolver', () => {
-    expect(serviceSource).toContain("@/lib/story-plan/conversion");
-    expect(serviceSource).toContain('resolveStoryPlanForImport as resolveStoryForImport');
-  });
-
-  it('does not retain the obsolete standard-text LLM pipeline', () => {
-    expect(serviceSource).not.toContain('completeLlm');
-    expect(serviceSource).not.toContain('resolveScriptTextForImport');
-    expect(serviceSource).not.toContain('standard format');
-    expect(serviceSource).not.toContain("@/lib/story-ir/conversion");
+import { describe, expect, it, jest } from '@jest/globals';
+jest.mock('@/lib/story-plan/conversion', () => ({ resolveStoryPlanForImport: jest.fn() }));
+jest.mock('./scriptTextConversion', () => ({ resolveScriptTextForImport: jest.fn() }));
+import { resolveStoryPlanForImport } from '@/lib/story-plan/conversion';
+import { resolveScriptTextForImport } from './scriptTextConversion';
+import { resolveStoryForImport } from './scriptConversionService';
+describe('conversion dispatch', () => {
+  it('uses Script text for opted-in imports and preserves the existing GDD pipeline', () => {
+    resolveStoryForImport('raw', { scriptTextSyntax: true });
+    expect(resolveScriptTextForImport).toHaveBeenCalledWith('raw', {});
+    resolveStoryForImport('gdd');
+    expect(resolveStoryPlanForImport).toHaveBeenCalledWith('gdd', {});
   });
 });

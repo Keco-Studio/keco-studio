@@ -15,7 +15,7 @@ const inFlight = new Map<string, Promise<unknown>>();
 export async function getOrResolveStory<T>(
   sourceText: string,
   resolver: (sourceText: string) => Promise<T>,
-  options: { variant?: string } = {}
+  options: { variant?: string; shouldCache?: (value: T) => boolean } = {}
 ): Promise<{ value: T; cacheHit: boolean }> {
   const key = cacheKey(sourceText, options.variant ?? 'default');
   const now = Date.now();
@@ -42,7 +42,9 @@ export async function getOrResolveStory<T>(
     .then(() => resolver(sourceText))
     .then((value) => {
       inFlight.delete(key);
-      completed.set(key, { value, expiresAt: Date.now() + TTL_MS });
+      if (options.shouldCache?.(value) !== false) {
+        completed.set(key, { value, expiresAt: Date.now() + TTL_MS });
+      }
       evictOldestEntries();
       return value;
     }, (error: unknown) => {

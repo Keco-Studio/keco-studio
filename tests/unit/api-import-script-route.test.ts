@@ -10,10 +10,12 @@ jest.mock('@/lib/createSupabaseServerClient', () => ({ createSupabaseServerClien
 jest.mock('@/lib/services/scriptConversionService', () => ({ resolveStoryForImport: jest.fn() }));
 jest.mock('@/lib/services/scriptImportService', () => ({ importStoryDocument: jest.fn() }));
 jest.mock('@/lib/server/documentExportSourceService', () => ({ getDocumentExportSource: jest.fn() }));
+jest.mock('@/lib/server/syncConvertedScriptSource', () => ({ syncConvertedScriptSource: jest.fn() }));
 
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import { syncConvertedScriptSource } from '@/lib/server/syncConvertedScriptSource';
 import { POST } from '@/app/api/import-script/route';
 import { createDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 import { resetStoryConversionCache } from '@/lib/import-script-conversion-cache';
@@ -120,6 +122,37 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ document }));
   });
 
+  it('does not persist all-narration fallback as a successful AI conversion', async () => {
+    mockedResolve.mockResolvedValue({ document, fallback: true } as never);
+    const streamed = await records(await POST(request()));
+    expect(mockedImport).not.toHaveBeenCalled();
+    expect(streamed.some(record => record.type === 'result')).toBe(false);
+    expect(streamed).toContainEqual(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('synchronizes converted text to the verified source before reporting success', async () => {
+    mockedResolve.mockResolvedValue({ document, scriptText: 'Guide: "Hello"', fallback: false } as never);
+    const streamed = await records(await POST(request({ sourceDocumentId: documentId })));
+    expect(syncConvertedScriptSource).toHaveBeenCalledWith(expect.anything(), 'user-1',
+      expect.objectContaining({ documentId, markdown: 'Latest server markdown' }), 'Guide: "Hello"');
+    expect(streamed.at(-1)?.type).toBe('result');
+  });
+
+  it('removes the new library and reports failure when source synchronization conflicts', async () => {
+    mockedResolve.mockResolvedValue({ document, scriptText: 'Guide: "Hello"', fallback: false } as never);
+    jest.mocked(syncConvertedScriptSource).mockRejectedValueOnce(new Error('Source changed'));
+    const query = { eq: jest.fn().mockReturnThis(), then: (resolve: (result: unknown) => void) => resolve({ error: null }) };
+    const remove = jest.fn().mockReturnValue(query);
+    mockedCreateClient.mockReturnValue({
+      auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
+      from: () => ({ delete: remove }),
+    } as never);
+    const streamed = await records(await POST(request({ sourceDocumentId: documentId })));
+    expect(remove).toHaveBeenCalled();
+    expect(query.eq).toHaveBeenCalledWith('id', 'library-1');
+    expect(streamed.at(-1)).toEqual({ type: 'error', error: 'Source changed' });
+  });
+
   it('logs only sanitized story LLM telemetry', async () => {
     const info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
     mockedResolve.mockImplementation(async (_source, options) => {
@@ -221,7 +254,7 @@ describe('POST /api/import-script streaming protocol', () => {
       type: 'progress',
       progress: {
         phase: 'conversion',
-        message: 'Reusing cached Story IR conversion',
+        message: 'Reusing converted script',
       },
     });
     expect(mockedResolve).toHaveBeenCalledTimes(1);

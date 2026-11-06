@@ -141,7 +141,7 @@ function getAvatarLetter(speakerName: string): string {
 
 function renderPartTitle(rowId: string, label: string) {
   return (
-    <div key={rowId} className={styles.partHeaderWrap}>
+    <div key={rowId} data-script-clip-rows={rowId} className={styles.partHeaderWrap}>
       <div className={styles.partHeaderRow}>
         <div className={styles.partHeaderLine} aria-hidden />
         <div className={styles.partTitleOval}>
@@ -155,7 +155,7 @@ function renderPartTitle(rowId: string, label: string) {
 
 function renderSceneTitle(rowId: string, sceneNumber: string, sceneDescription: string) {
   return (
-    <div key={rowId} className={styles.partHeaderWrap}>
+    <div key={rowId} data-script-clip-rows={rowId} className={styles.partHeaderWrap}>
       <div className={styles.partHeaderRow}>
         <div className={styles.partHeaderLine} aria-hidden />
         <div className={styles.partTitleOval}>
@@ -622,7 +622,7 @@ function renderDialog(
   const actionText = action?.trim();
 
   return (
-    <div key={rowId} className={`${styles.dialogRow} ${styles[alignment]}`}>
+    <div key={rowId} data-script-clip-rows={rowId} className={`${styles.dialogRow} ${styles[alignment]}`}>
       <div>
         <div className={styles.speakerHeader}>
           <div className={`${styles.avatar} ${styles[dialogColor]}`}>
@@ -647,7 +647,7 @@ function renderDialog(
 
 function renderPlainText(rowId: string, content: string) {
   return (
-    <div key={rowId} className={styles.plainTextRow}>
+    <div key={rowId} data-script-clip-rows={rowId} className={styles.plainTextRow}>
       <p className={styles.plainText}>{content}</p>
     </div>
   );
@@ -655,7 +655,7 @@ function renderPlainText(rowId: string, content: string) {
 
 function renderFullscreenText(rowId: string, content: string) {
   return (
-    <div key={rowId} className={styles.fullscreenRow}>
+    <div key={rowId} data-script-clip-rows={rowId} className={styles.fullscreenRow}>
       <p className={styles.fullscreenText}>{content}</p>
     </div>
   );

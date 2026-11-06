@@ -1,4 +1,5 @@
 import { parseNumericCommand } from '@/lib/story-ir/commands';
+import { scanScriptCharacterProfiles } from '@/lib/script-system/scriptCharacterProfiles';
 import type { SourceRef, SourceUnit } from '@/lib/story-ir/schema';
 import { sourceRefForUnit, unitizeSource } from '@/lib/story-ir/sourceUnits';
 import { parseHierarchicalBranchMarker } from './hierarchicalBranchMarkers';
@@ -84,6 +85,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
   const segmentCounts = new Map<string, number>();
   const commandCounts = new Map<string, number>();
   const menuStructure = collectMenuStructure();
+  const characterMetadata = scanScriptCharacterProfiles(units.map(unit => unit.text)).metadataIndexes;
 
   const push = (
     unit: SourceUnit,
@@ -112,7 +114,11 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
     return segment;
   };
 
-  for (const unit of units) {
+  for (const [unitIndex, unit] of units.entries()) {
+    if (characterMetadata.has(unitIndex)) {
+      push(unit, 'structural', 0, unit.text.length, false, false);
+      continue;
+    }
     segmentUnit(unit, push);
 
     for (const match of unit.text.matchAll(COMMAND_TOKEN_PATTERN)) {
@@ -139,6 +145,18 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
     add: typeof push
   ): void {
     const line = unit.text;
+
+    // Whole-line formatting is semantic and takes precedence over colon dialogue.
+    const title = /^\*\*(.+)\*\*$/.exec(line);
+    if (title) {
+      add(unit, 'scene_heading', 2, line.length - 2, true, true);
+      return;
+    }
+    const description = /^\*([^*].*?)\*$/.exec(line);
+    if (description) {
+      add(unit, 'narration', 1, line.length - 1, true, true);
+      return;
+    }
 
     if (
       BARE_CHARACTER_SECTION_PATTERN.test(line)

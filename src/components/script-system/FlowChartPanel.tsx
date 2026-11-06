@@ -18,12 +18,18 @@ import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
+  renderWiring?: (positions: Map<string, { x: number; y: number; layer: number }>) => React.ReactNode;
+  tools?: React.ReactNode;
+  layoutKey?: string;
   graph: FlowGraph;
   selectedPlotNodeId: string;
   previewNodeIds?: string[];
   title?: string;
   referenceLabel?: string;
   readOnly?: boolean;
+  markedNodes?: string[];
+  onToggleMarked?: (id: string) => void;
+  onNodeMenu?: (id: string, x: number, y: number) => void;
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
@@ -129,7 +135,7 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
   const positions = new Map<string, { x: number; y: number; layer: number }>();
   let maxWidth = 0;
   const needsOuterRoute = edges.some((edge) => (
-    (layerById.get(edge.to) ?? 0) - (layerById.get(edge.from) ?? 0) > 1
+    edge.from === edge.to || (layerById.get(edge.to) ?? 0) - (layerById.get(edge.from) ?? 0) > 1
   ));
   const horizontalPad = PAD + (needsOuterRoute ? OUTER_ROUTE_GUTTER : 0);
 
@@ -179,7 +185,11 @@ function edgePath(
   from: { x: number; y: number; layer: number },
   to: { x: number; y: number; layer: number },
   canvasWidth: number
-): { path: string; route: 'direct' | 'outer' } {
+): { path: string; route: 'direct' | 'outer' | 'loop' } {
+  if (from.x === to.x && from.y === to.y) {
+    const right = from.x + NODE_WIDTH;
+    return { path: `M ${right} ${from.y + NODE_HEIGHT * .75} C ${right + 48} ${from.y + NODE_HEIGHT * .75}, ${right + 48} ${from.y + NODE_HEIGHT * .25}, ${right} ${from.y + NODE_HEIGHT * .25}`, route: 'loop' };
+  }
   const x1 = from.x + NODE_WIDTH / 2;
   const y1 = from.y + NODE_HEIGHT;
   const x2 = to.x + NODE_WIDTH / 2;
@@ -227,20 +237,43 @@ function mergeBranchRoute(
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
+  renderWiring, tools, layoutKey,
   previewNodeIds = [],
   title = 'Flow chart',
   referenceLabel,
   readOnly = false,
-  onSelectPlotNode,
+  markedNodes, onToggleMarked, onNodeMenu, onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
-  const layout = useMemo(
+  const initialLayout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
     [graph]
   );
+  const storageKey = layoutKey && 'script-flow-layout:' + layoutKey;
+  type Point = { x: number; y: number };
+  const [manual, setManual] = useState<Record<string, Point>>(() => {
+    try {
+      const stored = storageKey && JSON.parse(localStorage.getItem(storageKey) || '{}');
+      return stored && typeof stored === 'object' ? stored : {};
+    } catch { return {}; }
+  });
+  const drag = useRef<{ id: string; pointer: number; start: Point; origin: Point; last: Point; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const layout = useMemo(() => {
+    const positions = new Map(initialLayout.positions);
+    let { width, height } = initialLayout;
+    for (const [id, pos] of positions) {
+      const point = manual[id];
+      if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+      positions.set(id, { ...pos, x: point.x, y: point.y });
+      width = Math.max(width, point.x + NODE_WIDTH + PAD);
+      height = Math.max(height, point.y + NODE_HEIGHT + PAD);
+    }
+    return { positions, width, height };
+  }, [initialLayout, manual]);
   const ordinaryMergeEdges = useMemo(() => {
     const incoming = new Map<string, FlowGraph['edges']>();
     for (const edge of graph.edges) {
@@ -273,9 +306,9 @@ export function FlowChartPanel({
     const el = bodyRef.current;
     if (!el) return;
     const availableWidth = Math.max(0, el.clientWidth - FLOW_BODY_HORIZONTAL_PADDING);
-    setScale(calculateFitScale(availableWidth, layout.width));
-    el.scrollTop = 0;
-  }, [layout.width]);
+    setScale(calculateFitScale(availableWidth, initialLayout.width));
+
+  }, [initialLayout.width]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -286,7 +319,7 @@ export function FlowChartPanel({
     const observer = new ResizeObserver(fitToWidth);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fitToWidth, graph, layout.height]);
+  }, [fitToWidth]);
 
   const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -313,6 +346,7 @@ export function FlowChartPanel({
         closeLabel="Close flow chart"
         hideClose={!onClose}
       />
+      {tools}
       <div
         ref={bodyRef}
         className={styles.flowBody}
@@ -348,7 +382,7 @@ export function FlowChartPanel({
                 role="img"
                 aria-label="Script flow chart"
               >
-              {graph.edges.map((edge, index) => {
+              {!renderWiring && graph.edges.map((edge, index) => {
                 if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
                 const from = layout.positions.get(edge.from);
                 const to = layout.positions.get(edge.to);
@@ -389,7 +423,7 @@ export function FlowChartPanel({
                   </g>
                 );
               })}
-              {[...ordinaryMergeEdges].map(([targetId, edges]) => {
+              {!renderWiring && [...ordinaryMergeEdges].map(([targetId, edges]) => {
                 const target = layout.positions.get(targetId);
                 if (!target) return null;
                 const junction = {
@@ -445,15 +479,48 @@ export function FlowChartPanel({
                   <g
                     key={node.id}
                     data-flow-node-id={node.id}
+                    data-copy-selected={markedNodes?.includes(node.id) || undefined}
                     data-flow-layer={pos.layer}
                     data-flow-preview-node={preview || undefined}
                     transform={`translate(${pos.x}, ${pos.y})`}
                     className={styles.flowNode}
-                    onClick={preview || readOnly ? undefined : () => onSelectPlotNode(node.id)}
+                    style={layoutKey && !readOnly && !preview ? { cursor: 'grab', touchAction: 'none', userSelect: 'none' } : undefined}
+                    onPointerDown={e => {
+                      suppressClick.current = false;
+                      if (!layoutKey || readOnly || preview || e.button !== 0 || !e.isPrimary || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                      drag.current = { id: node.id, pointer: e.pointerId, start: { x: e.clientX, y: e.clientY }, origin: pos, last: pos, moved: false };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={e => {
+                      const d = drag.current;
+                      if (!d || d.pointer !== e.pointerId || d.id !== node.id) return;
+                      const dx = e.clientX - d.start.x, dy = e.clientY - d.start.y;
+                      if (!d.moved && Math.hypot(dx, dy) < 4) return;
+                      d.moved = true;
+                      const point = { x: Math.max(0, d.origin.x + dx / scale), y: Math.max(0, d.origin.y + dy / scale) };
+                      d.last = point;
+                      setManual(previous => ({ ...previous, [node.id]: point }));
+                    }}
+                    onLostPointerCapture={e => {
+                      const d = drag.current;
+                      if (!d || d.pointer !== e.pointerId) return;
+                      drag.current = null;
+                      if (!d.moved) return;
+                      suppressClick.current = true;
+                      try { if (storageKey) localStorage.setItem(storageKey, JSON.stringify({ ...manual, [node.id]: d.last })); } catch { /* Keep the layout for this session. */ }
+                    }}
+                    onContextMenu={!onNodeMenu || preview || readOnly ? undefined : e => { e.preventDefault(); onNodeMenu(node.id, e.clientX, e.clientY); }}
+                    onClick={preview || readOnly ? undefined : e => { if (suppressClick.current) return; e.currentTarget.focus(); if ((e.shiftKey || e.ctrlKey || e.metaKey) && onToggleMarked) onToggleMarked(node.id); else onSelectPlotNode(node.id); }}
                     role={preview || readOnly ? undefined : 'button'}
                     tabIndex={preview || readOnly ? undefined : 0}
                     onKeyDown={(event) => {
                       if (preview || readOnly) return;
+                      if (onNodeMenu && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+                        event.preventDefault();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        onNodeMenu(node.id, bounds.left, bounds.bottom);
+                        return;
+                      }
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onSelectPlotNode(node.id);
@@ -483,6 +550,7 @@ export function FlowChartPanel({
                   </g>
                 );
               })}
+              {renderWiring?.(layout.positions)}
               </svg>
             </div>
           </div>

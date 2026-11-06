@@ -39,11 +39,12 @@ export function toScriptImportPlainText(markdown: string): string {
 }
 
 function normalizeMarkdownLine(line: string): string {
-  return line
+  const normalized = line
     .replace(/\\([\\`*_\[\]{}()#+\-.!>])/g, '$1')
-    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/^\s*#{1,6}\s+(.+)$/, '**$1**')
     .replace(/^\s*[-+]\s+/, '')
     .replace(/^\s*>\s?/, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1');
+    .replace(/^\s*__(.+)__\s*$/, '**$1**');
+  // Preserve full-line title/description markers, but normalize bold speaker names.
+  return normalized.replace(/^(\s*)\*\*([^*]+)\*\*((?:[（(][^）)]*[）)])?[：:])/, '$1$2$3');
 }

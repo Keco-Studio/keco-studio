@@ -4,6 +4,7 @@ import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import { syncConvertedScriptSource } from '@/lib/server/syncConvertedScriptSource';
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import { getOrResolveStory } from '@/lib/import-script-conversion-cache';
@@ -153,14 +154,16 @@ export const POST = withAuth(async function POST(
               signal: conversionController.signal,
               skipSemanticAuditAfterValidation,
               enableAiPlotPlanning: false,
+              scriptTextSyntax: true,
               usageBinding,
               onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
               onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
             }),
             {
+              shouldCache: (value) => !('fallback' in value && value.fallback),
               variant: skipSemanticAuditAfterValidation
-                ? 'document-validation-merge-heading-v12'
-                : 'mandatory-audit-merge-heading-v12',
+                ? 'document-script-text-v3'
+                : 'import-script-text-v3',
             }
           );
           if (conversion.cacheHit) {
@@ -168,11 +171,14 @@ export const POST = withAuth(async function POST(
               type: 'progress',
               progress: {
                 phase: 'conversion',
-                message: 'Reusing cached Story IR conversion',
+                message: 'Reusing converted script',
               },
             });
           }
           const resolved = conversion.value;
+          if ('fallback' in resolved && resolved.fallback) {
+            throw new Error('AI Script conversion could not be validated. The source document is unchanged; please retry.');
+          }
           if (conversionController.signal.aborted) return;
           send({
             type: 'progress',
@@ -196,6 +202,16 @@ export const POST = withAuth(async function POST(
               ? { documentSource: { sourceDocumentId, exportType: documentExportType } }
               : {}),
           });
+          if (verifiedSource && documentExportType === 'script' && 'scriptText' in resolved
+            && typeof resolved.scriptText === 'string') {
+            try {
+              await syncConvertedScriptSource(supabase, user.id, verifiedSource, resolved.scriptText);
+            } catch (error) {
+              const cleanup = await supabase.from('libraries').delete().eq('id', result.libraryId).eq('project_id', projectId);
+              if (cleanup.error) throw new Error('Source synchronization failed and the new Script could not be removed. Please retry after refreshing.');
+              throw error;
+            }
+          }
           send({ type: 'result', result });
         } catch (error) {
           if (!conversionController.signal.aborted) {

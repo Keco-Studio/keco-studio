@@ -45,13 +45,13 @@ describe('toScriptImportPlainText', () => {
     ].join('\n');
 
     expect(toScriptImportPlainText(input)).toBe([
-      '【Opening dialogue】',
+      '**【Opening dialogue】**',
       '',
       'Empress（without turning）：The sandstorm sealed the retreat.',
       '',
       'You：I request to move the camp.',
       '',
-      '“Share the wine, do not quarrel.”',
+      '**“Share the wine, do not quarrel.”**',
     ].join('\n'));
   });
 });

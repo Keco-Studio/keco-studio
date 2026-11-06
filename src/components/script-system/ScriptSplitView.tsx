@@ -45,9 +45,13 @@ import {
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
+import { ShotScriptPanel } from './ShotScriptPanel';
+import { InlineFlowChart } from './InlineFlowChart';
+import { projectFlowGraph } from '@/lib/script-system/flow-editing/projection';
 import { ScriptWorkspaceToolbar } from './ScriptWorkspaceToolbar';
 import { ScriptTemplateModal } from './ScriptTemplateModal';
 import styles from './ScriptSplitView.module.css';
+
 
 export type ScriptSplitViewProps = {
   projectId?: string;
@@ -223,18 +227,20 @@ export function ScriptSplitView({
     graph: initialGraph,
     rowIds,
   }));
-  let graph = graphState.graph;
+  let sceneGraph = graphState.graph;
   if (graphState.libraryId !== libraryId) {
-    graph = initialGraph;
-    setGraphState({ libraryId, graph, rowIds });
+    sceneGraph = initialGraph;
+    setGraphState({ libraryId, graph: sceneGraph, rowIds });
   } else if (!sameRowIds(graphState.rowIds, rowIds)) {
-    graph = retitleFlowGraph(coalesceThinLinearPlotNodes(reconcileScriptFlowGraph({
+    sceneGraph = retitleFlowGraph(coalesceThinLinearPlotNodes(reconcileScriptFlowGraph({
       graph: graphState.graph,
       previousRows: graphState.rowIds.map((id) => ({ id })),
       rows,
     }), flowRows), flowRows);
-    setGraphState({ libraryId, graph, rowIds });
+    setGraphState({ libraryId, graph: sceneGraph, rowIds });
   }
+  // Scene groups describe presentation; current row values determine every edge.
+  const graph = useMemo(() => projectFlowGraph(sceneGraph, rows.map((row, index) => ({ id: row.id, values: flowRows[index] ?? {} }))), [sceneGraph, rows, flowRows]);
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
@@ -252,6 +258,11 @@ export function ScriptSplitView({
     graph,
   });
   const [ratio, setRatio] = useState(() => readSplitRatio());
+  const [view,setView]=useState<'dialogue'|'preview'|'characters'|'shots'>('dialogue');
+  const [shotsVisited,setShotsVisited]=useState(false);
+  const shotRows=useMemo(()=>rows.map((r,i)=>({id:r.id,values:flowRows[i]??{}})),[rows,flowRows]);
+  const shotScenes=useMemo(()=>new Map(graph.nodes.flatMap(n=>n.rowIndexes.map(i=>[rows[i]?.id,n.label] as const))),[graph,rows]);
+  const [switchingView, setSwitchingView] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [templateMode, setTemplateMode] = useState<'browse' | 'save' | null>(null);
@@ -320,6 +331,17 @@ export function ScriptSplitView({
     sourceToken,
   });
 
+  const [flowSaveRequest, setFlowSaveRequest] = useState(0);
+  const pendingFlowFlush = useRef<((saved: boolean) => void) | null>(null);
+  useEffect(() => () => { pendingFlowFlush.current?.(false); pendingFlowFlush.current = null; }, [libraryId]);
+  const beforeFlowOpen = async () => {
+    await dialogueEditor.waitForIdle();
+    if (!dialogueEditor.editingBlockId) return true;
+    return new Promise<boolean>(resolve => {
+      pendingFlowFlush.current = resolve;
+      setFlowSaveRequest(v => v + 1);
+    });
+  };
   const editingProps = dialogueEditor.enabled
     ? {
         characters: dialogueEditor.characters,
@@ -328,6 +350,8 @@ export function ScriptSplitView({
         setEditingBlockId: dialogueEditor.setEditingBlockId,
         finishEditingBlock: dialogueEditor.finishEditingBlock,
         isBusy: dialogueEditor.isBusy,
+        saveRequestVersion: flowSaveRequest,
+        onSaveRequestComplete: (saved: boolean) => { pendingFlowFlush.current?.(saved); pendingFlowFlush.current = null; },
         canUndo: dialogueEditor.canUndo,
         canRedo: dialogueEditor.canRedo,
         onUndo: () => dialogueEditor.undo(),
@@ -496,7 +520,7 @@ export function ScriptSplitView({
         </div>
       ) : null}
       <div
-        ref={bodyRef}
+        ref={bodyRef} data-script-copy-scope
         className={`${styles.body} ${dragging ? styles.dragging : ''}`}
       >
           <div
@@ -507,7 +531,28 @@ export function ScriptSplitView({
                 : { flex: `${ratio} 1 0%` }
             }
           >
-            <div className={styles.leftBody}>
+            {projectId && <div role="group" aria-label="Conversation view" className={styles.viewSwitch}>
+              <button type="button" aria-pressed={view==='dialogue'} onClick={()=>setView('dialogue')}>Dialogue</button>
+              <button type="button" aria-pressed={view==='preview'} disabled={switchingView} onClick={async()=>{
+                if (view==='preview') return;
+                setSwitchingView(true);
+                try { if (await beforeFlowOpen()) { setShotsVisited(true); setView('preview'); } }
+                finally { setSwitchingView(false); }
+              }}>Preview</button>
+              {(['characters', 'shots'] as const).map(tab => <button key={tab} type="button" aria-pressed={view===tab} disabled={switchingView} onClick={async()=>{
+                if(view===tab)return;
+                setSwitchingView(true);
+                try { if(await beforeFlowOpen()){setShotsVisited(true);setView(tab);} }finally{setSwitchingView(false);}
+              }}>{tab==='characters'?'Characters':'Shot Script'}</button>)}
+            </div>}
+            {shotsVisited && projectId && <div className={styles.leftBody} hidden={view!=='shots' && view!=='characters' && view!=='preview'}>
+              <ShotScriptPanel charactersOpen={view==='characters'} previewOpen={view==='preview'} onSwitch={setView} key={libraryId} projectId={projectId} libraryId={libraryId} rows={shotRows} scenes={shotScenes}/>
+            </div>}
+            <div className={styles.leftBody} hidden={view!=='dialogue'} tabIndex={0} onKeyDown={e=>{
+              if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z' && !e.altKey && !(e.target as Element).closest('textarea,input,[contenteditable=true]')) {
+                e.preventDefault(); if(e.shiftKey)void dialogueEditor.redo();else void dialogueEditor.undo();
+              }
+            }}>
                 <VisualNovelScriptView
                   rows={selectedRows}
                   scriptColumns={scriptColumns}
@@ -535,7 +580,15 @@ export function ScriptSplitView({
                 className={styles.rightPane}
                 style={{ flex: `${1 - ratio} 1 0%` }}
               >
-                <FlowChartPanel
+                {projectId && supabase && !referenceTemplate && !graphPreview ? <InlineFlowChart
+                  key={`${projectId}:${libraryId}`}
+                  projectId={projectId} libraryId={libraryId} rowIds={rowIds} sourceVersion={JSON.stringify(flowRows)}
+                  characters={dialogueEditor.characters.map(c=>c.name)}
+                  onInsertDialogue={dialogueEditor.enabled ? speaker=>dialogueEditor.insertAfterBlock(null,speaker) : undefined}
+                  beforeOpen={beforeFlowOpen} onSaved={dialogueEditor.refreshAfterFlow}
+                  graph={displayedGraph} title="Branch Structure" selectedPlotNodeId={displayedSelectedNodeId}
+                  onSelectPlotNode={selectDisplayedPlotNode} onClose={() => setCollapsed(true)}
+                /> : <FlowChartPanel
                   graph={displayedGraph}
                   title="Branch Structure"
                   referenceLabel={referenceTemplate?.name}
@@ -543,7 +596,7 @@ export function ScriptSplitView({
                   previewNodeIds={referenceTemplate ? [] : graphPreview?.graph.createdNodeIds}
                   onSelectPlotNode={selectDisplayedPlotNode}
                   onClose={() => setCollapsed(true)}
-                />
+                />}
               </div>
             </>
           ) : null}
