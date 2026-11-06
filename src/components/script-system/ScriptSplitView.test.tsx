@@ -270,7 +270,7 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).not.toContain('No script data');
   });
 
-  it('renders workspace actions without a separate structure rail', () => {
+  it('renders the workspace without template actions', () => {
     const markup = renderToStaticMarkup(
       <ScriptSplitView
         libraryId="lib"
@@ -291,40 +291,12 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup).toContain('Story Script');
     expect(markup).toContain('Midnight Guest Room');
     expect(markup).not.toContain('aria-label="Story Structure"');
-    expect(markup).toContain('Templates');
-    expect(markup).toContain('Save as Template');
+    expect(markup).not.toContain('Templates');
+    expect(markup).not.toContain('Save as Template');
     expect(markup).not.toContain('Structure Check');
     expect(markup).not.toContain('aria-label="Save Script"');
     expect(markup).toContain('Branch Structure');
     expect(markup).not.toContain('Generate Animation');
-  });
-
-  it('navigates the left script pane when a structure-template node is clicked', () => {
-    render(
-      <ScriptSplitView
-        libraryId="lib"
-        rows={rows}
-        scriptColumns={{ typeKey: 'type', nameKey: 'name', contentKey: 'content' }}
-        flowRows={[]}
-        persistedGraph={{
-          nodes: [
-            { id: 'Start', label: 'Plot background', rowIndex: 0, rowIndexes: [0, 1] },
-            { id: 'Opening', label: 'Opening dialogue', rowIndex: 2, rowIndexes: [2, 3] },
-          ],
-          edges: [{ from: 'Start', to: 'Opening' }],
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Templates' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Use Two Branches Rejoin as reference' }));
-
-    const branchNode = document.querySelector('[data-flow-node-id="branch-b"]');
-    expect(branchNode).not.toBeNull();
-    fireEvent.click(branchNode!);
-
-    expect(screen.getByText('SECOND_PLOT_CONTENT')).not.toBeNull();
-    expect(screen.queryByText('FIRST_PLOT_CONTENT')).toBeNull();
   });
 
 });
