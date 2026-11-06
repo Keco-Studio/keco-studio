@@ -415,7 +415,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     setEditingKey(null);
     if (editValue.trim() && editValue.trim() !== previous) {
       try {
-        if (type !== 'folder') await commitRename({ type, id: targetId }, editValue);
+        await commitRename({ type, id: targetId }, editValue);
       } catch {
         // toast already shown
       }
@@ -664,7 +664,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                         aria-hidden
                       />
                     </span>
-                    <span className={styles.treeLabel} title={folder.name}>{folder.name}</span>
+                    {editingKey === `folder-${folder.id}` ? <input className={styles.renameInput} value={editValue} autoFocus onChange={(event) => setEditValue(event.target.value)} onBlur={() => void finishRename()} onKeyDown={(event) => { if (event.key === 'Enter') void finishRename(); if (event.key === 'Escape') setEditingKey(null); }} /> : <span className={styles.treeLabel} title={folder.name}>{folder.name}</span>}
                   </button>
                   {userRole ? (
                     <button
