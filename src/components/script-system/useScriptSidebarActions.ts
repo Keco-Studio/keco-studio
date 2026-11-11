@@ -15,7 +15,7 @@ import type { ScriptContextMenuAction } from './ScriptContextMenu';
 import { scriptWorkspaceDocumentQueryKey } from './useScriptWorkspaceDocumentMembership';
 
 export type ScriptSidebarTarget = {
-  type: 'document' | 'script' | 'folder';
+  type: 'document' | 'script';
   id: string;
   name: string;
 } | null;
@@ -24,7 +24,7 @@ type UseScriptSidebarActionsParams = {
   projectId: string;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   target: ScriptSidebarTarget;
-  onStartRename: (target: { type: 'document' | 'script' | 'folder'; id: string }) => void;
+  onStartRename: (target: { type: 'document' | 'script'; id: string }) => void;
   onRefreshWorkspace: () => Promise<unknown> | unknown;
   onExpandDocument?: (documentId: string) => void;
   requestDeleteConfirm: (options: {
@@ -140,20 +140,6 @@ export function useScriptSidebarActions({
       }
 
       if (action === 'delete') {
-        if (target.type === 'folder') {
-          if (userRole !== 'admin' && userRole !== 'editor' || target.name === 'Resources Folder') return;
-          requestDeleteConfirm({
-            title: 'Delete folder',
-            content: 'Delete this folder? Documents inside will move to the project root.',
-            onConfirm: async () => {
-              const response = await fetch(`/api/projects/${projectId}/folders/${target.id}`, { method: 'DELETE' });
-              if (!response.ok) throw new Error('Failed to delete folder');
-              showSuccessToast('Folder deleted');
-              await onRefreshWorkspace();
-            },
-          });
-          return;
-        }
         if (target.type === 'document') {
           if (userRole !== 'admin' && userRole !== 'editor') return;
           const documentId = target.id;

@@ -9,7 +9,7 @@ export type ScriptContextMenuAction =
   | 'rename'
   | 'delete';
 
-export type ScriptContextMenuType = 'document' | 'script' | 'folder';
+export type ScriptContextMenuType = 'document' | 'script';
 
 type ScriptContextMenuProps = {
   x: number;
@@ -19,7 +19,6 @@ type ScriptContextMenuProps = {
   onAction?: (action: ScriptContextMenuAction) => void;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
   elementRef?: HTMLElement | null;
-  targetName?: string;
 };
 
 export function ScriptContextMenu({
@@ -30,7 +29,6 @@ export function ScriptContextMenu({
   onAction,
   userRole,
   elementRef,
-  targetName,
 }: ScriptContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
@@ -95,7 +93,6 @@ export function ScriptContextMenu({
   const canDeleteDocument = userRole === 'admin' || userRole === 'editor';
   const canRenameScript = userRole === 'admin';
   const canDeleteScript = userRole === 'admin';
-  const canDeleteFolder = userRole === 'admin' || userRole === 'editor';
 
   const renderMenuItems = () => {
     if (type === 'document') {
@@ -133,14 +130,6 @@ export function ScriptContextMenu({
           )}
         </>
       );
-    }
-
-    if (type === 'folder') {
-      return canDeleteFolder && targetName !== 'Resources Folder' ? (
-        <button type="button" className={`${styles.menuItem} ${styles.deleteItem}`} onClick={() => handleAction('delete')}>
-          Delete folder
-        </button>
-      ) : null;
     }
 
     // Script child: Rename / Delete only

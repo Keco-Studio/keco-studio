@@ -269,7 +269,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   }, [refetchWorkspace, refetchLibraries]);
 
   const onStartRename = useCallback(
-    (target: { type: 'document' | 'script' | 'folder'; id: string }) => {
+    (target: { type: 'document' | 'script'; id: string }) => {
       const key =
         target.type === 'document'
           ? `document-${target.id}`
@@ -278,7 +278,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
       if (target.type === 'document') {
         name =
           workspaceDocs.find((d) => d.documentId === target.id)?.title ?? '';
-      } else if (target.type === 'script') {
+      } else {
         name = libraries.find((l) => l.id === target.id)?.name ?? '';
       }
       setEditingKey(key);
@@ -406,7 +406,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const finishRename = async () => {
     if (!editingKey) return;
     // Keys are `document-${uuid}` / `script-${uuid}` — uuid has dashes
-    const type = editingKey.startsWith('document-') ? 'document' : editingKey.startsWith('folder-') ? 'folder' : 'script';
+    const type = editingKey.startsWith('document-') ? 'document' : 'script';
     const targetId = editingKey.slice(type.length + 1);
     const previous =
       type === 'document'
@@ -415,7 +415,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     setEditingKey(null);
     if (editValue.trim() && editValue.trim() !== previous) {
       try {
-        if (type !== 'folder') await commitRename({ type, id: targetId }, editValue);
+        await commitRename({ type, id: targetId }, editValue);
       } catch {
         // toast already shown
       }
@@ -645,7 +645,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                 aria-expanded={expanded}
                 aria-selected={false}
               >
-                <div className={`${styles.treeRow} ${styles.folderRow}`} onContextMenu={(event) => openMenu(event, 'folder', folder.id, folder.name)}>
+                <div className={`${styles.treeRow} ${styles.folderRow}`}>
                   <button
                     type="button"
                     className={styles.folderButton}
@@ -759,7 +759,6 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
           elementRef={contextMenu.elementRef}
           onClose={() => setContextMenu(null)}
           onAction={handleAction}
-          targetName={contextMenu?.name}
         />
       ) : null}
 
