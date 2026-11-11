@@ -58,7 +58,7 @@ export function DocumentBranchStructure({
   const visited = new Set<string>();
   let frontier = visible.map((document) => document.id);
   while (frontier.length > 0) {
-    const current = [...new Set(frontier.filter((id) => !visited.has(id)))];
+    const current = frontier.filter((id) => !visited.has(id));
     if (current.length === 0) break;
     levels.push(current);
     current.forEach((id) => visited.add(id));
