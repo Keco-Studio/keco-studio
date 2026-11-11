@@ -4,22 +4,6 @@ import { getUserProjectRole } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string; folderId: string }> };
 
-export const PATCH = withAuth(async function PATCH(request, { params }: Params, { supabase, user }) {
-  const { projectId, folderId } = await params;
-  const body = await request.json().catch(() => null);
-  const name = typeof body?.name === 'string' ? body.name.trim() : '';
-  if (!name) return NextResponse.json({ error: 'Folder name is required' }, { status: 400 });
-  try {
-    const role = await getUserProjectRole(supabase, projectId, user.id);
-    if (role.role !== 'admin' && role.role !== 'editor') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const { data, error } = await supabase.from('folders').update({ name }).eq('id', folderId).eq('project_id', projectId).select('id, name').single();
-    if (error || !data) return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
-    return NextResponse.json(data);
-  } catch {
-    return NextResponse.json({ error: 'Failed to rename folder' }, { status: 400 });
-  }
-}, { unauthorizedResponse: () => NextResponse.json({ error: 'unauthorized' }, { status: 401 }) });
-
 export const DELETE = withAuth(async function DELETE(_request, { params }: Params, { supabase, user }) {
   const { projectId, folderId } = await params;
   try {

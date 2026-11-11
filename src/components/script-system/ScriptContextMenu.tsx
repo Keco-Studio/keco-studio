@@ -96,7 +96,6 @@ export function ScriptContextMenu({
   const canRenameScript = userRole === 'admin';
   const canDeleteScript = userRole === 'admin';
   const canDeleteFolder = userRole === 'admin' || userRole === 'editor';
-  const canRenameFolder = userRole === 'admin' || userRole === 'editor';
 
   const renderMenuItems = () => {
     if (type === 'document') {
@@ -137,10 +136,11 @@ export function ScriptContextMenu({
     }
 
     if (type === 'folder') {
-      return <>
-        {canRenameFolder ? <button type="button" className={styles.menuItem} onClick={() => handleAction('rename')}>Rename</button> : null}
-        {canDeleteFolder && targetName !== 'Resources Folder' ? <><div className={styles.separator} /><button type="button" className={`${styles.menuItem} ${styles.deleteItem}`} onClick={() => handleAction('delete')}>Delete folder</button></> : null}
-      </>;
+      return canDeleteFolder && targetName !== 'Resources Folder' ? (
+        <button type="button" className={`${styles.menuItem} ${styles.deleteItem}`} onClick={() => handleAction('delete')}>
+          Delete folder
+        </button>
+      ) : null;
     }
 
     // Script child: Rename / Delete only
@@ -175,8 +175,6 @@ export function ScriptContextMenu({
     return null;
   }
 
-  const items = renderMenuItems();
-  if (!items) return null;
   return createPortal(
     <div
       ref={menuRef}
@@ -184,7 +182,7 @@ export function ScriptContextMenu({
       style={{ left: `${position.x}px`, top: `${position.y}px` }}
       role="menu"
     >
-      {items}
+      {renderMenuItems()}
     </div>,
     document.body
   );
