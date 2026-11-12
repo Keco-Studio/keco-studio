@@ -1,0 +1,95 @@
+.picker {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.option {
+  display: flex;
+  min-width: 0;
+  min-height: 6.25rem;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border: 1px solid #d6dce3;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #27313d;
+  cursor: pointer;
+  padding: 0.875rem;
+  text-align: left;
+}
+
+.option:hover:not(:disabled) {
+  border-color: #8eb9eb;
+  background: #f7fbff;
+}
+
+.option:focus-visible {
+  outline: 3px solid #4d91e6;
+  outline-offset: 2px;
+}
+
+.option:disabled {
+  background: #f5f7f9;
+  color: #66717e;
+  cursor: default;
+}
+
+.selected {
+  border-color: #2070d8;
+  background: #edf6ff;
+}
+
+.blankOption {
+  width: 100%;
+}
+
+.icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.5rem;
+  color: #2070d8;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.name {
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  color: #66717e;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.check {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 1rem;
+  margin-left: auto;
+  color: #2070d8;
+  font-size: 1rem;
+}
+
+@media (max-width: 42rem) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
