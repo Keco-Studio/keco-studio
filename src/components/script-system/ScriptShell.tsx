@@ -15,9 +15,13 @@ export type ScriptShellProps = {
 export function ScriptShell({ projectId, children }: ScriptShellProps) {
   const pathname = usePathname();
   const flushMain =
+    pathname?.includes('/script-system/') && (
     pathname?.includes(`/script-system/${projectId}/doc/`) ||
     pathname?.includes(`/script-system/${projectId}/script/`) ||
-    pathname?.includes(`/script-system/${projectId}/open/`);
+    pathname?.includes(`/script-system/${projectId}/open/`) ||
+    pathname?.includes(`/script-system/${projectId}/folder/`) ||
+    pathname?.includes('/folder/')
+    );
 
   return (
     <div className={styles.root} data-script-root>
