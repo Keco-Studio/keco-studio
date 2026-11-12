@@ -127,6 +127,11 @@ export function useScriptSidebarActions({
       }
 
       if (action === 'rename') {
+        if (target.type === 'folder') {
+          if (userRole !== 'admin' && userRole !== 'editor') return;
+          onStartRename({ type: 'folder', id: target.id });
+          return;
+        }
         if (target.type === 'document') {
           if (userRole !== 'admin' && userRole !== 'editor') return;
           onStartRename({ type: 'document', id: target.id });
@@ -256,13 +261,17 @@ export function useScriptSidebarActions({
 
   const commitRename = useCallback(
     async (
-      renameTarget: { type: 'document' | 'script'; id: string },
+    renameTarget: { type: 'document' | 'script' | 'folder'; id: string },
       nextName: string
     ) => {
       const trimmed = nextName.trim();
       if (!trimmed) return;
       try {
-        if (renameTarget.type === 'document') {
+        if (renameTarget.type === 'folder') {
+          const response = await fetch(`/api/projects/${projectId}/folders/${renameTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: trimmed }) });
+          if (!response.ok) throw new Error('Failed to rename folder');
+          await onRefreshWorkspace();
+        } else if (renameTarget.type === 'document') {
           await updateDocumentName(supabase, renameTarget.id, trimmed);
           await queryClient.invalidateQueries({
             queryKey: ['script-workspace', projectId],
