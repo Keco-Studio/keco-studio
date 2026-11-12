@@ -4,6 +4,7 @@ import { getUserProjectRole } from '@/lib/services/authorizationService';
 import {
   createScriptDocumentEdge,
   listScriptDocumentEdges,
+  type ScriptDocumentEdgeRow,
 } from '@/lib/script-system/scriptDocumentEdgeService';
 
 type Params = { params: Promise<{ projectId: string; folderId: string }> };
@@ -50,7 +51,7 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
   try {
     await verifyAccess(supabase, projectId, user.id);
     const folderData = await folderDocuments(supabase, projectId, folderId);
-    let edges = [];
+    let edges: ScriptDocumentEdgeRow[] = [];
     try {
       edges = await listScriptDocumentEdges(supabase, projectId, folderId);
     } catch (error) {
