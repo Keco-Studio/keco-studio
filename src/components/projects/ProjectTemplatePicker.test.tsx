@@ -18,6 +18,7 @@ function Harness() {
 it('renders blank plus six representative templates', () => {
   render(<Harness />);
 
+  expect(screen.getByRole('group', { name: 'Project template' })).not.toBeNull();
   expect(screen.getAllByRole('button')).toHaveLength(7);
   expect(screen.getByRole('button', { name: /Blank project/ }).getAttribute('aria-pressed')).toBe('true');
   for (const name of [

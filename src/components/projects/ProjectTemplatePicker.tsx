@@ -43,7 +43,7 @@ export function ProjectTemplatePicker({
   const templates = PROJECT_TEMPLATES.slice(1);
 
   return (
-    <section className={styles.picker} aria-label="Project template">
+    <section className={styles.picker} role="group" aria-label="Project template">
       <TemplateButton
         template={blankTemplate}
         selected={value === blankTemplate.key}
