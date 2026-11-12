@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 describe('Playwright Next.js isolation', () => {
   it('restores Next-generated tracked TypeScript files after an isolated server run', () => {
@@ -32,8 +34,62 @@ describe('Playwright Next.js isolation', () => {
 
     expect(wrapper).toContain("existsSync(path.join(rootDir, '.env.local'))");
     expect(wrapper).toContain("...envFileArgs");
+    expect(wrapper).toContain('startRuntimeWithRetry({');
     expect(wrapper).not.toContain(
       "['functions', 'serve', 'mcp', '--env-file', '.env.local']"
     );
+  });
+
+  it('retries once when the MCP Edge runtime exits before becoming ready', () => {
+    const runtimeUrl = pathToFileURL(
+      join(process.cwd(), 'scripts/playwright-mcp-runtime.mjs')
+    ).href;
+    const scenario = `
+      import { EventEmitter } from 'node:events';
+      import { startRuntimeWithRetry } from ${JSON.stringify(runtimeUrl)};
+
+      let attempts = 0;
+      let stops = 0;
+      const children = [];
+      const result = await startRuntimeWithRetry({
+        spawnRuntime() {
+          attempts += 1;
+          const child = new EventEmitter();
+          child.kill = () => {};
+          children.push(child);
+          if (attempts === 1) {
+            queueMicrotask(() => child.emit('exit', 135, null));
+          }
+          return child;
+        },
+        stopRuntime() {
+          stops += 1;
+        },
+        probeReady: async () => attempts === 2,
+        sleep: async () => {},
+        timeoutMs: 1_000,
+        retryDelayMs: 0,
+        log: () => {},
+      });
+
+      console.log(JSON.stringify({
+        attempts,
+        stops,
+        returnedSecondChild: result.child === children[1],
+      }));
+    `;
+
+    const result = spawnSync(
+      process.execPath,
+      ['--input-type=module', '--eval', scenario],
+      { encoding: 'utf8' },
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual({
+      attempts: 2,
+      stops: 1,
+      returnedSecondChild: true,
+    });
   });
 });

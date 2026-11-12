@@ -37,7 +37,7 @@
 }
 
 .projectModal {
-  width: min(46rem, calc(100vw - 2rem));
+  width: min(52rem, calc(100vw - 2rem));
   max-width: none;
   height: auto;
   max-height: calc(100vh - 2rem);

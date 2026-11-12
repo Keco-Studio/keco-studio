@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { RightOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminTabs } from '@/components/admin/AdminTabs';
-import { ProjectFoundationFields } from '@/components/projects/ProjectFoundationFields';
+import {
+  ProjectIdentityFields,
+  type ProjectIdentityDraft,
+} from '@/components/projects/ProjectIdentityFields';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
@@ -25,12 +28,6 @@ import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { validateName } from '@/lib/utils/nameValidation';
 import { patchProjectFoundationCaches } from '@/lib/queryInvalidation';
 import { updateProject, type Project } from '@/lib/services/projectService';
-import {
-  DESIGN_PHILOSOPHY_PRESETS,
-  GAME_GENRE_PRESETS,
-  normalizeFoundationTags,
-  type ProjectFoundationDraft,
-} from '@/lib/projectFoundation';
 import styles from '@/components/admin/AdminPage.module.css';
 
 type AdminSettingsPageProps = {
@@ -64,7 +61,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     staleTime: 30_000,
   });
 
-  const [projectDraft, setProjectDraft] = useState<ProjectFoundationDraft | null>(null);
+  const [projectDraft, setProjectDraft] = useState<ProjectIdentityDraft | null>(null);
   const [savingProject, setSavingProject] = useState(false);
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const [prefModal, setPrefModal] = useState<PrefModal>(null);
@@ -87,8 +84,6 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     setProjectDraft({
       name: projectQuery.data.name,
       description: projectQuery.data.description ?? '',
-      genres: projectQuery.data.genres ?? [],
-      designPhilosophies: projectQuery.data.design_philosophies ?? [],
     });
     setProjectSaveError(null);
   }, [projectQuery.data]);
@@ -98,18 +93,11 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
   const normalizedProjectDraft = useMemo(() => projectDraft ? {
     name: projectDraft.name.trim(),
     description: projectDraft.description.trim(),
-    genres: normalizeFoundationTags(projectDraft.genres, GAME_GENRE_PRESETS),
-    designPhilosophies: normalizeFoundationTags(
-      projectDraft.designPhilosophies,
-      DESIGN_PHILOSOPHY_PRESETS,
-    ),
   } : null, [projectDraft]);
 
   const projectDirty = Boolean(projectQuery.data && normalizedProjectDraft && (
     normalizedProjectDraft.name !== projectQuery.data.name
     || normalizedProjectDraft.description !== (projectQuery.data.description ?? '')
-    || JSON.stringify(normalizedProjectDraft.genres) !== JSON.stringify(projectQuery.data.genres ?? [])
-    || JSON.stringify(normalizedProjectDraft.designPhilosophies) !== JSON.stringify(projectQuery.data.design_philosophies ?? [])
   ));
 
   const saveProjectInformation = async () => {
@@ -124,6 +112,8 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     try {
       const updated = await updateProject(supabase, projectId, {
         ...normalizedProjectDraft,
+        genres: projectQuery.data.genres ?? [],
+        designPhilosophies: projectQuery.data.design_philosophies ?? [],
         expectedUpdatedAt: projectQuery.data.updated_at,
       });
       patchProjectFoundationCaches(queryClient, updated);
@@ -131,8 +121,6 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
       setProjectDraft({
         name: updated.name,
         description: updated.description ?? '',
-        genres: updated.genres ?? [],
-        designPhilosophies: updated.design_philosophies ?? [],
       });
       showSuccessToast('Project information saved');
       await projectQuery.refetch();
@@ -215,7 +203,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
             event.preventDefault();
             void saveProjectInformation();
           }}>
-            <ProjectFoundationFields
+            <ProjectIdentityFields
               value={projectDraft}
               onChange={setProjectDraft}
               disabled={savingProject}

@@ -36,8 +36,8 @@ const project: Project = {
   owner_id: 'user-1',
   name: 'Old name',
   description: 'Old description',
-  genres: [],
-  design_philosophies: [],
+  genres: ['Strategy'],
+  design_philosophies: ['Readable Systems'],
   created_at: '2026-10-30T10:00:00.000Z',
   updated_at: '2026-10-30T10:00:00.000Z',
 };
@@ -79,14 +79,14 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-it('saves all four Foundation fields and refreshes project caches and breadcrumb', async () => {
+it('saves identity fields while preserving legacy metadata', async () => {
   renderSettings({ role: 'admin', project });
+  expect(screen.queryByLabelText('Game genres')).toBeNull();
+  expect(screen.queryByLabelText('Design philosophies')).toBeNull();
   await user.clear(screen.getByLabelText('Project name'));
   await user.type(screen.getByLabelText('Project name'), 'New name');
   await user.clear(screen.getByLabelText('Description'));
   await user.type(screen.getByLabelText('Description'), 'New description');
-  await user.click(screen.getByRole('button', { name: 'Strategy' }));
-  await user.click(screen.getByRole('button', { name: 'Readable Systems' }));
   await user.click(screen.getByRole('button', { name: 'Save project information' }));
 
   await waitFor(() => {
@@ -107,7 +107,7 @@ it('disables Save until the draft differs from persisted values', () => {
   expect((screen.getByRole('button', { name: 'Save project information' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it.each(['editor', 'viewer'] as const)('renders %s Foundation fields read-only', (role) => {
+it.each(['editor', 'viewer'] as const)('renders %s identity fields read-only', (role) => {
   renderSettings({ role, project });
   expect((screen.getByLabelText('Project name') as HTMLInputElement).disabled).toBe(true);
   expect((screen.getByLabelText('Description') as HTMLTextAreaElement).disabled).toBe(true);

@@ -39,26 +39,35 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-async function enterFoundationDraft() {
+async function enterIdentityDraft() {
   await user.type(screen.getByLabelText('Project name'), 'Harbor Signal');
   await user.type(screen.getByLabelText('Description'), 'A cooperative mystery.');
-  await user.click(screen.getByRole('button', { name: 'RPG' }));
-  await user.click(screen.getByRole('button', { name: 'Player Agency' }));
 }
 
-it('creates a project with all Foundation fields and returns the service payload', async () => {
+it('places project details before template selection', () => {
+  render(<NewProjectModal open onClose={jest.fn()} onCreated={jest.fn()} />);
+
+  const sectionHeadings = screen.getAllByRole('heading', { level: 3 });
+  expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
+    'Project details',
+    'Start from a template',
+  ]);
+});
+
+it('creates a project with identity fields only and returns the service payload', async () => {
   const onCreated = jest.fn();
   render(<NewProjectModal open onClose={jest.fn()} onCreated={onCreated} />);
 
-  await enterFoundationDraft();
+  expect(screen.getByRole('button', { name: /Blank project/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByLabelText('Game genres')).toBeNull();
+  expect(screen.queryByLabelText('Design philosophies')).toBeNull();
+  await enterIdentityDraft();
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
   await waitFor(() => {
     expect(createProject).toHaveBeenCalledWith(expect.anything(), {
       name: 'Harbor Signal',
       description: 'A cooperative mystery.',
-      genres: ['RPG'],
-      designPhilosophies: ['Player Agency'],
     });
   });
   expect(onCreated).toHaveBeenCalledWith({
@@ -67,28 +76,40 @@ it('creates a project with all Foundation fields and returns the service payload
   });
 });
 
-it('keeps the dialog and complete Foundation draft after creation fails', async () => {
+it('keeps the selected template and identity draft after creation fails', async () => {
   const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.mocked(createProject).mockRejectedValueOnce(new Error('Creation failed'));
   render(<NewProjectModal open onClose={jest.fn()} onCreated={jest.fn()} />);
 
-  await enterFoundationDraft();
+  await user.click(screen.getByRole('button', { name: /Narrative adventure/ }));
+  await enterIdentityDraft();
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
   expect((await screen.findByRole('alert')).textContent).toContain('Creation failed');
   expect(screen.getByRole('dialog')).not.toBeNull();
   expect((screen.getByLabelText('Project name') as HTMLInputElement).value).toBe('Harbor Signal');
   expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('A cooperative mystery.');
-  expect(screen.getByRole('button', { name: 'RPG' }).getAttribute('aria-pressed')).toBe('true');
-  expect(screen.getByRole('button', { name: 'Player Agency' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: /Narrative adventure/ }).getAttribute('aria-pressed')).toBe('true');
   consoleError.mockRestore();
 });
 
-it('does not impose character limits on project Foundation fields', () => {
+it('resets the selected template after successful creation', async () => {
+  const onClose = jest.fn();
+  const view = render(<NewProjectModal open onClose={onClose} onCreated={jest.fn()} />);
+
+  await user.click(screen.getByRole('button', { name: /Action roguelike/ }));
+  await enterIdentityDraft();
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+  view.rerender(<NewProjectModal open={false} onClose={onClose} onCreated={jest.fn()} />);
+  view.rerender(<NewProjectModal open onClose={onClose} onCreated={jest.fn()} />);
+  expect(screen.getByRole('button', { name: /Blank project/ }).getAttribute('aria-pressed')).toBe('true');
+});
+
+it('does not impose character limits on project identity fields', () => {
   render(<NewProjectModal open onClose={jest.fn()} onCreated={jest.fn()} />);
 
   expect(screen.getByLabelText('Project name').getAttribute('maxlength')).toBeNull();
   expect(screen.getByLabelText('Description').getAttribute('maxlength')).toBeNull();
-  expect(screen.getByLabelText('Game genres').getAttribute('maxlength')).toBeNull();
-  expect(screen.getByLabelText('Design philosophies').getAttribute('maxlength')).toBeNull();
 });

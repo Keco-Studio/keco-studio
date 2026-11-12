@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startRuntimeWithRetry } from './playwright-mcp-runtime.mjs';
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const lockPath = path.join(rootDir, 'supabase/functions/mcp/deno.lock');
@@ -53,11 +54,15 @@ renameSync(lockPath, backupPath);
 const envFileArgs = existsSync(path.join(rootDir, '.env.local'))
   ? ['--env-file', '.env.local']
   : [];
-const child = spawn('supabase', ['functions', 'serve', 'mcp', ...envFileArgs], {
-  cwd: rootDir,
-  env: process.env,
-  stdio: 'inherit',
-});
+const spawnRuntime = () => spawn(
+  'supabase',
+  ['functions', 'serve', 'mcp', ...envFileArgs],
+  {
+    cwd: rootDir,
+    env: process.env,
+    stdio: 'inherit',
+  },
+);
 
 const readyServer = createServer((_request, response) => {
   response.writeHead(200, { 'content-type': 'text/plain' });
@@ -75,43 +80,47 @@ function cleanup() {
   }
 }
 
-async function waitUntilReady() {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(mcpUrl);
-      if (response.status !== 502 && response.status !== 503) return;
-    } catch {
-      // The local gateway remains unavailable while the Edge container starts.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error('Local MCP Edge runtime did not become ready');
+async function probeReady() {
+  const response = await fetch(mcpUrl);
+  return response.status !== 502 && response.status !== 503;
 }
 
-child.on('error', (error) => {
+let child = null;
+function handleRuntimeExit(event) {
   cleanup();
-  throw error;
-});
-child.on('exit', (code, signal) => {
-  cleanup();
-  if (signal && !['SIGINT', 'SIGTERM'].includes(signal)) process.kill(process.pid, signal);
-  process.exitCode = code ?? 1;
-});
+  if (event.type === 'error') {
+    console.error(event.error);
+    process.exitCode = 1;
+    return;
+  }
+  if (event.signal && !['SIGINT', 'SIGTERM'].includes(event.signal)) {
+    process.kill(process.pid, event.signal);
+  }
+  process.exitCode = event.code ?? (event.signal ? 1 : 0);
+}
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
-    child.kill(signal);
+    child?.kill(signal);
     cleanup();
     process.exit(0);
   });
 }
 
 try {
-  await waitUntilReady();
+  const runtime = await startRuntimeWithRetry({
+    spawnRuntime,
+    stopRuntime: stopEdgeRuntime,
+    probeReady,
+    onAttempt: (attemptChild) => {
+      child = attemptChild;
+    },
+  });
+  child = runtime.child;
+  void runtime.exitPromise.then(handleRuntimeExit);
   readyServer.listen(readyPort, '127.0.0.1');
 } catch (error) {
-  child.kill('SIGTERM');
+  child?.kill('SIGTERM');
   cleanup();
   throw error;
 }

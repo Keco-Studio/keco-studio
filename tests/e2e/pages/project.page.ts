@@ -160,12 +160,8 @@ export class ProjectPage {
     }
 
     const dialog = this.page.getByRole('dialog', { name: 'Create Project' });
-    for (const genre of project.genres ?? []) {
-      await dialog.getByRole('button', { name: genre, exact: true }).click();
-    }
-    for (const philosophy of project.designPhilosophies ?? []) {
-      await dialog.getByRole('button', { name: philosophy, exact: true }).click();
-    }
+    await expect(dialog.getByLabel('Game genres')).toHaveCount(0);
+    await expect(dialog.getByLabel('Design philosophies')).toHaveCount(0);
 
     const visibleProjectNameInput = this.projectNameInput.filter({ visible: true }).first();
     const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');
