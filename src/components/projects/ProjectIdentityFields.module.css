@@ -1,7 +1,6 @@
 .fields {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -54,28 +53,4 @@
   background: #f5f7f9;
   color: #66717e;
   cursor: default;
-}
-
-.tagFields {
-  display: contents;
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0;
-}
-
-.nameField,
-.descriptionField {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 42rem) {
-  .fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .nameField,
-  .descriptionField {
-    grid-column: auto;
-  }
 }

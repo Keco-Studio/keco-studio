@@ -9,16 +9,15 @@ import {
   type Project,
 } from '@/lib/services/projectService';
 import { validateName } from '@/lib/utils/nameValidation';
-import {
-  DESIGN_PHILOSOPHY_PRESETS,
-  GAME_GENRE_PRESETS,
-  normalizeFoundationTags,
-  type ProjectFoundationDraft,
-} from '@/lib/projectFoundation';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
 import dialog from '@/components/shared/FormDialog.module.css';
-import { ProjectFoundationFields } from './ProjectFoundationFields';
+import { ProjectIdentityFields, type ProjectIdentityDraft } from './ProjectIdentityFields';
+import { ProjectTemplatePicker } from './ProjectTemplatePicker';
+import {
+  DEFAULT_PROJECT_TEMPLATE_KEY,
+  type ProjectTemplateKey,
+} from './projectTemplates';
 import styles from './NewProjectModal.module.css';
 
 export type CreatedProjectPayload = {
@@ -34,17 +33,28 @@ type NewProjectModalProps = {
 
 export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalProps) {
   const supabase = useSupabase();
-  const [draft, setDraft] = useState<ProjectFoundationDraft>({
+  const [draft, setDraft] = useState<ProjectIdentityDraft>({
     name: '',
-    genres: [],
-    designPhilosophies: [],
     description: '',
   });
+  const [selectedTemplateKey, setSelectedTemplateKey] =
+    useState<ProjectTemplateKey>(DEFAULT_PROJECT_TEMPLATE_KEY);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  const resetForm = () => {
+    setDraft({ name: '', description: '' });
+    setSelectedTemplateKey(DEFAULT_PROJECT_TEMPLATE_KEY);
+    setError(null);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   if (!open) return null;
   if (!mounted) return null;
@@ -79,19 +89,9 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       const created = await createProject(supabase, {
         name: trimmed,
         description: draft.description.trim(),
-        genres: normalizeFoundationTags(draft.genres, GAME_GENRE_PRESETS),
-        designPhilosophies: normalizeFoundationTags(
-          draft.designPhilosophies,
-          DESIGN_PHILOSOPHY_PRESETS,
-        ),
       });
       onCreated(created);
-      setDraft({
-        name: '',
-        genres: [],
-        designPhilosophies: [],
-        description: '',
-      });
+      resetForm();
       onClose();
     } catch (e: unknown) {
       console.error('Project creation error:', e);
@@ -111,7 +111,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       >
         <div className={dialog.header}>
           <div id="new-project-dialog-title" className={dialog.title}>Create Project</div>
-          <button className={dialog.close} onClick={onClose} aria-label="Close">
+          <button type="button" className={dialog.close} onClick={handleClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
@@ -119,11 +119,23 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         <div className={dialog.divider}></div>
 
         <div className={styles.body}>
-          <ProjectFoundationFields
-            value={draft}
-            onChange={setDraft}
-            disabled={submitting}
-          />
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>Start from a template</h3>
+            <ProjectTemplatePicker
+              value={selectedTemplateKey}
+              onChange={setSelectedTemplateKey}
+              disabled={submitting}
+            />
+          </section>
+          <div className={styles.sectionDivider} />
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>Project details</h3>
+            <ProjectIdentityFields
+              value={draft}
+              onChange={setDraft}
+              disabled={submitting}
+            />
+          </section>
         </div>
 
         <div className={dialog.footer}>

@@ -10,7 +10,7 @@ describe('project create list refresh', () => {
     expect(source).not.toContain(".order('created_at', { ascending: true })");
   });
 
-  it('patches complete Foundation caches and primes the default folder on create', () => {
+  it('patches project caches and primes the default folder on create', () => {
     const sidebar = read('src/components/layout/Sidebar.tsx');
     expect(sidebar).toContain('patchProjectFoundationCaches');
     expect(sidebar).toContain('queryKeys.projectFolders(project.id)');
@@ -30,7 +30,8 @@ describe('project create list refresh', () => {
 
     const modal = read('src/components/projects/NewProjectModal.tsx');
     expect(modal).toContain('CreatedProjectPayload');
-    expect(modal).toContain('designPhilosophies: normalizeFoundationTags');
+    expect(modal).not.toContain('genres:');
+    expect(modal).not.toContain('designPhilosophies:');
   });
 
   it('reads realtime project membership from prefix-matched list caches', () => {

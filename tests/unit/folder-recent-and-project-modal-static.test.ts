@@ -68,21 +68,26 @@ describe('folder/recent cards and project modal visual contracts', () => {
 
   it('keeps the expanded Create Project dialog responsive and scrollable', () => {
     const dialog = read('src/components/shared/FormDialog.module.css');
-    expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*min\(46rem,\s*calc\(100vw - 2rem\)\);/s);
+    expect(dialog).toMatch(/\.projectModal\s*\{[^}]*width:\s*min\(52rem,\s*calc\(100vw - 2rem\)\);/s);
     expect(dialog).toMatch(/\.projectModal\s*\{[^}]*max-height:\s*calc\(100vh - 2rem\);/s);
     expect(dialog).toMatch(/\.projectModal\s*\{[^}]*border-radius:\s*14px;/s);
 
     const modal = read('src/components/projects/NewProjectModal.tsx');
     expect(modal).toContain('dialog.projectModal');
     expect(modal).toContain('styles.body');
+
+    const picker = read('src/components/projects/ProjectTemplatePicker.module.css');
+    expect(picker).toMatch(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s);
+    expect(picker).toMatch(/@media\s*\(max-width:\s*42rem\)[\s\S]*\.grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+    expect(picker).toMatch(/\.option\s*\{[^}]*border-radius:\s*0\.375rem;/s);
   });
 
-  it('keeps GDS tag limits while project Foundation fields omit maxLength', () => {
+  it('keeps GDS tag limits while project identity fields omit maxLength', () => {
     const gds = read('src/components/game-design-system/GameDesignSystemCreatePage.tsx');
     expect(gds).toMatch(/id="gds-genres"[^>]*maxLength=\{80\}/);
     expect(gds).toMatch(/id="gds-philosophies"[^>]*maxLength=\{120\}/);
 
-    const projectFields = read('src/components/projects/ProjectFoundationFields.tsx');
+    const projectFields = read('src/components/projects/ProjectIdentityFields.tsx');
     expect(projectFields).not.toContain('maxLength');
   });
 });
