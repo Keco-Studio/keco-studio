@@ -44,6 +44,16 @@ async function enterIdentityDraft() {
   await user.type(screen.getByLabelText('Description'), 'A cooperative mystery.');
 }
 
+it('places project details before template selection', () => {
+  render(<NewProjectModal open onClose={jest.fn()} onCreated={jest.fn()} />);
+
+  const sectionHeadings = screen.getAllByRole('heading', { level: 3 });
+  expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
+    'Project details',
+    'Start from a template',
+  ]);
+});
+
 it('creates a project with identity fields only and returns the service payload', async () => {
   const onCreated = jest.fn();
   render(<NewProjectModal open onClose={jest.fn()} onCreated={onCreated} />);

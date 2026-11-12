@@ -120,19 +120,19 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
         <div className={styles.body}>
           <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Start from a template</h3>
-            <ProjectTemplatePicker
-              value={selectedTemplateKey}
-              onChange={setSelectedTemplateKey}
+            <h3 className={styles.sectionTitle}>Project details</h3>
+            <ProjectIdentityFields
+              value={draft}
+              onChange={setDraft}
               disabled={submitting}
             />
           </section>
           <div className={styles.sectionDivider} />
           <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Project details</h3>
-            <ProjectIdentityFields
-              value={draft}
-              onChange={setDraft}
+            <h3 className={styles.sectionTitle}>Start from a template</h3>
+            <ProjectTemplatePicker
+              value={selectedTemplateKey}
+              onChange={setSelectedTemplateKey}
               disabled={submitting}
             />
           </section>
