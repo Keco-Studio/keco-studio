@@ -13,21 +13,21 @@ describe('DocumentBranchStructure', () => {
         folderId="folder-1"
         folderName="Resources Folder"
         documents={[
-          { id: 'doc-a', name: '开场' },
-          { id: 'doc-b', name: '森林' },
+          { id: 'doc-a', name: '\u5f00\u573a' },
+          { id: 'doc-b', name: '\u68ee\u6797' },
         ]}
         edges={[{
           id: 'edge-1',
           parent_document_id: 'doc-a',
           child_document_id: 'doc-b',
-          branch_name: '选择离开',
+          branch_name: '\u9009\u62e9\u79bb\u5f00',
         }]}
       />,
     );
 
     expect(screen.getByRole('heading', { name: 'Document Branch Structure' })).toBeTruthy();
-    expect(screen.getByText('开场')).toBeTruthy();
-    expect(screen.getByText('森林')).toBeTruthy();
-    expect(screen.getByText('选择离开')).toBeTruthy();
+    expect(screen.getByText('\u5f00\u573a')).toBeTruthy();
+    expect(screen.getByText('\u68ee\u6797')).toBeTruthy();
+    expect(screen.getByText('\u9009\u62e9\u79bb\u5f00')).toBeTruthy();
   });
 });
