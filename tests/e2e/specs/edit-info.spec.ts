@@ -13,7 +13,7 @@ import { users } from '../fixures/users';
  * Edit Info E2E Tests
  * 
  * Test Scenarios:
- * 1. Project: Create with Foundation data -> verify Library -> edit in Settings
+ * 1. Project: Create with identity data -> verify Library -> edit in Settings
  * 2. Library: Right-click library -> Click [Library Info] -> inline rename
  * 3. Folder: Right-click folder -> Click [Rename] -> inline rename
  * 
@@ -60,7 +60,7 @@ test.describe('Edit Info Feature Tests', () => {
     await page.waitForTimeout(2000);
   });
 
-  test('Project Info - Create project, verify Library foundation, and edit only in Settings', async ({ page }) => {
+  test('Project Info - Create project identity and edit only in Settings', async ({ page }) => {
     test.setTimeout(60000);
 
     const projectName = generateProjectData().name;
@@ -69,8 +69,6 @@ test.describe('Edit Info Feature Tests', () => {
     await projectPage.createProject({
       name: projectName,
       description: 'A cooperative mystery.',
-      genres: ['RPG'],
-      designPhilosophies: ['Player Agency'],
     });
     await expect(page.getByTestId('project-selector-trigger')).toContainText(projectName);
     await expect(page.getByRole('tree')).toContainText('Resources Folder');
@@ -80,11 +78,11 @@ test.describe('Edit Info Feature Tests', () => {
     await openProjectInfoFromSelector(page, projectName);
     await expect(page).toHaveURL(new RegExp(`/${projectId}/admin$`));
     await expect(page.getByText('Edit Project')).toHaveCount(0);
+    await expect(page.getByLabel('Game genres')).toHaveCount(0);
+    await expect(page.getByLabel('Design philosophies')).toHaveCount(0);
 
     await page.getByLabel('Project name').fill(renamedProject);
     await page.getByLabel('Description').fill('An updated cooperative mystery.');
-    await page.getByRole('button', { name: 'Strategy' }).click();
-    await page.getByRole('button', { name: 'Readable Systems' }).click();
     await page.getByRole('button', { name: 'Save project information' }).click();
     await expect(page.getByTestId('project-selector-trigger')).toContainText(renamedProject);
     await page.getByTestId('project-selector-trigger').click();
