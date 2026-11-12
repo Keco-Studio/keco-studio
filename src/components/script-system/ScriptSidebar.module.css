@@ -244,46 +244,56 @@
   overflow-y: auto;
 }
 
-.sectionTitle {
-  display: flex;
+.importButton {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  min-height: 24px;
-  padding: 0.15rem 0.35rem;
-  margin: 0 -0.35rem;
-  border-radius: 0.5rem;
-  color: rgba(100, 116, 139, 0.8);
-  font-size: 1rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0;
-  transition: background-color 0.12s ease, color 0.12s ease;
-}
-
-.addButton,
-.folderAddButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: 1px solid #bcbcbc;
-  border-radius: 0.25rem;
-  background: none;
-  color: rgba(100, 116, 139, 0.8);
-  font-size: 0.75rem;
+  gap: 10px;
+  color: var(--script-ink-700);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s, opacity 0.2s;
+  font-weight: 600;
+  font-size: 13.5px;
+  font-family: inherit;
 }
 
-.addButton:hover,
-.folderAddButton:hover,
-.addButton:focus-visible,
-.folderAddButton:focus-visible {
-  background-color: rgba(100, 116, 139, 0.1);
-  opacity: 0.8;
-  outline: none;
+.importButton:hover {
+  background: var(--script-surface-1);
+}
+
+.importButtonActive {
+  color: var(--script-ink-900);
+  background: var(--script-blue-soft);
+}
+
+.importIcon {
+  color: var(--script-ink-350);
+  display: inline-flex;
+  line-height: 1;
+}
+
+.importButtonActive .importIcon {
+  color: var(--script-blue);
+}
+
+.importCopy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.importCopy strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree {
@@ -309,8 +319,8 @@
   max-width: 100%;
   min-height: 40px;
   height: 40px;
-  padding: 8px;
-  border-radius: 0.5rem;
+  padding-left: 0.5rem;
+  border-radius: 8px;
   color: var(--script-ink-700);
   box-sizing: border-box;
 }
@@ -318,36 +328,6 @@
 .treeRowActive {
   color: var(--script-ink-900);
   background: var(--script-blue-soft);
-}
-
-.folderRow {
-  width: 100%;
-  padding-right: 8px;
-}
-
-.folderButton {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.folderAddButton {
-  flex: 0 0 1.5rem;
-  opacity: 0;
-}
-
-.folderRow:hover .folderAddButton,
-.folderAddButton:focus-visible {
-  opacity: 1;
 }
 
 .expandButton {
@@ -422,7 +402,7 @@
   text-align: left;
   cursor: pointer;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 500;
   overflow: hidden;
 }
@@ -434,7 +414,7 @@
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  margin-right: 0;
+  margin-right: 0.5rem;
   color: #111;
   line-height: 0;
 }
@@ -451,8 +431,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
-  font-weight: 500;
 }
 
 .renameInput {

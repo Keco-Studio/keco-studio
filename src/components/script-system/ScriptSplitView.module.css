@@ -29,6 +29,36 @@
   overflow: hidden;
 }
 
+.referenceBanner {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 16px;
+  border-bottom: 1px solid #bae0ff;
+  background: #eff8ff;
+  color: #075985;
+  font-size: 11px;
+}
+
+.referenceBanner button {
+  padding: 2px 7px;
+  border: 1px solid #8ecbff;
+  border-radius: 5px;
+  background: #fff;
+  color: #0369a1;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.referenceBanner button:focus-visible {
+  outline: 2px solid var(--script-blue);
+  outline-offset: 1px;
+}
+
 .dragging {
   cursor: col-resize;
   user-select: none;

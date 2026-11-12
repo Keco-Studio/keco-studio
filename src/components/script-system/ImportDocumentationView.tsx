@@ -20,7 +20,6 @@ const HELPER_COPY =
 export type ImportDocumentationViewProps = {
   projectId: string;
   projectName?: string;
-  folderId?: string;
 };
 
 type SelectedDocument = {
@@ -31,7 +30,6 @@ type SelectedDocument = {
 export function ImportDocumentationView({
   projectId,
   projectName = 'Project',
-  folderId,
 }: ImportDocumentationViewProps) {
   const router = useRouter();
   const supabase = useSupabase();
@@ -51,7 +49,7 @@ export function ImportDocumentationView({
   useEffect(() => {
     setSelected(null);
     setError(null);
-  }, [folderId, projectId]);
+  }, [projectId]);
 
   const handleImport = async () => {
     if (!selected || importing) return;
@@ -161,7 +159,6 @@ export function ImportDocumentationView({
       <SelectDocumentModal
         open={modalOpen}
         projectId={projectId}
-        folderId={folderId}
         selectedDocumentId={selected?.id ?? null}
         onClose={() => setModalOpen(false)}
         onSelect={(document) => setSelected(document)}

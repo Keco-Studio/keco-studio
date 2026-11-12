@@ -11,33 +11,14 @@ export type SelectDocumentModalProps = {
   open: boolean;
   projectId: string;
   selectedDocumentId?: string | null;
-  folderId?: string;
   onClose: () => void;
   onSelect: (document: { id: string; name: string }) => void;
 };
-
-type SelectableDocument = {
-  id: string;
-  name: string;
-  folder_id: string | null;
-};
-
-export function filterSelectableDocuments<T extends SelectableDocument>(
-  documents: T[],
-  { query, folderId }: { query: string; folderId?: string },
-): T[] {
-  const needle = query.trim().toLowerCase();
-  return documents.filter((document) => {
-    if (folderId && document.folder_id !== folderId) return false;
-    return !needle || document.name.toLowerCase().includes(needle);
-  });
-}
 
 export function SelectDocumentModal({
   open,
   projectId,
   selectedDocumentId = null,
-  folderId,
   onClose,
   onSelect,
 }: SelectDocumentModalProps) {
@@ -55,8 +36,10 @@ export function SelectDocumentModal({
   }, [open, selectedDocumentId]);
 
   const filtered = useMemo(() => {
-    return filterSelectableDocuments(documents, { query, folderId });
-  }, [documents, folderId, query]);
+    const needle = query.trim().toLowerCase();
+    if (!needle) return documents;
+    return documents.filter((doc) => doc.name.toLowerCase().includes(needle));
+  }, [documents, query]);
 
   if (!open || !mounted) return null;
 

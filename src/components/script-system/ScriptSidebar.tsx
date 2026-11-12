@@ -10,13 +10,9 @@ import { useSidebarProjectRole } from '@/components/layout/hooks/useSidebarProje
 import { IconSpeechBubble } from '@/components/layout/navIcons';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import paperIcon from '@/assets/images/paper.svg';
-import folderIcon from '@/assets/images/FolderCloseIcon.svg';
-import folderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
-import addIcon from '@/assets/images/addProjectIcon.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
-import { NewFolderModal } from '@/components/folders/NewFolderModal';
-import { NewDocumentModal } from '@/components/documents/NewDocumentModal';
+import importIcon from '@/assets/images/simulator/import.svg';
 import { useScriptWorkspaceMembership } from './useScriptWorkspaceMembership';
 import {
   ScriptContextMenu,
@@ -27,14 +23,15 @@ import {
   type ScriptSidebarTarget,
 } from './useScriptSidebarActions';
 import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
-import { ScriptAddMenu } from './ScriptAddMenu';
-import { buildScriptSidebarTree } from './scriptSidebarTree';
-import { finishScriptDocumentCreation } from './scriptWorkspaceClient';
 import styles from './ScriptSidebar.module.css';
 
 export type ScriptSidebarProps = {
   projectId: string;
 };
+
+function ImportIcon() {
+  return <Image src={importIcon} alt="" width={18} height={18} aria-hidden="true" />;
+}
 
 function ChevronDownIcon() {
   return (
@@ -91,7 +88,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     documents: workspaceDocs,
     refetch: refetchWorkspace,
   } = useScriptWorkspaceMembership(projectId);
-  const { folders, libraries, refetch: refetchLibraries } =
+  const { libraries, refetch: refetchLibraries } =
     useSidebarFoldersLibraries(projectId);
 
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -100,17 +97,6 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(folders.map((folder) => folder.id)),
-  );
-  const knownFolderIdsRef = useRef(new Set(folders.map((folder) => folder.id)));
-  const [addMenu, setAddMenu] = useState<{
-    anchor: HTMLElement;
-    folderId: string | null;
-  } | null>(null);
-  const [showFolderModal, setShowFolderModal] = useState(false);
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
-  const [documentFolderId, setDocumentFolderId] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const didInitialExpandRef = useRef(false);
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
@@ -130,13 +116,10 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null;
   const projectName = selectedProject?.name ?? 'Project';
-  const canCreateFolder = userRole === 'admin';
-  const canCreateDocument = userRole === 'admin' || userRole === 'editor';
-  const rootAddLabel = canCreateFolder
-    ? 'Add folder, document, or import'
-    : canCreateDocument
-      ? 'Add document or import'
-      : 'Import';
+  const onImportRoute =
+    pathname === `/script-system/${projectId}` ||
+    pathname === `/script-system/${projectId}/`;
+
   const selectedDocumentId = useMemo(() => {
     const match = pathname?.match(
       new RegExp(`^/script-system/${projectId}/doc/([^/]+)`)
@@ -178,24 +161,6 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     }
     return map;
   }, [libraries]);
-
-  const sidebarTree = useMemo(
-    () => buildScriptSidebarTree(folders, workspaceDocs),
-    [folders, workspaceDocs],
-  );
-
-  useEffect(() => {
-    const newlyVisible = folders
-      .map((folder) => folder.id)
-      .filter((folderId) => !knownFolderIdsRef.current.has(folderId));
-    if (newlyVisible.length === 0) return;
-    for (const folderId of newlyVisible) knownFolderIdsRef.current.add(folderId);
-    setExpandedFolders((previous) => {
-      const next = new Set(previous);
-      for (const folderId of newlyVisible) next.add(folderId);
-      return next;
-    });
-  }, [folders]);
 
   // Expand only the selected route; optionally seed docs-with-children once on first load
   useEffect(() => {
@@ -269,7 +234,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   }, [refetchWorkspace, refetchLibraries]);
 
   const onStartRename = useCallback(
-    (target: { type: 'document' | 'script' | 'folder'; id: string }) => {
+    (target: { type: 'document' | 'script'; id: string }) => {
       const key =
         target.type === 'document'
           ? `document-${target.id}`
@@ -278,7 +243,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
       if (target.type === 'document') {
         name =
           workspaceDocs.find((d) => d.documentId === target.id)?.title ?? '';
-      } else if (target.type === 'script') {
+      } else {
         name = libraries.find((l) => l.id === target.id)?.name ?? '';
       }
       setEditingKey(key);
@@ -344,10 +309,8 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     });
   }, [deleteConfirmState.loading]);
 
-  const goToImport = (folderId: string | null) => {
-    setAddMenu(null);
-    const query = folderId ? `?folderId=${encodeURIComponent(folderId)}` : '';
-    router.push(`/script-system/${projectId}${query}`);
+  const goToImport = () => {
+    router.push(`/script-system/${projectId}`);
   };
 
   const selectProject = (nextProjectId: string, nextProjectName: string) => {
@@ -386,27 +349,10 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     });
   };
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders((previous) => {
-      const next = new Set(previous);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      return next;
-    });
-  };
-
-  const openAddMenu = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    folderId: string | null,
-  ) => {
-    event.stopPropagation();
-    setAddMenu({ anchor: event.currentTarget, folderId });
-  };
-
   const finishRename = async () => {
     if (!editingKey) return;
     // Keys are `document-${uuid}` / `script-${uuid}` — uuid has dashes
-    const type = editingKey.startsWith('document-') ? 'document' : editingKey.startsWith('folder-') ? 'folder' : 'script';
+    const type = editingKey.startsWith('document-') ? 'document' : 'script';
     const targetId = editingKey.slice(type.length + 1);
     const previous =
       type === 'document'
@@ -420,146 +366,6 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
         // toast already shown
       }
     }
-  };
-
-  const renderDocumentNode = (doc: (typeof workspaceDocs)[number]) => {
-    const children = scriptsByDocument.get(doc.documentId) ?? [];
-    const expanded = expandedDocs.has(doc.documentId);
-    const docSelected = selectedDocumentId === doc.documentId;
-    const docKey = `document-${doc.documentId}`;
-    const title = doc.title ?? 'Untitled document';
-
-    return (
-      <li
-        key={doc.documentId}
-        role="treeitem"
-        aria-expanded={expanded}
-        aria-selected={docSelected}
-      >
-        <div
-          className={`${styles.treeRow} ${docSelected ? styles.treeRowActive : ''}`}
-          onContextMenu={(event) =>
-            openMenu(event, 'document', doc.documentId, title)
-          }
-        >
-          {children.length > 0 ? (
-            <button
-              type="button"
-              className={styles.expandButton}
-              aria-label={expanded ? 'Collapse' : 'Expand'}
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleExpand(doc.documentId);
-              }}
-            >
-              <span className={styles.switcherIcons}>
-                <Image
-                  src={paperIcon}
-                  alt=""
-                  width={24}
-                  height={24}
-                  className={`icon-24 ${styles.switcherBase}`}
-                  aria-hidden
-                />
-                <Image
-                  src={expanded ? folderCollapseIcon : folderExpandIcon}
-                  alt=""
-                  width={14}
-                  height={8}
-                  className={styles.switcherHover}
-                  aria-hidden
-                />
-              </span>
-            </button>
-          ) : (
-            <span className={styles.treeIcon}>
-              <Image src={paperIcon} alt="" width={24} height={24} className="icon-24" aria-hidden />
-            </span>
-          )}
-          <div className={styles.treeItemMain}>
-            {editingKey === docKey ? (
-              <input
-                className={styles.renameInput}
-                value={editValue}
-                autoFocus
-                onChange={(event) => setEditValue(event.target.value)}
-                onBlur={() => void finishRename()}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void finishRename();
-                  }
-                  if (event.key === 'Escape') setEditingKey(null);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className={styles.treeItemButton}
-                aria-current={docSelected ? 'page' : undefined}
-                onClick={() =>
-                  router.push(`/script-system/${projectId}/doc/${doc.documentId}`)
-                }
-              >
-                <span className={styles.treeLabel} title={title}>{title}</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {expanded && children.length > 0 ? (
-          <ul className={styles.treeChildren} role="group">
-            {children.map((child) => {
-              const scriptSelected = selectedLibraryId === child.id;
-              const scriptKey = `script-${child.id}`;
-              return (
-                <li key={child.id} role="treeitem" aria-selected={scriptSelected}>
-                  <div
-                    className={`${styles.treeRow} ${scriptSelected ? styles.treeRowActive : ''}`}
-                    onContextMenu={(event) =>
-                      openMenu(event, 'script', child.id, child.name)
-                    }
-                  >
-                    <span className={styles.treeIcon}><IconSpeechBubble size={24} /></span>
-                    <div className={styles.treeItemMain}>
-                      {editingKey === scriptKey ? (
-                        <input
-                          className={styles.renameInput}
-                          value={editValue}
-                          autoFocus
-                          onChange={(event) => setEditValue(event.target.value)}
-                          onBlur={() => void finishRename()}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              void finishRename();
-                            }
-                            if (event.key === 'Escape') setEditingKey(null);
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.treeItemButton}
-                          aria-current={scriptSelected ? 'page' : undefined}
-                          onClick={() =>
-                            router.push(`/script-system/${projectId}/script/${child.id}`)
-                          }
-                        >
-                          <span className={styles.treeLabel} title={child.name}>{child.name}</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </li>
-    );
   };
 
   return (
@@ -618,137 +424,189 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
       </div>
 
       <nav className={styles.nav} aria-label="Script navigation">
-        <div className={styles.sectionTitle}>
-          <span>Libraries</span>
-          {userRole ? (
-            <button
-              type="button"
-              className={styles.addButton}
-              title={rootAddLabel}
-              aria-label={rootAddLabel}
-              aria-haspopup="menu"
-              aria-expanded={Boolean(addMenu && addMenu.folderId === null)}
-              onClick={(event) => openAddMenu(event, null)}
-            >
-              <Image src={addIcon} alt="" width={16} height={16} aria-hidden />
+        <button
+          type="button"
+          className={`${styles.importButton} ${
+            onImportRoute ? styles.importButtonActive : ''
+          }`}
+          aria-current={onImportRoute ? 'page' : undefined}
+          onClick={goToImport}
+        >
+              <span className={styles.importIcon}>
+                <ImportIcon />
+              </span>
+              <span className={styles.importCopy}>
+                <strong>Import</strong>
+              </span>
             </button>
-          ) : null}
-        </div>
 
         <ul className={styles.tree} role="tree" aria-label="Workspace documents">
-          {sidebarTree.folders.map((folder) => {
-            const expanded = expandedFolders.has(folder.id);
+          {workspaceDocs.map((doc) => {
+            const children = scriptsByDocument.get(doc.documentId) ?? [];
+            const expanded = expandedDocs.has(doc.documentId);
+            const docSelected = selectedDocumentId === doc.documentId;
+            const docKey = `document-${doc.documentId}`;
+            const title = doc.title ?? 'Untitled document';
+
             return (
-              <li
-                key={folder.id}
-                role="treeitem"
-                aria-expanded={expanded}
-                aria-selected={false}
-              >
-                <div className={`${styles.treeRow} ${styles.folderRow}`} onContextMenu={(event) => openMenu(event, 'folder', folder.id, folder.name)}>
-                  <button
-                    type="button"
-                    className={styles.folderButton}
-                    onClick={() => {
-                      toggleFolder(folder.id);
-                      router.push(`/script-system/${projectId}/folder/${folder.id}/branch`);
-                    }}
-                    aria-label={`${expanded ? 'Collapse' : 'Expand'} ${folder.name}`}
-                  >
+              <li key={doc.documentId} role="treeitem" aria-expanded={expanded}>
+                <div
+                  className={`${styles.treeRow} ${
+                    docSelected ? styles.treeRowActive : ''
+                  }`}
+                  onContextMenu={(e) =>
+                    openMenu(e, 'document', doc.documentId, title)
+                  }
+                >
+                  {children.length > 0 ? (
+                    <button
+                      type="button"
+                      className={styles.expandButton}
+                      aria-label={expanded ? 'Collapse' : 'Expand'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(doc.documentId);
+                      }}
+                    >
+                      <span className={styles.switcherIcons}>
+                        <Image
+                          src={paperIcon}
+                          alt=""
+                          width={24}
+                          height={24}
+                          className={`icon-24 ${styles.switcherBase}`}
+                          aria-hidden
+                        />
+                        <Image
+                          src={expanded ? folderCollapseIcon : folderExpandIcon}
+                          alt=""
+                          width={14}
+                          height={expanded ? 8 : 8}
+                          className={styles.switcherHover}
+                          aria-hidden
+                        />
+                      </span>
+                    </button>
+                  ) : (
                     <span className={styles.treeIcon}>
                       <Image
-                        src={expanded ? folderOpenIcon : folderIcon}
+                        src={paperIcon}
                         alt=""
                         width={24}
                         height={24}
+                        className="icon-24"
                         aria-hidden
                       />
                     </span>
-                    {editingKey === `folder-${folder.id}` ? <input className={styles.renameInput} value={editValue} autoFocus onChange={(event) => setEditValue(event.target.value)} onBlur={() => void finishRename()} onKeyDown={(event) => { if (event.key === 'Enter') void finishRename(); if (event.key === 'Escape') setEditingKey(null); }} /> : <span className={styles.treeLabel} title={folder.name}>{folder.name}</span>}
-                  </button>
-                  {userRole ? (
-                    <button
-                      type="button"
-                      className={styles.folderAddButton}
-                      title={
-                        canCreateDocument
-                          ? `Add to ${folder.name}`
-                          : `Import to ${folder.name}`
-                      }
-                      aria-label={
-                        canCreateDocument
-                          ? `Add document or import to ${folder.name}`
-                          : `Import to ${folder.name}`
-                      }
-                      aria-haspopup="menu"
-                      aria-expanded={addMenu?.folderId === folder.id}
-                      onClick={(event) => openAddMenu(event, folder.id)}
-                    >
-                      <Image src={addIcon} alt="" width={16} height={16} aria-hidden />
-                    </button>
-                  ) : null}
+                  )}
+                  <div className={styles.treeItemMain}>
+                    {editingKey === docKey ? (
+                      <input
+                        className={styles.renameInput}
+                        value={editValue}
+                        autoFocus
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={() => void finishRename()}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void finishRename();
+                          }
+                          if (e.key === 'Escape') {
+                            setEditingKey(null);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.treeItemButton}
+                        aria-current={docSelected ? 'page' : undefined}
+                        onClick={() =>
+                          router.push(
+                            `/script-system/${projectId}/doc/${doc.documentId}`
+                          )
+                        }
+                      >
+                        <span className={styles.treeLabel} title={title}>
+                          {title}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {expanded && folder.documents.length > 0 ? (
+
+                {expanded && children.length > 0 ? (
                   <ul className={styles.treeChildren} role="group">
-                    {folder.documents.map(renderDocumentNode)}
+                    {children.map((child) => {
+                      const scriptSelected = selectedLibraryId === child.id;
+                      const scriptKey = `script-${child.id}`;
+                      return (
+                        <li key={child.id} role="treeitem">
+                          <div
+                            className={`${styles.treeRow} ${
+                              scriptSelected ? styles.treeRowActive : ''
+                            }`}
+                            onContextMenu={(e) =>
+                              openMenu(e, 'script', child.id, child.name)
+                            }
+                          >
+                            <span className={styles.treeIcon}>
+                              <IconSpeechBubble size={24} />
+                            </span>
+                            <div className={styles.treeItemMain}>
+                              {editingKey === scriptKey ? (
+                                <input
+                                  className={styles.renameInput}
+                                  value={editValue}
+                                  autoFocus
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => void finishRename()}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      void finishRename();
+                                    }
+                                    if (e.key === 'Escape') {
+                                      setEditingKey(null);
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.treeItemButton}
+                                  aria-current={
+                                    scriptSelected ? 'page' : undefined
+                                  }
+                                  onClick={() =>
+                                    router.push(
+                                      `/script-system/${projectId}/script/${child.id}`
+                                    )
+                                  }
+                                >
+                                  <span
+                                    className={styles.treeLabel}
+                                    title={child.name}
+                                  >
+                                    {child.name}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
               </li>
             );
           })}
-          {sidebarTree.rootDocuments.map(renderDocumentNode)}
         </ul>
       </nav>
-
-      <ScriptAddMenu
-        open={Boolean(addMenu)}
-        anchorElement={addMenu?.anchor ?? null}
-        onClose={() => setAddMenu(null)}
-        onCreateFolder={
-          addMenu?.folderId == null && canCreateFolder
-            ? () => {
-                setAddMenu(null);
-                setShowFolderModal(true);
-              }
-            : undefined
-        }
-        onCreateDocument={
-          canCreateDocument
-            ? () => {
-                setDocumentFolderId(addMenu?.folderId ?? null);
-                setAddMenu(null);
-                setShowDocumentModal(true);
-              }
-            : undefined
-        }
-        onImport={addMenu ? () => goToImport(addMenu.folderId) : undefined}
-      />
-
-      <NewFolderModal
-        open={showFolderModal}
-        projectId={projectId}
-        parentFolderId={null}
-        onClose={() => setShowFolderModal(false)}
-        onCreated={() => {
-          void refetchLibraries();
-        }}
-      />
-
-      <NewDocumentModal
-        open={showDocumentModal}
-        projectId={projectId}
-        folderId={documentFolderId}
-        onClose={() => setShowDocumentModal(false)}
-        onCreated={async (documentId) => {
-          await finishScriptDocumentCreation({
-            projectId,
-            documentId,
-            refreshWorkspace: refreshAll,
-            navigate: router.push,
-          });
-          setShowDocumentModal(false);
-        }}
-      />
 
       {contextMenu ? (
         <ScriptContextMenu
@@ -759,7 +617,6 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
           elementRef={contextMenu.elementRef}
           onClose={() => setContextMenu(null)}
           onAction={handleAction}
-          targetName={contextMenu?.name}
         />
       ) : null}
 

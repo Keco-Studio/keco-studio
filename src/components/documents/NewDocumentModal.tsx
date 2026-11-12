@@ -23,20 +23,12 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingCreation, setPendingCreation] = useState<{
-    documentId: string;
-    scopeKey: string;
-  } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
   if (!open) return null;
   if (!mounted) return null;
-
-  const scopeKey = `${projectId}:${folderId ?? ''}`;
-  const pendingDocumentId =
-    pendingCreation?.scopeKey === scopeKey ? pendingCreation.documentId : null;
 
   const handleSubmit = async () => {
     if (submitting) return;
@@ -55,26 +47,18 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
     setSubmitting(true);
     setError(null);
     try {
-      let documentId = pendingDocumentId;
-      if (!documentId) {
-        const doc = await createDocument(supabase, {
-          projectId,
-          name: trimmed,
-          description,
-          folderId: folderId || null,
-        });
-        documentId = doc.id;
-        setPendingCreation({ documentId, scopeKey });
-      }
-      await onCreated(documentId);
-      setPendingCreation(null);
+      const doc = await createDocument(supabase, {
+        projectId,
+        name: trimmed,
+        description,
+        folderId: folderId || null,
+      });
+      await onCreated(doc.id);
       setName('');
       setDescription('');
       onClose();
-    } catch (error: unknown) {
-      setError(
-        error instanceof Error ? error.message : 'Failed to create document',
-      );
+    } catch (e: any) {
+      setError(e?.message || 'Failed to create document');
     } finally {
       setSubmitting(false);
     }
@@ -105,7 +89,6 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
             id="document-name"
             className={dialog.nameInput}
             value={name}
-            disabled={Boolean(pendingDocumentId)}
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter document name"
             onKeyDown={(e) => {
@@ -127,7 +110,6 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
               name="document-description"
               className={dialog.textarea}
               value={description}
-              disabled={Boolean(pendingDocumentId)}
               onChange={(e) => {
                 if (e.target.value.length <= 250) {
                   setDescription(e.target.value);
@@ -145,9 +127,7 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting
-              ? pendingDocumentId ? 'Retrying...' : 'Creating...'
-              : pendingDocumentId ? 'Retry' : 'Create'}
+            {submitting ? 'Creating...' : 'Create'}
           </button>
         </div>
       </div>
