@@ -18,7 +18,6 @@ type AddLibraryMenuProps = {
   onCreateDocument?: () => void;
   onCreateAsset?: () => void;
   onImportDocument?: () => void;
-  importDocumentLabel?: string;
   onImportTable?: () => void;
   onDelete?: () => void;
   onRename?: () => void;
@@ -60,7 +59,6 @@ export function AddLibraryMenu({
   onCreateDocument,
   onCreateAsset,
   onImportDocument,
-  importDocumentLabel = 'Import new document',
   onImportTable,
   onDelete,
   onRename,
@@ -155,7 +153,7 @@ export function AddLibraryMenu({
       {onImportDocument && (
         <button type="button" className={styles.menuItem} onClick={onImportDocument} role="menuitem">
           <ImportIcon />
-          <span>{importDocumentLabel}</span>
+          <span>Import new document</span>
         </button>
       )}
       {hasDestructiveActions && <div className={styles.divider} />}
