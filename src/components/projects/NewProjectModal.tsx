@@ -39,6 +39,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   });
   const [selectedTemplateKey, setSelectedTemplateKey] =
     useState<ProjectTemplateKey>(DEFAULT_PROJECT_TEMPLATE_KEY);
+  const [templateRequestId, setTemplateRequestId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -48,6 +49,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   const resetForm = () => {
     setDraft({ name: '', description: '' });
     setSelectedTemplateKey(DEFAULT_PROJECT_TEMPLATE_KEY);
+    setTemplateRequestId(null);
     setError(null);
   };
 
@@ -75,6 +77,8 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
     setSubmitting(true);
     setError(null);
+    const requestId = templateRequestId ?? crypto.randomUUID();
+    setTemplateRequestId(requestId);
 
     try {
       // Check if project name already exists before attempting to create
@@ -89,6 +93,8 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       const created = await createProject(supabase, {
         name: trimmed,
         description: draft.description.trim(),
+        templateKey: selectedTemplateKey,
+        templateRequestId: requestId,
       });
       onCreated(created);
       resetForm();
@@ -123,7 +129,10 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
             <h3 className={styles.sectionTitle}>Project details</h3>
             <ProjectIdentityFields
               value={draft}
-              onChange={setDraft}
+              onChange={(value) => {
+                setDraft(value);
+                setTemplateRequestId(null);
+              }}
               disabled={submitting}
             />
           </section>
@@ -132,7 +141,10 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
             <h3 className={styles.sectionTitle}>Start from a template</h3>
             <ProjectTemplatePicker
               value={selectedTemplateKey}
-              onChange={setSelectedTemplateKey}
+              onChange={(value) => {
+                setSelectedTemplateKey(value);
+                setTemplateRequestId(null);
+              }}
               disabled={submitting}
             />
           </section>

@@ -11,6 +11,7 @@ import {
   normalizeFoundationTags,
 } from '@/lib/projectFoundation';
 import { validateName } from '@/lib/utils/nameValidation';
+import type { ProjectTemplateKey } from '@/components/projects/projectTemplates';
 
 export type Project = {
   id: string;
@@ -32,7 +33,10 @@ export type ProjectFoundationInput = {
   designPhilosophies?: string[];
 };
 
-export type CreateProjectInput = ProjectFoundationInput;
+export type CreateProjectInput = ProjectFoundationInput & {
+  templateKey?: ProjectTemplateKey;
+  templateRequestId?: string;
+};
 
 export type UpdateProjectInput = ProjectFoundationInput & {
   expectedUpdatedAt?: string;
@@ -45,6 +49,13 @@ const trimOrNull = (value?: string | null) => {
 };
 
 export async function createProject(
+  supabase: SupabaseClient,
+  input: CreateProjectInput
+): Promise<{ project: Project; defaultFolderId: string }> {
+  return createBlankProject(supabase, input);
+}
+
+export async function createBlankProject(
   supabase: SupabaseClient,
   input: CreateProjectInput
 ): Promise<{ project: Project; defaultFolderId: string }> {

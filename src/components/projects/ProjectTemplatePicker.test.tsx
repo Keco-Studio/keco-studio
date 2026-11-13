@@ -21,15 +21,16 @@ it('renders blank plus six representative templates', () => {
   expect(screen.getByRole('group', { name: 'Project template' })).not.toBeNull();
   expect(screen.getAllByRole('button')).toHaveLength(7);
   expect(screen.getByRole('button', { name: /Blank project/ }).getAttribute('aria-pressed')).toBe('true');
+  expect((screen.getByRole('button', { name: /Tactical deckbuilder/ }) as HTMLButtonElement).disabled).toBe(false);
   for (const name of [
-    'Tactical deckbuilder',
     'Narrative adventure',
     'Survival builder',
     'Management simulation',
     'Action roguelike',
     'Cooperative puzzle',
   ]) {
-    expect(screen.getByRole('button', { name: new RegExp(name) })).not.toBeNull();
+    const button = screen.getByRole('button', { name: new RegExp(`${name}.*Coming soon`) }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
   }
 });
 
@@ -37,8 +38,8 @@ it('reports and exposes the selected template', async () => {
   const user = userEvent.setup();
   render(<Harness />);
 
-  await user.click(screen.getByRole('button', { name: /Narrative adventure/ }));
+  await user.click(screen.getByRole('button', { name: /Tactical deckbuilder/ }));
 
-  expect(screen.getByRole('button', { name: /Narrative adventure/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: /Tactical deckbuilder/ }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByRole('button', { name: /Blank project/ }).getAttribute('aria-pressed')).toBe('false');
 });

@@ -79,6 +79,17 @@
   overflow-wrap: anywhere;
 }
 
+.availability {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e8edf2;
+  color: #53606d;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1.4;
+  padding: 0.125rem 0.45rem;
+}
+
 .check {
   width: 1rem;
   height: 1rem;

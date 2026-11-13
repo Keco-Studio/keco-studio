@@ -82,19 +82,21 @@ function TemplateButton({
   className,
 }: TemplateButtonProps) {
   const Icon = templateIcons[template.icon];
+  const unavailable = template.availability === 'coming-soon';
 
   return (
     <button
       className={`${styles.option} ${selected ? styles.selected : ''} ${className ?? ''}`}
       type="button"
       aria-pressed={selected}
-      disabled={disabled}
+      disabled={disabled || unavailable}
       onClick={() => onChange(template.key)}
     >
       <Icon className={styles.icon} aria-hidden="true" />
       <span className={styles.copy}>
         <span className={styles.name}>{template.name}</span>
         <span className={styles.description}>{template.description}</span>
+        {unavailable ? <span className={styles.availability}>Coming soon</span> : null}
       </span>
       {selected ? <CheckOutlined className={styles.check} aria-hidden="true" /> : null}
     </button>

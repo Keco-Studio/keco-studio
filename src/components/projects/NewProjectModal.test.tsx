@@ -68,6 +68,8 @@ it('creates a project with identity fields only and returns the service payload'
     expect(createProject).toHaveBeenCalledWith(expect.anything(), {
       name: 'Harbor Signal',
       description: 'A cooperative mystery.',
+      templateKey: 'blank',
+      templateRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
     });
   });
   expect(onCreated).toHaveBeenCalledWith({
@@ -76,12 +78,12 @@ it('creates a project with identity fields only and returns the service payload'
   });
 });
 
-it('keeps the selected template and identity draft after creation fails', async () => {
+it('keeps the selected template, identity draft, and request ID across a retry', async () => {
   const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.mocked(createProject).mockRejectedValueOnce(new Error('Creation failed'));
   render(<NewProjectModal open onClose={jest.fn()} onCreated={jest.fn()} />);
 
-  await user.click(screen.getByRole('button', { name: /Narrative adventure/ }));
+  await user.click(screen.getByRole('button', { name: /Tactical deckbuilder/ }));
   await enterIdentityDraft();
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -89,7 +91,13 @@ it('keeps the selected template and identity draft after creation fails', async 
   expect(screen.getByRole('dialog')).not.toBeNull();
   expect((screen.getByLabelText('Project name') as HTMLInputElement).value).toBe('Harbor Signal');
   expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('A cooperative mystery.');
-  expect(screen.getByRole('button', { name: /Narrative adventure/ }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: /Tactical deckbuilder/ }).getAttribute('aria-pressed')).toBe('true');
+
+  const firstRequestId = jest.mocked(createProject).mock.calls[0][1].templateRequestId;
+  jest.mocked(createProject).mockResolvedValueOnce({ project: createdProject, defaultFolderId: 'folder-1' });
+  await user.click(screen.getByRole('button', { name: 'Create' }));
+  await waitFor(() => expect(createProject).toHaveBeenCalledTimes(2));
+  expect(jest.mocked(createProject).mock.calls[1][1].templateRequestId).toBe(firstRequestId);
   consoleError.mockRestore();
 });
 
@@ -97,7 +105,7 @@ it('resets the selected template after successful creation', async () => {
   const onClose = jest.fn();
   const view = render(<NewProjectModal open onClose={onClose} onCreated={jest.fn()} />);
 
-  await user.click(screen.getByRole('button', { name: /Action roguelike/ }));
+  await user.click(screen.getByRole('button', { name: /Tactical deckbuilder/ }));
   await enterIdentityDraft();
   await user.click(screen.getByRole('button', { name: 'Create' }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
