@@ -1,6 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import sharp from 'sharp';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { aggregateProjectGameAssets } from '@/lib/services/gameAssetsService';
@@ -11,7 +10,10 @@ import {
   projectAssetMimeFromName,
   projectAssetExtensionMatches,
 } from '@/lib/services/projectAssetUploadContract';
-import { projectAssetContentMatches } from '@/lib/services/projectAssetContent';
+import {
+  inspectProjectGameAssetBytes,
+  validateProjectGameAssetMetadata,
+} from '@/lib/server/projectGameAssetUpload';
 import {
   releaseProjectStorage,
   reserveProjectStorage,
@@ -93,12 +95,15 @@ const deleteAssetSchema = z.object({
 const deleteWorkspaceSchema = z.object({ action: z.literal('workspace') }).strict();
 
 function validatedMetadata(input: z.infer<typeof fileMetadataSchema>) {
-  const mimeType = canonicalProjectAssetMimeType(input.fileType) ?? mimeFromName(input.fileName);
-  if (!mimeType || !projectAssetExtensionMatches(input.fileName, mimeType)
-    || input.fileSize > projectAssetMaxBytes(mimeType)) {
+  try {
+    return validateProjectGameAssetMetadata({
+      fileName: input.fileName,
+      fileSize: input.fileSize,
+      fileType: canonicalProjectAssetMimeType(input.fileType) ?? mimeFromName(input.fileName) ?? input.fileType,
+    });
+  } catch {
     throw new Error('Unsupported asset format or file size limit exceeded');
   }
-  return { ...input, fileType: mimeType };
 }
 
 function storageMimeType(info: Record<string, unknown>): string {
@@ -260,20 +265,16 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
         const { data: blob, error: downloadError } = await bucket.download(input.path);
         if (downloadError || !blob) throw new Error('Uploaded asset could not be verified');
         const bytes = Buffer.from(await blob.arrayBuffer());
-        if (bytes.byteLength !== actualSize || !projectAssetContentMatches(file.fileType, bytes)) {
+        if (bytes.byteLength !== actualSize) {
           throw new Error('File content does not match its declared format');
         }
-        const sha256 = createHash('sha256').update(bytes).digest('hex');
-        let width: number | null = null;
-        let height: number | null = null;
-        let hasTransparency: boolean | null = null;
-        if (file.fileType.startsWith('image/') && file.fileType !== 'image/svg+xml'
-          && file.fileType !== 'image/vnd.adobe.photoshop') {
-          const metadata = await sharp(bytes).metadata();
-          width = metadata.width ?? null;
-          height = metadata.height ?? null;
-          hasTransparency = metadata.hasAlpha ?? null;
+        let inspected;
+        try {
+          inspected = await inspectProjectGameAssetBytes(file.fileType, bytes);
+        } catch {
+          throw new Error('File content does not match its declared format');
         }
+        const { sha256, width, height, hasTransparency } = inspected;
         const objectCreatedAt = typeof info.created_at === 'string'
           ? info.created_at
           : typeof info.createdAt === 'string'
