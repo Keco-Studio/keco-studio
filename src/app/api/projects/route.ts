@@ -1,4 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
+import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import {
   DESIGN_PHILOSOPHY_PRESETS,
@@ -6,6 +7,13 @@ import {
   normalizeFoundationTags,
 } from '@/lib/projectFoundation';
 import { validateName } from '@/lib/utils/nameValidation';
+import {
+  instantiateProjectTemplate,
+  ProjectTemplateInProgressError,
+  ProjectTemplateRequestConflictError,
+} from '@/lib/project-templates/instantiate.server';
+import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
+import { StorageQuotaError } from '@/lib/server/storageQuota';
 
 type ProjectCreateRpcResult = {
   project?: Record<string, unknown>;
@@ -14,6 +22,17 @@ type ProjectCreateRpcResult = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const templateEnvelopeSchema = z.discriminatedUnion('templateKey', [
+  z.object({
+    templateKey: z.literal('blank'),
+    templateRequestId: z.string().uuid().optional(),
+  }).passthrough(),
+  z.object({
+    templateKey: z.literal('tactical-deckbuilder'),
+    templateRequestId: z.string().uuid(),
+  }).passthrough(),
+]);
 
 export const GET = withAuth(async function GET(
   _request,
@@ -41,13 +60,22 @@ export const GET = withAuth(async function GET(
 export const POST = withAuth(async function POST(
   request: NextRequest,
   _context,
-  { supabase }
+  { supabase, user }
 ) {
   const body = await request.json().catch(() => null);
   const name = typeof body?.name === 'string' ? body.name : '';
   const description: string | null = body?.description ?? null;
   const genres = body?.genres ?? [];
   const designPhilosophies = body?.designPhilosophies ?? [];
+
+  let templateEnvelope: z.infer<typeof templateEnvelopeSchema> = { templateKey: 'blank' };
+  if (body?.templateKey !== undefined) {
+    const parsed = templateEnvelopeSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid project template request' }, { status: 400 });
+    }
+    templateEnvelope = parsed.data;
+  }
 
   const trimmed = name.trim();
   if (!trimmed) {
@@ -59,6 +87,44 @@ export const POST = withAuth(async function POST(
   }
   if (!isStringArray(genres) || !isStringArray(designPhilosophies)) {
     return NextResponse.json({ error: 'Foundation tags must be arrays of strings' }, { status: 400 });
+  }
+
+  if (templateEnvelope.templateKey === 'tactical-deckbuilder') {
+    if (description !== null && typeof description !== 'string') {
+      return NextResponse.json({ error: 'Project description must be a string' }, { status: 400 });
+    }
+    try {
+      const created = await instantiateProjectTemplate({
+        authClient: supabase,
+        serviceClient: getSupabaseServiceRoleClient(),
+        userId: user.id,
+        requestId: templateEnvelope.templateRequestId,
+        templateKey: templateEnvelope.templateKey,
+        name: trimmed,
+        description: typeof description === 'string' ? description.trim() || null : null,
+      });
+      return NextResponse.json({
+        ...created.project,
+        default_folder_id: created.defaultFolderId,
+      }, { status: 201 });
+    } catch (error) {
+      if (error instanceof ProjectTemplateInProgressError) {
+        return NextResponse.json({ error: 'Project template creation is already in progress' }, { status: 409 });
+      }
+      if (error instanceof ProjectTemplateRequestConflictError) {
+        return NextResponse.json({ error: 'Project template request conflicts with an earlier request' }, { status: 409 });
+      }
+      if (error instanceof StorageQuotaError) {
+        if (error.code === 'STORAGE_QUOTA_EXCEEDED') {
+          return NextResponse.json({ error: 'Storage quota exceeded' }, { status: 409 });
+        }
+        if (error.code === 'STORAGE_PROJECT_FORBIDDEN') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
+      console.error('[POST /api/projects] Template creation failed:', error);
+      return NextResponse.json({ error: 'Failed to create project from template' }, { status: 500 });
+    }
   }
 
   const { data, error } = await supabase.rpc('create_project_with_foundation', {

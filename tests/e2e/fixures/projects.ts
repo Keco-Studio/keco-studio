@@ -8,6 +8,7 @@
 export interface ProjectData {
   name: string;
   description?: string;
+  templateKey?: 'blank' | 'tactical-deckbuilder';
 }
 
 /**

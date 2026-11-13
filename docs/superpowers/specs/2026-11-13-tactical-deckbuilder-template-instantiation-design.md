@@ -2,9 +2,11 @@
 
 **Date:** 2026-11-13
 
+**Implementation note (2026-11-14):** Version 1 currently instantiates the project structure, linked tables, GDD, and GDS without bundled images. The asset descriptor and upload pipeline remain in place so image and character resources can be added later without changing the template flow.
+
 ## Goal
 
-Turn the existing `tactical-deckbuilder` project-template card into the first real starter project. A user who selects it and creates a project receives a small, coherent dark-fantasy deckbuilder example that can be browsed and edited immediately: folders, linked tables with sample rows, a bound Game Design System, an editable GDD document, and image and character resources.
+Turn the existing `tactical-deckbuilder` project-template card into the first real starter project. A user who selects it and creates a project receives a small, coherent dark-fantasy deckbuilder example that can be browsed and edited immediately: folders, linked tables with sample rows, a bound Game Design System, and an editable GDD document. Image and character resources are a reserved follow-up extension.
 
 The user-entered project name and description remain authoritative. “Ashfall Tactics” is the sample setting embodied by the starter content, not a replacement for the user’s project name.
 

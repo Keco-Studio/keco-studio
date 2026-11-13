@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-13-tactical-deckbuilder-template-instantiation-design.md`
 
+**Implementation note (2026-11-14):** Bundled image generation is deferred. The first delivery uses an empty asset descriptor list, skips Art Resource activation, and retains the uploader/orchestrator branch for a later asset batch.
+
 ## Global Constraints
 
 - The template identity is exactly `tactical-deckbuilder@1`; clients never select a version.

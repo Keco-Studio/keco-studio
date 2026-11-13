@@ -162,6 +162,9 @@ export class ProjectPage {
     const dialog = this.page.getByRole('dialog', { name: 'Create Project' });
     await expect(dialog.getByLabel('Game genres')).toHaveCount(0);
     await expect(dialog.getByLabel('Design philosophies')).toHaveCount(0);
+    if (project.templateKey === 'tactical-deckbuilder') {
+      await dialog.getByRole('button', { name: /Tactical deckbuilder/ }).click();
+    }
 
     const visibleProjectNameInput = this.projectNameInput.filter({ visible: true }).first();
     const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');

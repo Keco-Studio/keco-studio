@@ -52,7 +52,51 @@ export async function createProject(
   supabase: SupabaseClient,
   input: CreateProjectInput
 ): Promise<{ project: Project; defaultFolderId: string }> {
-  return createBlankProject(supabase, input);
+  if (!input.templateKey || input.templateKey === 'blank') {
+    return createBlankProject(supabase, input);
+  }
+  if (input.templateKey !== 'tactical-deckbuilder' || !input.templateRequestId) {
+    throw new Error('Invalid project template request');
+  }
+  const session = await supabase.auth.getSession();
+  if (session.error || !session.data.session?.access_token) {
+    throw new Error('You must be logged in to create a project');
+  }
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      Authorization: `Bearer ${session.data.session.access_token}`,
+    },
+    body: JSON.stringify({
+      name: input.name.trim(),
+      description: trimOrNull(input.description ?? null),
+      templateKey: input.templateKey,
+      templateRequestId: input.templateRequestId,
+    }),
+  });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error('Failed to create project from template');
+  }
+  if (!response.ok) {
+    const safeError = typeof body === 'object' && body !== null
+      && typeof (body as { error?: unknown }).error === 'string'
+      ? (body as { error: string }).error
+      : 'Failed to create project from template';
+    throw new Error(safeError);
+  }
+  if (typeof body !== 'object' || body === null
+    || typeof (body as { id?: unknown }).id !== 'string'
+    || typeof (body as { default_folder_id?: unknown }).default_folder_id !== 'string') {
+    throw new Error('Failed to create project from template');
+  }
+  const { default_folder_id: defaultFolderId, ...project } = body as unknown as Project & {
+    default_folder_id: string;
+  };
+  return { project, defaultFolderId };
 }
 
 export async function createBlankProject(

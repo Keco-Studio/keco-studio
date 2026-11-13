@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server';
 
+jest.mock('server-only', () => ({}));
+
 const rpc = jest.fn();
+const instantiateProjectTemplate = jest.fn();
+const getSupabaseServiceRoleClient = jest.fn(() => ({ service: true }));
 const withAuth = jest.fn((handler: unknown) => async (request: NextRequest) => (
   (handler as Function)(request, undefined, {
     supabase: { rpc },
@@ -10,6 +14,14 @@ const withAuth = jest.fn((handler: unknown) => async (request: NextRequest) => (
 
 jest.mock('@/lib/auth/route-auth', () => ({
   withAuth: (handler: unknown, _options: unknown) => withAuth(handler),
+}));
+jest.mock('@/lib/project-templates/instantiate.server', () => ({
+  instantiateProjectTemplate: (...args: unknown[]) => instantiateProjectTemplate(...args),
+  ProjectTemplateInProgressError: class ProjectTemplateInProgressError extends Error {},
+  ProjectTemplateRequestConflictError: class ProjectTemplateRequestConflictError extends Error {},
+}));
+jest.mock('@/lib/server/supabaseServiceRole', () => ({
+  getSupabaseServiceRoleClient: () => getSupabaseServiceRoleClient(),
 }));
 
 import { POST } from './route';
@@ -37,6 +49,39 @@ describe('POST /api/projects', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     rpc.mockResolvedValue({ data: { project, folder_id: '33333333-3333-4333-8333-333333333333' }, error: null });
+    instantiateProjectTemplate.mockResolvedValue({
+      project,
+      defaultFolderId: '33333333-3333-4333-8333-333333333333',
+    });
+  });
+
+  it('instantiates the tactical template without invoking the blank RPC', async () => {
+    const response = await POST(request({
+      name: ' Tactics ',
+      description: 'A starter.',
+      templateKey: 'tactical-deckbuilder',
+      templateRequestId: '44444444-4444-4444-8444-444444444444',
+    }) as never, undefined as never);
+
+    expect(response.status).toBe(201);
+    expect(instantiateProjectTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      userId: '11111111-1111-4111-8111-111111111111',
+      requestId: '44444444-4444-4444-8444-444444444444',
+      templateKey: 'tactical-deckbuilder',
+      name: 'Tactics',
+      description: 'A starter.',
+    }));
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ name: 'Tactics', templateKey: 'tactical-deckbuilder' }, 400],
+    [{ name: 'Tactics', templateKey: 'tactical-deckbuilder', templateRequestId: 'bad' }, 400],
+    [{ name: 'Tactics', templateKey: 'narrative-adventure', templateRequestId: '44444444-4444-4444-8444-444444444444' }, 400],
+    [{ name: 'Tactics', templateKey: 'unknown', templateRequestId: '44444444-4444-4444-8444-444444444444' }, 400],
+  ])('rejects invalid template input %#', async (body, status) => {
+    expect((await POST(request(body) as never, undefined as never)).status).toBe(status);
+    expect(instantiateProjectTemplate).not.toHaveBeenCalled();
   });
 
   it('uses empty Foundation arrays for legacy requests', async () => {
